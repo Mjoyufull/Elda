@@ -1,0 +1,12 @@
+[package]
+name = "elda-fetch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+elda-types = { path = "../elda-types" }
+
+[lints]
+workspace = true

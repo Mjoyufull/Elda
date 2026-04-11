@@ -1,0 +1,3 @@
+https://github.com/dacctal/pkgit
+https://github.com/yoka-os/example-core
+https://github.com/yoka-os/example-desktop
