@@ -1,7 +1,7 @@
 <img align="center" src="https://raw.githubusercontent.com/Mjoyufull/Elda/refs/heads/dev/assets/eldaasciidark.png#gh-dark-mode-only">
 <img align="center" src="https://raw.githubusercontent.com/Mjoyufull/Elda/refs/heads/dev/assets/eldaascii.png#gh-light-mode-only">
 
-<i>(Elda universality in your choices)</i>
+<p align="center"><i>Elda universality in your choices</i></p>
 
 <br><br>
 <br>
