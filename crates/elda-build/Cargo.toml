@@ -6,7 +6,20 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+elda-recipe = { path = "../elda-recipe" }
 elda-types = { path = "../elda-types" }
+flate2 = "1.1.4"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+ureq = "2.12.1"
+xz2 = "0.1.7"
+zstd.workspace = true
 
 [lints]
 workspace = true

@@ -1,8 +1,15 @@
 #![forbid(unsafe_code)]
 
-use elda_types::CrateBoundary;
+mod error;
+mod layout;
+mod lock;
+mod schema;
+mod store;
 
-pub const BOUNDARY: CrateBoundary = CrateBoundary::new(
-    "elda-db",
-    "SQLite package DB, manifests, journals, and world tracking.",
-);
+pub use error::DbError;
+pub use layout::{InstallationMode, StateLayout};
+pub use store::{
+    BootstrapReport, Database, HealthReport, InstallRecord, InstalledPackageDetails,
+    InstalledPackageRecord, PackageDependencyRecord, PackageFileRecord, ReverseDependencyRecord,
+    StateSnapshot,
+};

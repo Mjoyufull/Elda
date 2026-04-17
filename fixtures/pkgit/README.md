@@ -1,6 +1,6 @@
 # `pkgit` reference fixtures
 
-These files are Phase 0 reference input for the Elda fork.
+These files are legacy `pkgit` reference input for Elda.
 
 They are not runtime assets for Elda yet.
 They exist so the rewrite has concrete samples for the `pkgit` behavior we are preserving at the UX layer or importing into normalized metadata.

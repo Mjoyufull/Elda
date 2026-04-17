@@ -13,6 +13,9 @@ elda-core = { path = "../elda-core" }
 elda-types = { path = "../elda-types" }
 serde_json.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true
 

@@ -7,6 +7,14 @@ license.workspace = true
 
 [dependencies]
 elda-types = { path = "../elda-types" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+ureq = "2.12.1"
 
+[dev-dependencies]
 [lints]
 workspace = true

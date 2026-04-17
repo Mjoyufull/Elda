@@ -1,9 +1,35 @@
 #![forbid(unsafe_code)]
 
+mod app;
+mod app_flags;
+mod app_fs;
+mod app_install;
+mod app_parse;
+mod app_policy;
+mod app_profile;
+mod app_recipe;
+mod app_render;
+mod app_render_support;
+mod app_repo;
+mod app_state;
+mod app_upgrade;
+mod cache_policy;
+mod config;
+mod error;
+mod flags;
+mod privilege;
+
+pub use app::run_from_root;
+pub use app_render::render_human;
+pub use config::process_root_dir;
 pub use elda_types::{CommandReport, CrateBoundary, ExitStatus, NamespaceSpec, OutputMode};
+pub use error::CoreError;
+pub use privilege::{PrivilegeProvider, PrivilegeRequest};
 
 const ROOT_COMMANDS: &[&str] = &[
     "i",
+    "ig",
+    "ib",
     "rm",
     "u",
     "sync",
@@ -56,11 +82,11 @@ const WORKSPACE_BOUNDARIES: &[CrateBoundary] = &[
     ),
     CrateBoundary::new(
         "elda-core",
-        "Shared domain types, config skeleton, and app context.",
+        "Shared domain types, config skeleton, app context, and privilege policy.",
     ),
     CrateBoundary::new(
         "elda-db",
-        "SQLite state, manifests, journals, and world tracking.",
+        "SQLite state, manifests, journals, layout bootstrap, and world tracking.",
     ),
     CrateBoundary::new(
         "elda-repo",
@@ -91,7 +117,7 @@ const WORKSPACE_BOUNDARIES: &[CrateBoundary] = &[
     CrateBoundary::new("elda-ext", "Extension protocol and adapter discovery."),
     CrateBoundary::new(
         "elda-types",
-        "Shared serializable command and boundary types.",
+        "Shared serializable command, identity, and version types.",
     ),
 ];
 
@@ -101,6 +127,9 @@ pub struct CommandRequest {
     pub operands: Vec<String>,
     pub output_mode: OutputMode,
     pub dry_run: bool,
+    pub system_mode: bool,
+    pub offline: bool,
+    pub accept_rotated_keys: Vec<String>,
 }
 
 impl CommandRequest {
@@ -116,7 +145,28 @@ impl CommandRequest {
             operands,
             output_mode,
             dry_run,
+            system_mode: false,
+            offline: false,
+            accept_rotated_keys: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_system_mode(mut self, system_mode: bool) -> Self {
+        self.system_mode = system_mode;
+        self
+    }
+
+    #[must_use]
+    pub fn with_offline(mut self, offline: bool) -> Self {
+        self.offline = offline;
+        self
+    }
+
+    #[must_use]
+    pub fn with_accepted_rotated_keys(mut self, accept_rotated_keys: Vec<String>) -> Self {
+        self.accept_rotated_keys = accept_rotated_keys;
+        self
     }
 }
 
@@ -130,75 +180,9 @@ pub fn workspace_boundaries() -> &'static [CrateBoundary] {
     WORKSPACE_BOUNDARIES
 }
 
-#[must_use]
-pub fn run(request: CommandRequest) -> CommandReport {
-    let command_label = if request.command_path.is_empty() {
-        "help".to_owned()
-    } else {
-        request.command_path.join(" ")
-    };
-    let status = if request.dry_run { "planned" } else { "stub" };
-    let summary = if request.operands.is_empty() {
-        format!(
-            "phase 0 skeleton: `{command_label}` is wired into the CLI surface; backend behavior is not implemented yet."
-        )
-    } else {
-        format!(
-            "phase 0 skeleton: `{command_label}` accepted operands [{}]; backend behavior is not implemented yet.",
-            request.operands.join(", ")
-        )
-    };
-
-    CommandReport {
-        phase: "phase-0",
-        status,
-        exit_status: ExitStatus::Success,
-        command_path: request.command_path,
-        operands: request.operands,
-        output_mode: request.output_mode,
-        dry_run: request.dry_run,
-        summary,
-    }
+pub fn run(request: CommandRequest) -> Result<CommandReport, CoreError> {
+    run_from_root(process_root_dir(), request)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{CommandRequest, cli_surface, run};
-    use crate::OutputMode;
-
-    #[test]
-    fn cli_surface_contains_all_spec_namespaces() {
-        let namespace_names = cli_surface()
-            .iter()
-            .map(|namespace| namespace.name)
-            .collect::<Vec<_>>();
-
-        assert!(namespace_names.contains(&"(root)"));
-        assert!(namespace_names.contains(&"rmt"));
-        assert!(namespace_names.contains(&"rc"));
-        assert!(namespace_names.contains(&"ci"));
-        assert!(namespace_names.contains(&"vendor"));
-        assert!(namespace_names.contains(&"forge"));
-        assert!(namespace_names.contains(&"pf"));
-        assert!(namespace_names.contains(&"fl"));
-        assert!(namespace_names.contains(&"mg"));
-        assert!(namespace_names.contains(&"state"));
-        assert!(namespace_names.contains(&"cache"));
-        assert!(namespace_names.contains(&"daemon"));
-        assert!(namespace_names.contains(&"ext"));
-        assert!(namespace_names.contains(&"qa"));
-    }
-
-    #[test]
-    fn dry_run_requests_report_planned_status() {
-        let report = run(CommandRequest::new(
-            vec!["i".to_owned()],
-            vec!["ripgrep".to_owned()],
-            OutputMode::Human,
-            true,
-        ));
-
-        assert_eq!(report.status, "planned");
-        assert!(report.summary.contains("ripgrep"));
-    }
-}
+mod tests;
