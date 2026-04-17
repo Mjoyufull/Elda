@@ -1,0 +1,17 @@
+[defaults]
+remote = "yoka-main"
+build_mode = "host"
+prefix = "/opt/elda"
+install_recommends = false
+install_preference = "source"
+
+[privilege]
+provider = "doas"
+preserve_env = false
+interactive = true
+
+[profile]
+base = "yoka-core"
+native_arch = "amd64"
+foreign_arches = []
+init = "dinit"

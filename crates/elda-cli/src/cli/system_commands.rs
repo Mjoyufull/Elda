@@ -1,0 +1,231 @@
+use clap::{Args, Subcommand};
+
+use super::common::{
+    OptionalPackageArg, OptionalPathArg, OptionalValueArg, PathBufArg, ProfileApplyArgs, ValueArg,
+    path_to_string, push_optional,
+};
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ProfileCommand {
+    #[command(about = "Apply one or more profile anchors")]
+    Apply(ProfileApplyArgs),
+    #[command(about = "Show the currently detected machine profile state")]
+    Show,
+    #[command(name = "set-init")]
+    #[command(about = "Switch the active init-provider family")]
+    SetInit(ValueArg),
+}
+
+impl ProfileCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Apply(args) => {
+                let mut operands = args.targets.clone();
+                push_optional(&mut operands, "--init", args.init.as_deref());
+                for arch in &args.foreign_arches {
+                    operands.push("--foreign-arch".to_owned());
+                    operands.push(arch.clone());
+                }
+                (vec!["pf".to_owned(), "apply".to_owned()], operands)
+            }
+            Self::Show => (vec!["pf".to_owned(), "show".to_owned()], Vec::new()),
+            Self::SetInit(args) => (
+                vec!["pf".to_owned(), "set-init".to_owned()],
+                vec![args.value.clone()],
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum FlagCommand {
+    #[command(about = "Inspect effective flag state")]
+    Check(OptionalPackageArg),
+    #[command(about = "Diff effective flag state")]
+    Diff(OptionalPackageArg),
+}
+
+impl FlagCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Check(args) => (
+                vec!["fl".to_owned(), "check".to_owned()],
+                args.package.clone().into_iter().collect(),
+            ),
+            Self::Diff(args) => (
+                vec!["fl".to_owned(), "diff".to_owned()],
+                args.package.clone().into_iter().collect(),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum MigrationCommand {
+    #[command(about = "Import installed state from another package manager")]
+    From(ValueArg),
+    #[command(about = "Lock a foreign package manager out of mutations")]
+    Lock(ValueArg),
+    #[command(about = "Release a previously applied migration lock")]
+    Unlock(ValueArg),
+}
+
+impl MigrationCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::From(args) => (
+                vec!["mg".to_owned(), "from".to_owned()],
+                vec![args.value.clone()],
+            ),
+            Self::Lock(args) => (
+                vec!["mg".to_owned(), "lock".to_owned()],
+                vec![args.value.clone()],
+            ),
+            Self::Unlock(args) => (
+                vec!["mg".to_owned(), "unlock".to_owned()],
+                vec![args.value.clone()],
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum StateCommand {
+    #[command(about = "Show the current desired machine state")]
+    Show,
+    #[command(about = "Export desired machine state")]
+    Export(OptionalPathArg),
+    #[command(about = "Import desired machine state")]
+    Import(PathBufArg),
+}
+
+impl StateCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Show => (vec!["state".to_owned(), "show".to_owned()], Vec::new()),
+            Self::Export(args) => (
+                vec!["state".to_owned(), "export".to_owned()],
+                args.path
+                    .as_ref()
+                    .map(|path| vec![path_to_string(path)])
+                    .unwrap_or_default(),
+            ),
+            Self::Import(args) => (
+                vec!["state".to_owned(), "import".to_owned()],
+                vec![path_to_string(&args.path)],
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum CacheCommand {
+    #[command(about = "Register a cache document")]
+    Add(CacheAddArgs),
+    #[command(about = "List registered caches")]
+    Ls,
+}
+
+impl CacheCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Add(args) => {
+                let mut operands = vec![args.value.clone()];
+                if let Some(priority) = args.priority {
+                    operands.push("--priority".to_owned());
+                    operands.push(priority.to_string());
+                }
+                (vec!["cache".to_owned(), "add".to_owned()], operands)
+            }
+            Self::Ls => (vec!["cache".to_owned(), "ls".to_owned()], Vec::new()),
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub(super) struct CacheAddArgs {
+    pub(super) value: String,
+    #[arg(long)]
+    pub(super) priority: Option<u32>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum DaemonCommand {
+    #[command(about = "Run the background refresh surface")]
+    Run,
+    #[command(about = "Show daemon configuration and runtime state")]
+    Status,
+    #[command(about = "Trigger an immediate refresh pass")]
+    Refresh,
+}
+
+impl DaemonCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Run => (vec!["daemon".to_owned(), "run".to_owned()], Vec::new()),
+            Self::Status => (vec!["daemon".to_owned(), "status".to_owned()], Vec::new()),
+            Self::Refresh => (vec!["daemon".to_owned(), "refresh".to_owned()], Vec::new()),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ExtensionCommand {
+    #[command(about = "List configured extensions")]
+    Ls,
+}
+
+impl ExtensionCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Ls => (vec!["ext".to_owned(), "ls".to_owned()], Vec::new()),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum QaCommand {
+    #[command(about = "Lint a package or stack")]
+    Lint(OptionalValueArg),
+    #[command(about = "Build a package or stack")]
+    Build(OptionalValueArg),
+    #[command(about = "Run smoke tests for a package or stack")]
+    Smoke(OptionalValueArg),
+    #[command(about = "Inspect a composed stack")]
+    Stack(OptionalValueArg),
+    #[command(about = "Reproduce a build or state transition")]
+    Repro(OptionalValueArg),
+    #[command(about = "Diff QA outputs")]
+    Diff(OptionalValueArg),
+}
+
+impl QaCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Lint(args) => (
+                vec!["qa".to_owned(), "lint".to_owned()],
+                args.value.clone().into_iter().collect(),
+            ),
+            Self::Build(args) => (
+                vec!["qa".to_owned(), "build".to_owned()],
+                args.value.clone().into_iter().collect(),
+            ),
+            Self::Smoke(args) => (
+                vec!["qa".to_owned(), "smoke".to_owned()],
+                args.value.clone().into_iter().collect(),
+            ),
+            Self::Stack(args) => (
+                vec!["qa".to_owned(), "stack".to_owned()],
+                args.value.clone().into_iter().collect(),
+            ),
+            Self::Repro(args) => (
+                vec!["qa".to_owned(), "repro".to_owned()],
+                args.value.clone().into_iter().collect(),
+            ),
+            Self::Diff(args) => (
+                vec!["qa".to_owned(), "diff".to_owned()],
+                args.value.clone().into_iter().collect(),
+            ),
+        }
+    }
+}

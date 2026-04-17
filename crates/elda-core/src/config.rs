@@ -1,0 +1,230 @@
+use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::error::CoreError;
+use crate::privilege::PrivilegeConfig;
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    pub defaults: DefaultsConfig,
+    pub privilege: PrivilegeConfig,
+    pub profile: ProfileConfig,
+    pub flags: FlagsConfig,
+}
+
+impl Config {
+    pub fn load(root_dir: &Path) -> Result<Self, CoreError> {
+        let config_path = root_dir.join("etc/elda/config.toml");
+        if !config_path.exists() {
+            return Ok(Self::default());
+        }
+
+        let content = fs::read_to_string(&config_path)?;
+        let config = toml::from_str::<Self>(&content)?;
+
+        Ok(config)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct DefaultsConfig {
+    pub remote: String,
+    pub build_mode: String,
+    pub prefix: PathBuf,
+    pub allow_system_mode: bool,
+    pub install_recommends: bool,
+    pub refresh_weak_deps: bool,
+    pub install_preference: InstallPreference,
+}
+
+impl Default for DefaultsConfig {
+    fn default() -> Self {
+        Self {
+            remote: "yoka-main".to_owned(),
+            build_mode: "isolated".to_owned(),
+            prefix: PathBuf::from("/usr"),
+            allow_system_mode: false,
+            install_recommends: true,
+            refresh_weak_deps: false,
+            install_preference: InstallPreference::Binary,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum InstallPreference {
+    Source,
+    #[default]
+    Binary,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ProfileConfig {
+    pub base: String,
+    pub native_arch: String,
+    pub foreign_arches: Vec<String>,
+    pub init: String,
+}
+
+impl Default for ProfileConfig {
+    fn default() -> Self {
+        Self {
+            base: String::new(),
+            native_arch: default_native_arch(),
+            foreign_arches: Vec::new(),
+            init: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct FlagsConfig {
+    pub global: BTreeMap<String, bool>,
+    pub profile: BTreeMap<String, BTreeMap<String, bool>>,
+    pub package: BTreeMap<String, BTreeMap<String, bool>>,
+}
+
+#[must_use]
+pub fn default_native_arch() -> String {
+    match env::consts::ARCH {
+        "x86_64" => "amd64".to_owned(),
+        "x86" | "i686" | "i386" => "i386".to_owned(),
+        "aarch64" => "arm64".to_owned(),
+        "arm" | "armv7" | "armv7l" => "armhf".to_owned(),
+        "riscv64" => "riscv64".to_owned(),
+        "powerpc64" | "powerpc64le" => "ppc64le".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+#[must_use]
+pub fn process_root_dir() -> PathBuf {
+    env::var_os("ELDA_ROOT_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use tempfile::TempDir;
+
+    use super::{Config, InstallPreference, ProfileConfig, default_native_arch};
+
+    #[test]
+    fn load_accepts_public_config_shape_and_reads_runtime_fields() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        let config_dir = tempdir.path().join("etc/elda");
+        fs::create_dir_all(&config_dir).expect("config dir should exist");
+        fs::write(
+            config_dir.join("config.toml"),
+            r#"
+[defaults]
+remote = "mirror-main"
+cache_policy = "prefer"
+origin_style = "tag"
+install_preference = "source"
+build_fallback = "local"
+build_mode = "host"
+activation = "auto"
+prefix = "/opt/elda"
+allow_system_mode = true
+snapshot_tool = "snapper"
+install_recommends = false
+refresh_weak_deps = false
+
+[privilege]
+provider = "sudo"
+preserve_env = true
+interactive = false
+
+[profile]
+base = "yoka-desktop"
+native_arch = "amd64"
+foreign_arches = ["i386"]
+init = "dinit"
+
+[flags.global]
+wayland = true
+x11 = false
+
+[flags.profile.yoka-desktop]
+pipewire = true
+
+[flags.package.fsel]
+wayland = true
+
+[submission]
+mode = "pr"
+auto_open = true
+
+[daemon]
+refresh = "30m"
+notify_upgrades = true
+
+[display]
+show_origin = true
+show_remote = true
+"#,
+        )
+        .expect("config should be written");
+
+        let config = Config::load(tempdir.path()).expect("config should load");
+
+        assert_eq!(config.defaults.remote, "mirror-main");
+        assert_eq!(config.defaults.build_mode, "host");
+        assert_eq!(config.defaults.prefix, PathBuf::from("/opt/elda"));
+        assert!(config.defaults.allow_system_mode);
+        assert!(!config.defaults.install_recommends);
+        assert!(!config.defaults.refresh_weak_deps);
+        assert_eq!(
+            config.defaults.install_preference,
+            InstallPreference::Source
+        );
+        assert!(config.privilege.preserve_env);
+        assert!(!config.privilege.interactive);
+        assert_eq!(config.profile.base, "yoka-desktop");
+        assert_eq!(config.profile.native_arch, "amd64");
+        assert_eq!(config.profile.foreign_arches, vec!["i386"]);
+        assert_eq!(config.profile.init, "dinit");
+        assert_eq!(config.flags.global.get("wayland"), Some(&true));
+        assert_eq!(config.flags.global.get("x11"), Some(&false));
+        assert_eq!(
+            config
+                .flags
+                .profile
+                .get("yoka-desktop")
+                .and_then(|flags| flags.get("pipewire")),
+            Some(&true)
+        );
+        assert_eq!(
+            config
+                .flags
+                .package
+                .get("fsel")
+                .and_then(|flags| flags.get("wayland")),
+            Some(&true)
+        );
+    }
+
+    #[test]
+    fn profile_defaults_do_not_invent_machine_shape() {
+        let profile = ProfileConfig::default();
+
+        assert!(profile.base.is_empty());
+        assert_eq!(profile.native_arch, default_native_arch());
+        assert!(profile.foreign_arches.is_empty());
+        assert!(profile.init.is_empty());
+    }
+}

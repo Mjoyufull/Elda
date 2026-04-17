@@ -1,0 +1,17 @@
+[defaults]
+remote = "yoka-main"
+build_mode = "isolated"
+prefix = "/usr"
+install_recommends = true
+install_preference = "binary"
+
+[privilege]
+provider = "doas"
+preserve_env = false
+interactive = true
+
+[profile]
+base = "yoka-core"
+native_arch = "amd64"
+foreign_arches = ["i386"]
+init = "dinit"

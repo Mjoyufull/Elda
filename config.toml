@@ -1,0 +1,103 @@
+# Elda sample config
+#
+# Copy the parts you want into `/etc/elda/config.toml`.
+# The current runtime fully reads:
+# - `[defaults]`
+# - `[privilege]`
+# - `[profile]`
+#
+# The later sections are kept here because they are part of Elda's public
+# config shape from the spec and fork docs. They are safe to keep in the file
+# even if the current runtime slice does not consume them yet.
+
+# ===== DEFAULTS =====
+[defaults]
+
+# Default synced remote name used by commands that resolve named packages.
+remote = "yoka-main"
+
+# Build execution mode.
+# Current runtime understands this as a string value and reports it back in
+# state output; the deeper backend behavior is still growing.
+build_mode = "isolated"
+
+# Install target root.
+# `/usr` = system mode
+# anything else = separate prefix DB/state/cache namespace
+prefix = "/usr"
+
+# Live host system mode is opt-in.
+# Set this to `true` if you want plain `elda ...` on the host root to operate
+# as the system package manager.
+# `elda -S ...` overrides this for one invocation.
+allow_system_mode = false
+
+# Weak-dependency behavior on explicit install.
+install_recommends = true
+
+# Default lane preference for plain `elda i`.
+# `binary` prefers a declared binary lane when present.
+# `source` prefers the source lane by default.
+install_preference = "binary"
+
+# Public config shape tracked by the spec.
+cache_policy = "prefer"
+origin_style = "tag"
+build_fallback = "local"
+activation = "auto"
+snapshot_tool = "snapper"
+refresh_weak_deps = false
+
+# ===== PRIVILEGE =====
+[privilege]
+
+# One of: `auto`, `doas`, `sudo`, `run0`, `su`, `none`
+# `auto` probes in this order: `doas`, `sudo`, `run0`, `su`.
+provider = "auto"
+
+# Preserve caller environment when escalating.
+preserve_env = false
+
+# Allow interactive password / confirmation prompts.
+interactive = true
+
+# ===== PROFILE =====
+[profile]
+
+# Base package or profile anchor.
+base = "yoka-core"
+
+# Canonical Elda architecture labels.
+native_arch = "amd64"
+foreign_arches = ["i386"]
+
+# Active init family / profile choice.
+init = "dinit"
+
+# ===== FLAGS =====
+# Global flags and profile/package-specific flag overrides are part of the
+# public config shape even though the current runtime does not enforce them yet.
+[flags.global]
+wayland = true
+x11 = false
+
+[flags.profile.yoka-desktop-hyprland]
+pipewire = true
+
+[flags.package.fsel]
+wayland = true
+
+# ===== SUBMISSION =====
+[submission]
+mode = "pr"
+auto_open = true
+
+# ===== DAEMON =====
+[daemon]
+refresh = "30m"
+notify_upgrades = true
+
+# ===== DISPLAY =====
+[display]
+show_origin = true
+show_remote = true
