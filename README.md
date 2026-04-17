@@ -1,5 +1,5 @@
-<img align="center" src="https://raw.githubusercontent.com/Mjoyufull/elda/refs/heads/main/assets/eldaasciidark.png#gh-dark-mode-only">
-<img align="center" src="https://raw.githubusercontent.com/Mjoyufull/elda/refs/heads/main/assets/eldaascii.png#gh-light-mode-only">
+<img align="center" src="https://raw.githubusercontent.com/Mjoyufull/Elda/refs/heads/dev/assets/eldaasciidark.png#gh-dark-mode-only">
+<img align="center" src="https://raw.githubusercontent.com/Mjoyufull/Elda/refs/heads/dev/assets/eldaascii.png#gh-light-mode-only">
 
 <i>(Elda universality in your choices)</i>
 
