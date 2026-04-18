@@ -18,5 +18,6 @@ mod repo_upgrade;
 mod source_vendor;
 mod state;
 mod support;
+mod system_backend;
 mod upgrade_policy;
 mod upgrade_runtime;

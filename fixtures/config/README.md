@@ -9,3 +9,4 @@ Fixture files:
 
 - `system-default.toml`: system-mode install with binary-lane default
 - `prefix-source.toml`: non-system prefix install with source-lane default
+- `profile-defaults.toml`: profile-oriented machine-shape defaults with profile-scoped flags

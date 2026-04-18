@@ -106,7 +106,7 @@ pub(super) const NAMESPACE_ROWS: &[HelpRow] = &[
         "discover forge packages and assets",
     ),
     HelpRow::new(
-        "pf apply/show/set-init",
+        "pf apply/add/rm/...",
         "...",
         "manage machine profile and provider state",
     ),
@@ -178,6 +178,10 @@ pub(super) const EXAMPLES: &[ExampleRow] = &[
     ExampleRow::new(
         "elda pf apply yoka-core --init dinit --foreign-arch i386",
         "apply profile anchors and persist machine-shape policy",
+    ),
+    ExampleRow::new(
+        "elda pf add yoka-desktop-hyprland",
+        "append one profile anchor onto the current machine shape",
     ),
     ExampleRow::new(
         "elda help <command>",

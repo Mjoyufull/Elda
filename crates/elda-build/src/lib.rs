@@ -16,6 +16,7 @@ mod nimble_build;
 mod payload_verify;
 mod process;
 mod python_build;
+mod system_metadata;
 mod zig_build;
 
 use std::fs;
@@ -33,6 +34,9 @@ pub use cache_meta::{
 };
 pub use error::BuildError;
 pub use manifest::{ManifestEntry, ManifestEntryKind, PackageManifest};
+pub use system_metadata::{
+    AlternativeAsset, DeclarativeAsset, LifecycleHookAsset, SystemPackageMetadata,
+};
 
 pub const BOUNDARY: CrateBoundary = CrateBoundary::new(
     "elda-build",
@@ -84,6 +88,7 @@ pub struct BuiltPackage {
     pub repo_commit: Option<String>,
     pub dependencies: Vec<PackageDependency>,
     pub conffiles: Vec<String>,
+    pub system_metadata: SystemPackageMetadata,
     pub payload_path: PathBuf,
     pub payload_sha256: String,
     pub manifest_path: PathBuf,
@@ -205,6 +210,7 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
 
     let manifest = manifest::collect_manifest(&stage_root)?;
     let (manifest_hash, manifest_bytes) = manifest::manifest_hash(&manifest)?;
+    let system_metadata = system_metadata::collect_system_metadata(request.recipe)?;
     let arch = request
         .recipe
         .package
@@ -242,6 +248,7 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
         repo_commit,
         dependencies: collect_package_dependencies(&request.recipe.package),
         conffiles: request.recipe.package.conffiles.clone(),
+        system_metadata,
         payload_path,
         payload_sha256,
         manifest_path,

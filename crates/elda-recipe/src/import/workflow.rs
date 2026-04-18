@@ -10,23 +10,34 @@ use super::legacy::{copy_dir_recursive, parse_pkgdeps, render_imported_build_lua
 use super::model::ImportReport;
 use super::render::render_pkg_lua;
 
-pub fn add_recipe(recipes_dir: &Path, input: &str) -> Result<ImportReport, RecipeError> {
+pub fn add_recipe(
+    recipes_dir: &Path,
+    input: &str,
+    recipe_kind: Option<&str>,
+) -> Result<ImportReport, RecipeError> {
+    let recipe_kind = normalize_recipe_kind(recipe_kind)?;
     fs::create_dir_all(recipes_dir)?;
 
     let input_path = Path::new(input);
     if input_path.exists() {
-        return import_from_local_path(recipes_dir, input_path);
+        return import_from_local_path(recipes_dir, input_path, recipe_kind);
     }
     if is_git_like_target(input) {
-        return scaffold_from_source(recipes_dir, infer_recipe_name(input), Some(input));
+        return scaffold_from_source(
+            recipes_dir,
+            infer_recipe_name(input),
+            Some(input),
+            recipe_kind,
+        );
     }
 
-    scaffold_from_source(recipes_dir, input.to_owned(), None)
+    scaffold_from_source(recipes_dir, input.to_owned(), None, recipe_kind)
 }
 
 fn import_from_local_path(
     recipes_dir: &Path,
     source_dir: &Path,
+    recipe_kind: &str,
 ) -> Result<ImportReport, RecipeError> {
     let recipe_name = source_dir
         .file_name()
@@ -53,7 +64,13 @@ fn import_from_local_path(
         &recipe_dir,
         &mut report,
     )?;
-    ensure_recipe_pkg_lua(&recipe_dir, source_dir, &legacy_pkgdeps, &mut report)?;
+    ensure_recipe_pkg_lua(
+        &recipe_dir,
+        source_dir,
+        &legacy_pkgdeps,
+        recipe_kind,
+        &mut report,
+    )?;
     import_legacy_files(
         source_dir,
         &recipe_dir,
@@ -70,13 +87,17 @@ fn scaffold_from_source(
     recipes_dir: &Path,
     recipe_name: String,
     source_url: Option<&str>,
+    recipe_kind: &str,
 ) -> Result<ImportReport, RecipeError> {
     let recipe_dir = recipes_dir.join(&recipe_name);
     fs::create_dir_all(&recipe_dir)?;
 
     let pkg_lua_path = recipe_dir.join("pkg.lua");
     if !pkg_lua_path.exists() {
-        fs::write(&pkg_lua_path, render_pkg_lua(&recipe_name, source_url, &[]))?;
+        fs::write(
+            &pkg_lua_path,
+            render_pkg_lua(&recipe_name, source_url, &[], recipe_kind),
+        )?;
     }
 
     Ok(ImportReport {
@@ -145,6 +166,7 @@ fn ensure_recipe_pkg_lua(
     recipe_dir: &Path,
     source_dir: &Path,
     legacy_pkgdeps: &Option<Vec<super::model::LegacyPkgdep>>,
+    recipe_kind: &str,
     report: &mut ImportReport,
 ) -> Result<(), RecipeError> {
     if report.imported_pkg_lua {
@@ -158,11 +180,23 @@ fn ensure_recipe_pkg_lua(
             &report.recipe_name,
             source_url.as_deref(),
             legacy_pkgdeps.as_deref().unwrap_or(&[]),
+            recipe_kind,
         ),
     )?;
     report.generated_pkg_lua = true;
 
     Ok(())
+}
+
+fn normalize_recipe_kind(recipe_kind: Option<&str>) -> Result<&str, RecipeError> {
+    let recipe_kind = recipe_kind.unwrap_or("normal");
+    if recipe_kind == "normal" || recipe_kind == "meta" || recipe_kind == "profile" {
+        return Ok(recipe_kind);
+    }
+
+    Err(RecipeError::InvalidInput(format!(
+        "unsupported recipe kind `{recipe_kind}`; expected one of: normal, meta, profile"
+    )))
 }
 
 fn import_legacy_files(

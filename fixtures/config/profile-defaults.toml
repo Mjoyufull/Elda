@@ -1,0 +1,23 @@
+[defaults]
+remote = "yoka-main"
+install_preference = "binary"
+prefix = "/usr"
+allow_system_mode = false
+install_recommends = true
+refresh_weak_deps = false
+
+[privilege]
+provider = "auto"
+interactive = true
+
+[profile]
+base = "yoka-core"
+native_arch = "amd64"
+foreign_arches = ["i386"]
+init = "dinit"
+
+[flags.global]
+wayland = true
+
+[flags.profile.yoka-core]
+pipewire = true

@@ -60,19 +60,33 @@ impl AppContext {
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
+        let profile = self.resolve_profile_state()?;
+        let runtime_view = self.profile_runtime_view(&profile)?;
+        let trigger_report = repair_triggers(&self.database)?;
+        let pending_count =
+            runtime_view.pending_handler_transitions.len() + trigger_report.pending.len();
 
         Ok(CommandReport {
             area: "ops",
-            status: "ok",
+            status: if pending_count == 0 { "ok" } else { "pending" },
             exit_status: ExitStatus::Success,
             command_path: request.command_path,
             operands: request.operands,
             output_mode: request.output_mode,
             dry_run: request.dry_run,
-            summary: "the current backend has no pending trigger handlers.".to_owned(),
+            summary: if pending_count == 0 {
+                "the current backend has no pending trigger handlers.".to_owned()
+            } else {
+                format!(
+                    "reported {pending_count} pending system-change handler(s) for the current backend."
+                )
+            },
             details: Some(json!({
-                "pending_handlers": [],
-                "backend": "prefix-copy",
+                "pending_handlers": &runtime_view.pending_handler_transitions,
+                "trigger_repair": trigger_report,
+                "provider_families": &runtime_view.provider_families,
+                "required_activation_class": runtime_view.required_activation_class,
+                "backend": runtime_view.backend,
             })),
         })
     }

@@ -1,10 +1,12 @@
 mod config;
+mod profile_recipes;
 mod recipes;
 mod repos;
 mod runtime;
 mod trust;
 
 pub(super) use config::*;
+pub(super) use profile_recipes::*;
 pub(super) use recipes::*;
 pub(super) use repos::*;
 pub(super) use runtime::*;

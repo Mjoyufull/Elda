@@ -4,6 +4,7 @@ mod restore;
 use elda_db::Database;
 
 use crate::journal::ensure_no_pending_journals;
+use crate::system_backend::capture_active_system_state;
 use crate::{InstallError, RollbackReport};
 
 pub use plan::rollback_plan;
@@ -25,6 +26,7 @@ pub fn rollback_state(
 
     remove_rollback_packages(database, &plan.removed_packages)?;
     let restored_packages = restore_rollback_packages(database, &target.packages)?;
+    capture_active_system_state(database, &target.state_id)?;
     database.set_current_state(&target.state_id)?;
 
     Ok(RollbackReport {

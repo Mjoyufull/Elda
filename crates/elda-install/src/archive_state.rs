@@ -3,9 +3,11 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use elda_build::SystemPackageMetadata;
 use elda_db::{Database, InstallationMode, StateLayout};
 
 use crate::InstallError;
+use crate::system_backend::load_installed_system_metadata;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ArchivedStateDocument {
@@ -36,6 +38,8 @@ pub(crate) struct ArchivedPackage {
     pub(crate) manifest_hash: Option<String>,
     #[serde(default)]
     pub(crate) conffiles: Vec<String>,
+    #[serde(default)]
+    pub(crate) system_metadata: SystemPackageMetadata,
     pub(crate) pinned_version: Option<String>,
     pub(crate) held: bool,
     pub(crate) hold_source: Option<String>,
@@ -86,14 +90,19 @@ pub(crate) fn archive_current_state(
 
 pub(crate) fn available_state_ids(layout: &StateLayout) -> Result<Vec<String>, InstallError> {
     let mut archive_ids = fs::read_dir(&layout.states_dir)?
-        .map(|entry| {
-            entry.map(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .trim_end_matches(".json")
-                    .to_owned()
-            })
+        .filter_map(|entry| match entry {
+            Ok(entry) => {
+                let path = entry.path();
+                if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                    return None;
+                }
+                Some(Ok(path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default()
+                    .to_owned()))
+            }
+            Err(error) => Some(Err(error)),
         })
         .collect::<Result<Vec<_>, _>>()?;
     archive_ids.sort();
@@ -175,6 +184,8 @@ fn archived_package(
         .filter(|record| record.is_conffile)
         .map(|record| record.path)
         .collect::<Vec<_>>();
+    let system_metadata =
+        load_installed_system_metadata(database.layout(), package_name)?.unwrap_or_default();
 
     Ok(ArchivedPackage {
         pkgname: package.pkgname,
@@ -192,6 +203,7 @@ fn archived_package(
         payload_sha256: package.payload_sha256,
         manifest_hash: package.manifest_hash,
         conffiles,
+        system_metadata,
         pinned_version: package.pinned_version,
         held: package.held,
         hold_source: package.hold_source,

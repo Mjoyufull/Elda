@@ -132,14 +132,20 @@ fn profile_apply_installs_base_anchor_and_persists_policy() {
             .as_ref()
             .and_then(|details| details.get("pending_handler_transitions"))
             .and_then(|handlers| handlers.as_array())
-            .is_some_and(|handlers| handlers.is_empty())
+            .is_some_and(|handlers| {
+                handlers.len() == 2
+                    && handlers[0].get("kind").and_then(|value| value.as_str())
+                        == Some("init-provider-transition")
+                    && handlers[1].get("kind").and_then(|value| value.as_str())
+                        == Some("multilib-policy-transition")
+            })
     );
     assert!(
         show.details
             .as_ref()
             .and_then(|details| details.get("required_activation_class"))
             .and_then(|value| value.as_str())
-            .is_some_and(|value| value == "none")
+            .is_some_and(|value| value == "reboot-required")
     );
 }
 

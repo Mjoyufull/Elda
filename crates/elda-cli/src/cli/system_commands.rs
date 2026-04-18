@@ -1,40 +1,79 @@
 use clap::{Args, Subcommand};
 
 use super::common::{
-    OptionalPackageArg, OptionalPathArg, OptionalValueArg, PathBufArg, ProfileApplyArgs, ValueArg,
-    path_to_string, push_optional,
+    ArchListArgs, OptionalPackageArg, OptionalPathArg, OptionalValueArg, PathBufArg,
+    ProfileApplyArgs, ValueArg, path_to_string, push_optional,
 };
 
 #[derive(Debug, Subcommand)]
 pub(super) enum ProfileCommand {
     #[command(about = "Apply one or more profile anchors")]
     Apply(ProfileApplyArgs),
+    #[command(about = "Append profile anchors to the active machine shape")]
+    Add(ProfileApplyArgs),
+    #[command(name = "rm")]
+    #[command(about = "Remove profile anchors from the active machine shape")]
+    Rm(ProfileApplyArgs),
     #[command(about = "Show the currently detected machine profile state")]
     Show,
     #[command(name = "set-init")]
     #[command(about = "Switch the active init-provider family")]
     SetInit(ValueArg),
+    #[command(name = "clear-init")]
+    #[command(about = "Clear the active init-provider family override")]
+    ClearInit,
+    #[command(name = "set-arch")]
+    #[command(about = "Set the active native architecture")]
+    SetArch(ValueArg),
+    #[command(name = "add-foreign-arch")]
+    #[command(about = "Enable one or more foreign architectures")]
+    AddForeignArch(ArchListArgs),
+    #[command(name = "remove-foreign-arch")]
+    #[command(about = "Disable one or more foreign architectures")]
+    RemoveForeignArch(ArchListArgs),
 }
 
 impl ProfileCommand {
     pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
         match self {
-            Self::Apply(args) => {
-                let mut operands = args.targets.clone();
-                push_optional(&mut operands, "--init", args.init.as_deref());
-                for arch in &args.foreign_arches {
-                    operands.push("--foreign-arch".to_owned());
-                    operands.push(arch.clone());
-                }
-                (vec!["pf".to_owned(), "apply".to_owned()], operands)
-            }
+            Self::Apply(args) => profile_selection_request_parts("apply", args),
+            Self::Add(args) => profile_selection_request_parts("add", args),
+            Self::Rm(args) => profile_selection_request_parts("rm", args),
             Self::Show => (vec!["pf".to_owned(), "show".to_owned()], Vec::new()),
             Self::SetInit(args) => (
                 vec!["pf".to_owned(), "set-init".to_owned()],
                 vec![args.value.clone()],
             ),
+            Self::ClearInit => (vec!["pf".to_owned(), "clear-init".to_owned()], Vec::new()),
+            Self::SetArch(args) => (
+                vec!["pf".to_owned(), "set-arch".to_owned()],
+                vec![args.value.clone()],
+            ),
+            Self::AddForeignArch(args) => (
+                vec!["pf".to_owned(), "add-foreign-arch".to_owned()],
+                args.arches.clone(),
+            ),
+            Self::RemoveForeignArch(args) => (
+                vec!["pf".to_owned(), "remove-foreign-arch".to_owned()],
+                args.arches.clone(),
+            ),
         }
     }
+}
+
+fn profile_selection_request_parts(
+    command: &str,
+    args: &ProfileApplyArgs,
+) -> (Vec<String>, Vec<String>) {
+    let mut operands = args.targets.clone();
+    push_optional(&mut operands, "--init", args.init.as_deref());
+    push_optional(&mut operands, "--native-arch", args.native_arch.as_deref());
+    for arch in &args.foreign_arches {
+        operands.push("--foreign-arch".to_owned());
+        operands.push(arch.clone());
+    }
+
+    (vec!["pf".to_owned(), command.to_owned()], operands)
 }
 
 #[derive(Debug, Subcommand)]

@@ -15,6 +15,8 @@ impl AppContext {
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
         let profile = self.resolve_profile_state()?;
+        let declared_policy = self.resolve_local_profile_policy(&profile.active_profiles)?;
+        let runtime_view = self.profile_runtime_view(&profile)?;
 
         Ok(CommandReport {
             area: "profile",
@@ -25,7 +27,11 @@ impl AppContext {
             output_mode: request.output_mode,
             dry_run: request.dry_run,
             summary: "reported the current machine profile state.".to_owned(),
-            details: Some(profile_details_json(&profile)),
+            details: Some(profile_details_json(
+                &profile,
+                &declared_policy,
+                &runtime_view,
+            )),
         })
     }
 

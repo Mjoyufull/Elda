@@ -1,8 +1,8 @@
 use clap::{Args, Subcommand};
 
 use super::common::{
-    OptionalPackageArg, OptionalValueArg, PackageArg, PathArg, TargetsArgs, ValueArg,
-    VendorAddArgs, VendorExportArgs, VendorImportArgs, path_to_string, push_flag, push_optional,
+    OptionalPackageArg, OptionalValueArg, PackageArg, TargetsArgs, ValueArg, VendorAddArgs,
+    VendorExportArgs, VendorImportArgs, path_to_string, push_flag, push_optional,
 };
 
 #[derive(Debug, Subcommand)]
@@ -81,7 +81,7 @@ pub(super) struct RemoteAddArgs {
 #[derive(Debug, Subcommand)]
 pub(super) enum RecipeCommand {
     #[command(about = "Add or import a local recipe")]
-    Add(PathArg),
+    Add(RecipeAddArgs),
     #[command(about = "Open an existing local recipe")]
     Edit(PackageArg),
     #[command(about = "Validate local recipes")]
@@ -91,10 +91,11 @@ pub(super) enum RecipeCommand {
 impl RecipeCommand {
     pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
         match self {
-            Self::Add(args) => (
-                vec!["rc".to_owned(), "add".to_owned()],
-                vec![args.value.clone()],
-            ),
+            Self::Add(args) => {
+                let mut operands = vec![args.value.clone()];
+                push_optional(&mut operands, "--kind", args.kind.as_deref());
+                (vec!["rc".to_owned(), "add".to_owned()], operands)
+            }
             Self::Edit(args) => (
                 vec!["rc".to_owned(), "edit".to_owned()],
                 vec![args.package.clone()],
@@ -105,6 +106,14 @@ impl RecipeCommand {
             ),
         }
     }
+}
+
+#[derive(Debug, Args)]
+pub(super) struct RecipeAddArgs {
+    #[arg(help = "Package name, git source, or local path")]
+    value: String,
+    #[arg(long, help = "Scaffold recipe kind: normal, meta, or profile")]
+    kind: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]

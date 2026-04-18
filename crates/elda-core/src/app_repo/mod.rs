@@ -1,3 +1,4 @@
+mod info;
 mod remote_add;
 
 use std::path::PathBuf;
@@ -8,8 +9,8 @@ use crate::app::AppContext;
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus, OutputMode};
 use elda_repo::{
-    CacheDocument, SyncOptions, list_caches, load_snapshot, resolve_package, save_cache,
-    save_remote, search_packages, sync_remotes,
+    CacheDocument, SyncOptions, list_caches, load_snapshot, save_cache, save_remote,
+    search_packages, sync_remotes,
 };
 
 impl AppContext {
@@ -138,39 +139,6 @@ impl AppContext {
                 "query": parsed.query,
                 "regex": parsed.regex,
                 "results": results,
-            })),
-        })
-    }
-
-    pub(crate) fn handle_info(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
-        self.database.bootstrap()?;
-        let package_name = request
-            .operands
-            .first()
-            .ok_or_else(|| CoreError::Operator("info requires one package name".to_owned()))?
-            .clone();
-        let installed = self.database.installed_package(&package_name)?;
-        let synced = resolve_package(&self.repo_snapshot_path(), &package_name)
-            .ok()
-            .flatten();
-
-        Ok(CommandReport {
-            area: "info",
-            status: if installed.is_some() || synced.is_some() {
-                "ok"
-            } else {
-                "missing"
-            },
-            exit_status: ExitStatus::Success,
-            command_path: request.command_path,
-            operands: request.operands,
-            output_mode: request.output_mode,
-            dry_run: request.dry_run,
-            summary: format!("reported package metadata for `{package_name}`."),
-            details: Some(json!({
-                "package": package_name,
-                "installed": installed,
-                "synced": synced,
             })),
         })
     }

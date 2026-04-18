@@ -8,6 +8,7 @@ use elda_db::{Database, StateLayout};
 
 use crate::InstallError;
 use crate::archive_state::{ArchivedDependency, ArchivedPackage};
+use crate::system_backend::load_installed_system_metadata;
 
 pub(crate) fn built_package_from_archive(
     database: &Database,
@@ -37,6 +38,7 @@ pub(crate) fn built_package_from_archive(
         repo_commit: archived.repo_commit.clone(),
         dependencies: archived_dependencies(&archived.dependencies),
         conffiles: archived.conffiles.clone(),
+        system_metadata: archived.system_metadata.clone(),
         payload_path,
         payload_sha256: required_archive_field(
             archived.payload_sha256.clone(),
@@ -53,14 +55,105 @@ pub(crate) fn built_package_from_archive(
     })
 }
 
+pub(crate) fn built_package_from_installed(
+    database: &Database,
+    package_name: &str,
+) -> Result<BuiltPackage, InstallError> {
+    let installed = database.installed_package(package_name)?.ok_or_else(|| {
+        InstallError::StateArchive(format!(
+            "installed package `{package_name}` disappeared while preparing the staged system state"
+        ))
+    })?;
+    let arch = installed.arch.clone().ok_or_else(|| {
+        InstallError::StateArchive(format!(
+            "installed package `{package_name}` is missing its canonical arch"
+        ))
+    })?;
+    let (payload_path, manifest_path) = archive_package_paths_for_fields(
+        database.layout(),
+        &installed.pkgname,
+        &installed.pkgver,
+        installed.pkgrel,
+        &arch,
+    );
+    ensure_cached_artifact(&payload_path, "payload")?;
+    ensure_cached_artifact(&manifest_path, "manifest")?;
+    record_cache_access(&payload_path, CacheEntryKind::PackagePayload)?;
+    record_cache_access(&manifest_path, CacheEntryKind::PackageManifest)?;
+
+    let manifest = serde_json::from_slice::<PackageManifest>(&fs::read(&manifest_path)?)?;
+    let dependencies = database
+        .package_dependencies(package_name, true)?
+        .into_iter()
+        .map(|dependency| PackageDependency {
+            dependency_name: dependency.dependency_name,
+            dependency_kind: dependency.dependency_kind,
+            raw_expr: dependency.raw_expr,
+            is_weak: dependency.is_weak,
+            provider_group: dependency.provider_group,
+        })
+        .collect::<Vec<_>>();
+    let conffiles = database
+        .package_files(package_name)?
+        .into_iter()
+        .filter(|record| record.is_conffile)
+        .map(|record| record.path)
+        .collect::<Vec<_>>();
+    let system_metadata =
+        load_installed_system_metadata(database.layout(), package_name)?.unwrap_or_default();
+
+    Ok(BuiltPackage {
+        package_name: installed.pkgname.clone(),
+        epoch: installed.epoch,
+        pkgver: installed.pkgver.clone(),
+        pkgrel: installed.pkgrel,
+        arch,
+        package_kind: installed.package_kind,
+        variant_id: installed.variant_id.unwrap_or_else(|| "default".to_owned()),
+        source_kind: installed.source_kind,
+        source_ref: installed.source_ref,
+        remote_name: installed.remote_name,
+        repo_commit: installed.repo_commit,
+        dependencies,
+        conffiles,
+        system_metadata,
+        payload_path,
+        payload_sha256: required_archive_field(
+            installed.payload_sha256,
+            package_name,
+            "payload sha256",
+        )?,
+        manifest_path,
+        manifest_hash: required_archive_field(
+            installed.manifest_hash,
+            package_name,
+            "manifest hash",
+        )?,
+        manifest,
+    })
+}
+
 pub(crate) fn archive_package_paths(
     layout: &StateLayout,
     archived: &ArchivedPackage,
 ) -> (PathBuf, PathBuf) {
-    let base_name = format!(
-        "{}-{}-{}-{}",
-        archived.pkgname, archived.pkgver, archived.pkgrel, archived.arch
-    );
+    archive_package_paths_for_fields(
+        layout,
+        &archived.pkgname,
+        &archived.pkgver,
+        archived.pkgrel,
+        &archived.arch,
+    )
+}
+
+fn archive_package_paths_for_fields(
+    layout: &StateLayout,
+    package_name: &str,
+    pkgver: &str,
+    pkgrel: u64,
+    arch: &str,
+) -> (PathBuf, PathBuf) {
+    let base_name = format!("{package_name}-{pkgver}-{pkgrel}-{arch}");
     (
         layout
             .cache_pkg_dir

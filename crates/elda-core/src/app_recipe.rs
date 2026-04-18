@@ -14,11 +14,12 @@ impl AppContext {
         &self,
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
-        let target = request
-            .operands
-            .first()
-            .ok_or_else(|| CoreError::Operator("rc add requires one input".to_owned()))?;
-        let report = add_recipe(&self.database.layout().recipes_dir, target)?;
+        let (target, recipe_kind) = parse_recipe_add_request(&request)?;
+        let report = add_recipe(
+            &self.database.layout().recipes_dir,
+            &target,
+            recipe_kind.as_deref(),
+        )?;
 
         Ok(CommandReport {
             area: "recipe",
@@ -144,4 +145,42 @@ impl AppContext {
             details: Some(json!({ "export": report })),
         })
     }
+}
+
+fn parse_recipe_add_request(
+    request: &CommandRequest,
+) -> Result<(String, Option<String>), CoreError> {
+    let mut operands = request.operands.iter();
+    let target = operands
+        .next()
+        .cloned()
+        .ok_or_else(|| CoreError::Operator("rc add requires one input".to_owned()))?;
+    let mut recipe_kind = None;
+
+    while let Some(operand) = operands.next() {
+        match operand.as_str() {
+            "--kind" => {
+                let value = operands.next().ok_or_else(|| {
+                    CoreError::Operator("rc add --kind requires one recipe kind".to_owned())
+                })?;
+                if value.trim().is_empty() {
+                    return Err(CoreError::Operator(
+                        "rc add --kind does not accept an empty value".to_owned(),
+                    ));
+                }
+                if recipe_kind.replace(value.clone()).is_some() {
+                    return Err(CoreError::Operator(
+                        "rc add accepts at most one `--kind` value".to_owned(),
+                    ));
+                }
+            }
+            other => {
+                return Err(CoreError::Operator(format!(
+                    "unexpected `rc add` operand or flag `{other}`"
+                )));
+            }
+        }
+    }
+
+    Ok((target, recipe_kind))
 }

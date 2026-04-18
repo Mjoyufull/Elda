@@ -4,6 +4,7 @@ use std::fs;
 use crate::app::{AppContext, DesiredStateDocument, DesiredStatePackage, ParsedInstallRequest};
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
+use elda_install::pending_triggers;
 use elda_repo::list_remotes;
 
 impl AppContext {
@@ -55,7 +56,14 @@ impl AppContext {
 
     pub(crate) fn handle_check(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
-        let report = self.database.health_report()?;
+        let mut report = self.database.health_report()?;
+        let pending_triggers = pending_triggers(self.database.layout())?;
+        if !pending_triggers.is_empty() {
+            report.issues.push(format!(
+                "pending trigger repair exists for {} system trigger(s)",
+                pending_triggers.len()
+            ));
+        }
 
         Ok(CommandReport {
             area: "check",
@@ -73,7 +81,10 @@ impl AppContext {
                 "reported {} health issue(s) for the current root.",
                 report.issues.len(),
             ),
-            details: Some(json!({ "health": report })),
+            details: Some(json!({
+                "health": report,
+                "pending_triggers": pending_triggers,
+            })),
         })
     }
 

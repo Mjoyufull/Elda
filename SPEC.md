@@ -263,6 +263,7 @@ The following fields live in `pkg.lua` and are part of package policy. If a fiel
 | `tmpfiles` | Inline entry array or `{ file = "metadata/tmpfiles.conf" }` | Declarative runtime directory/file creation under §14.2. |
 | `alternatives` | Array of `{ name, link, path, priority }` tables | Command-alternative registrations under §14.2. |
 | `hooks` | Table keyed by lifecycle point; each value references a package-relative script or Lua chunk | Exceptional lifecycle hooks under §14.4. |
+| `profile` | Table with optional `native_arch`, `foreign_arches`, and `init` keys | Machine-shape defaults attached to a `package_kind = profile` anchor. |
 
 Representative shape:
 ```lua
@@ -476,7 +477,9 @@ Bootstrapping starts from any seed environment that can run Elda: an existing di
 
 Rules:
 - `elda pf apply <profile...>` installs the selected profile anchors into the seeded root and records them with the appropriate `package_kind` and `install_reason = base`
+- `elda pf add <profile...>` appends profile anchors onto the current desired profile set, while `elda pf rm <profile...>` removes them explicitly
 - profile application also materializes init-provider and foreign-arch/multilib policy as normal Elda state transitions
+- `elda pf set-init`, `elda pf clear-init`, `elda pf set-arch`, `elda pf add-foreign-arch`, and `elda pf remove-foreign-arch` mutate the persisted desired machine-shape policy without bypassing the normal profile-state record
 - after the first successful profile application, Elda's DB plus `world` become the authoritative machine-state record
 
 #### Adoption and Migration
@@ -510,6 +513,9 @@ Rules:
 - meta/profile packages may omit `build.lua` and own no normal filesystem payload unless they also ship explicit declarative profile assets
 - they install by ensuring their dependency closure is satisfied
 - the package DB records them with an empty manifest or explicit no-payload marker
+- `package_kind = profile` recipes may additionally declare `profile = { native_arch?, foreign_arches?, init? }` in `pkg.lua`
+- declared `profile` metadata is machine-shape default policy: `pf apply` and related profile-set mutations use it when the operator did not pass an explicit override
+- if multiple selected profile anchors declare conflicting `native_arch` or `init` values, Elda fails closed instead of guessing
 - removing a meta/profile anchor removes only the anchor package itself; packages that were present solely because of that anchor become orphan candidates
 - if a meta/profile package drops a dependency in an upgrade, Elda does not silently delete the old package during that upgrade
 

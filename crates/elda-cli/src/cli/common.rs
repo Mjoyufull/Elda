@@ -57,6 +57,12 @@ pub(super) struct ProfileApplyArgs {
     #[arg(long, help = "Set the active init-provider family")]
     pub(super) init: Option<String>,
     #[arg(
+        long = "native-arch",
+        value_name = "ARCH",
+        help = "Set the active native architecture"
+    )]
+    pub(super) native_arch: Option<String>,
+    #[arg(
         long = "foreign-arch",
         value_name = "ARCH",
         help = "Enable one foreign architecture or multilib architecture"
@@ -68,6 +74,12 @@ pub(super) struct ProfileApplyArgs {
 pub(super) struct OptionalTargetsArgs {
     #[arg(value_name = "PKG", help = "Optional installed package names")]
     pub(super) targets: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub(super) struct ArchListArgs {
+    #[arg(value_name = "ARCH", help = "Canonical Elda architecture labels")]
+    pub(super) arches: Vec<String>,
 }
 
 #[derive(Debug, Args)]

@@ -57,7 +57,7 @@ impl AppContext {
 
         let path = Path::new(target);
         if path.exists() {
-            let report = add_recipe(recipes_dir, target)?;
+            let report = add_recipe(recipes_dir, target, None)?;
             let recipe = load_recipe(recipes_dir, &report.recipe_name)?;
             return self.select_install_lane(
                 target,
@@ -68,7 +68,7 @@ impl AppContext {
         }
 
         if is_git_like_target(target) {
-            let report = add_recipe(recipes_dir, target)?;
+            let report = add_recipe(recipes_dir, target, None)?;
             let recipe = load_recipe(recipes_dir, &report.recipe_name)?;
             let mut resolved =
                 self.select_install_lane(target, recipe, request, Some(target.to_owned()))?;

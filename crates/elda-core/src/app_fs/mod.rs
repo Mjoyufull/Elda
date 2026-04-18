@@ -12,8 +12,8 @@ use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
 use elda_build::ManifestEntryKind;
 use elda_install::{
-    recover_pending_transactions, remove_package, remove_package_purge_conffiles, rollback_plan,
-    rollback_state, verify_packages,
+    recover_pending_transactions, remove_package, remove_package_purge_conffiles, repair_triggers,
+    rollback_plan, rollback_state, verify_packages,
 };
 
 fn manifest_kind(kind: ManifestEntryKind) -> &'static str {

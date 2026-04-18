@@ -88,6 +88,55 @@ pkg = {
 }
 
 #[test]
+fn profile_policy_parses_for_profile_recipes() {
+    let document = parse_pkg_lua(
+        Path::new("pkg.lua"),
+        r#"
+pkg = {
+  name = "yoka-core",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "profile",
+  source = {
+    kind = "git",
+    url = "https://example.invalid/yoka-core.git",
+    branch = "main",
+  },
+  depends = {},
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+  profile = {
+    native_arch = "amd64",
+    foreign_arches = { "i386" },
+    init = "dinit",
+  },
+}
+"#,
+    )
+    .expect("pkg.lua should parse");
+
+    assert!(validate_recipe(&document).is_empty());
+    let profile = document
+        .package
+        .profile
+        .expect("profile policy should parse");
+
+    assert_eq!(profile.native_arch.as_deref(), Some("amd64"));
+    assert_eq!(profile.foreign_arches, vec!["i386"]);
+    assert_eq!(profile.init.as_deref(), Some("dinit"));
+}
+
+#[test]
 fn invalid_metadata_shapes_are_reported() {
     let document = parse_pkg_lua(
         Path::new("pkg.lua"),
@@ -156,5 +205,71 @@ pkg = {
         issue
             .message
             .contains("flags_implies.desktop must be an array of non-empty flag names")
+    }));
+}
+
+#[test]
+fn invalid_profile_policy_shapes_are_reported() {
+    let document = parse_pkg_lua(
+        Path::new("pkg.lua"),
+        r#"
+pkg = {
+  name = "broken-profile",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "normal",
+  source = {
+    kind = "git",
+    url = "https://example.invalid/broken-profile.git",
+    branch = "main",
+  },
+  depends = {},
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+  profile = {
+    native_arch = "x86_64",
+    foreign_arches = { "i386", "", "i386" },
+    init = "",
+  },
+}
+"#,
+    )
+    .expect("pkg.lua should parse");
+    let issues = validate_recipe(&document);
+
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("pkg.profile metadata is allowed only when pkg.kind = `profile`")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("profile.native_arch must use a canonical Elda architecture label")
+    }));
+    assert!(
+        issues
+            .iter()
+            .any(|issue| { issue.message.contains("profile.init must not be empty") })
+    );
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("profile.foreign_arches must not contain empty architecture labels")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("profile.foreign_arches contains duplicate entry `i386`")
     }));
 }

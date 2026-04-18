@@ -4,6 +4,7 @@ mod app;
 mod app_flags;
 mod app_fs;
 mod app_install;
+mod app_model;
 mod app_parse;
 mod app_policy;
 mod app_profile;
@@ -65,7 +66,20 @@ const CLI_NAMESPACES: &[NamespaceSpec] = &[
     ),
     NamespaceSpec::new("vendor", &["add", "import", "export"]),
     NamespaceSpec::new("forge", &["search", "browse"]),
-    NamespaceSpec::new("pf", &["apply", "show", "set-init"]),
+    NamespaceSpec::new(
+        "pf",
+        &[
+            "apply",
+            "add",
+            "rm",
+            "show",
+            "set-init",
+            "clear-init",
+            "set-arch",
+            "add-foreign-arch",
+            "remove-foreign-arch",
+        ],
+    ),
     NamespaceSpec::new("fl", &["check", "diff"]),
     NamespaceSpec::new("mg", &["from", "lock", "unlock"]),
     NamespaceSpec::new("state", &["show", "export", "import"]),

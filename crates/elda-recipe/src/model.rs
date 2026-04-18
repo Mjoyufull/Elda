@@ -41,8 +41,16 @@ pub struct PackageDefinition {
     pub flags_implies: Option<LuaValue>,
     pub flags_conflicts: Option<LuaValue>,
     pub subpackages: Option<LuaValue>,
+    pub profile: Option<ProfilePolicy>,
     pub build: Option<BuildDefinition>,
     pub has_build_table: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProfilePolicy {
+    pub native_arch: Option<String>,
+    pub foreign_arches: Vec<String>,
+    pub init: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

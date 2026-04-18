@@ -372,6 +372,7 @@ version = "0.1.0"
 dependencies = [
  "elda-build",
  "elda-db",
+ "elda-linux",
  "elda-types",
  "serde",
  "serde_json",
@@ -387,6 +388,7 @@ name = "elda-linux"
 version = "0.1.0"
 dependencies = [
  "elda-types",
+ "serde",
 ]
 
 [[package]]

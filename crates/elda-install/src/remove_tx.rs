@@ -1,11 +1,15 @@
 use std::fs;
 
-use elda_db::Database;
+use elda_db::{Database, InstallationMode};
 
 use crate::archive_state::archive_current_state;
 use crate::conffile::remove_conffile_entry;
 use crate::fsops::{backup_file_for_restore, cleanup_transaction_root, map_manifest_path};
 use crate::journal::{JournalState, TransactionJournal, ensure_no_pending_journals};
+use crate::system_backend::{
+    activate_staged_state, next_state_prefix, prepare_staged_remove,
+    reconcile_system_state_after_remove, run_remove_triggers,
+};
 use crate::{InstallError, RemoveConffileMode, RemoveReport, next_state_id};
 
 pub fn remove_package(
@@ -67,16 +71,17 @@ pub(crate) fn remove_package_internal(
     ensure_no_pending_journals(database.layout())?;
     ensure_package_installed(database, package_name)?;
 
-    let state_id = next_state_id("prefix");
+    let state_id = next_state_id(next_state_prefix(database.layout()));
     let transaction_root = database
         .layout()
         .tmp_dir
         .join("transactions")
         .join(format!("remove-{state_id}"));
     let mut journal = begin_remove_journal(database, package_name, &state_id, &transaction_root)?;
-    let files = remove_package_files(
+    let files = apply_remove_state(
         database,
         package_name,
+        &state_id,
         &transaction_root,
         &mut journal,
         conffile_mode,
@@ -84,6 +89,12 @@ pub(crate) fn remove_package_internal(
 
     remove_manifest(database, package_name, &transaction_root, &mut journal)?;
     database.remove_package(package_name)?;
+    reconcile_system_state_after_remove(database, package_name)?;
+    let removed_paths = files
+        .iter()
+        .map(|record| record.path.clone())
+        .collect::<Vec<_>>();
+    run_remove_triggers(database, &removed_paths)?;
     database.set_current_state(&state_id)?;
     if archive_state {
         archive_current_state(database, &state_id)?;
@@ -160,6 +171,39 @@ fn remove_package_files(
     }
 
     Ok(files)
+}
+
+fn apply_remove_state(
+    database: &Database,
+    package_name: &str,
+    state_id: &str,
+    transaction_root: &std::path::Path,
+    journal: &mut TransactionJournal,
+    conffile_mode: RemoveConffileMode,
+) -> Result<Vec<elda_db::PackageFileRecord>, InstallError> {
+    let files = database.package_files(package_name)?;
+    if database.layout().mode == InstallationMode::System {
+        let staged = prepare_staged_remove(
+            database,
+            package_name,
+            state_id,
+            transaction_root,
+            journal,
+            conffile_mode,
+        )?;
+        activate_staged_state(database, &staged, journal)?;
+        journal.state = JournalState::FilesApplied;
+        journal.persist(database.layout())?;
+        return Ok(files);
+    }
+
+    remove_package_files(
+        database,
+        package_name,
+        transaction_root,
+        journal,
+        conffile_mode,
+    )
 }
 
 fn remove_non_conffile_entry(

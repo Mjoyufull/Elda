@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::error::RecipeError;
 use crate::model::{
-    BuildDefinition, GitHubReleaseAssetDefinition, LuaValue, PackageDefinition, ScalarValue,
-    SourceDefinition, SourceLaneDefinition,
+    BuildDefinition, GitHubReleaseAssetDefinition, LuaValue, PackageDefinition, ProfilePolicy,
+    ScalarValue, SourceDefinition, SourceLaneDefinition,
 };
 
 use super::fields::{
@@ -55,6 +55,9 @@ pub(super) fn map_package_definition(
         flags_implies: get_optional_value(&root, "flags_implies"),
         flags_conflicts: get_optional_value(&root, "flags_conflicts"),
         subpackages: get_optional_value(&root, "subpackages"),
+        profile: get_optional_table(&root, "profile")?
+            .map(map_profile_policy)
+            .transpose()?,
         build,
         has_build_table: root.contains_key("build"),
     })
@@ -133,6 +136,16 @@ fn map_build_definition(build: BTreeMap<String, LuaValue>) -> Result<BuildDefini
     })
 }
 
+fn map_profile_policy(profile: BTreeMap<String, LuaValue>) -> Result<ProfilePolicy, RecipeError> {
+    validate_profile_policy_keys(&profile)?;
+
+    Ok(ProfilePolicy {
+        native_arch: get_optional_string(&profile, "native_arch")?,
+        foreign_arches: get_optional_string_array(&profile, "foreign_arches")?.unwrap_or_default(),
+        init: get_optional_string(&profile, "init")?,
+    })
+}
+
 fn source_fields(
     source: BTreeMap<String, LuaValue>,
 ) -> Result<BTreeMap<String, ScalarValue>, RecipeError> {
@@ -188,6 +201,19 @@ fn validate_multi_lane_source_shape(
         }
         return Err(RecipeError::Parse(format!(
             "source field `{key}` is not allowed alongside `source.lanes`"
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_profile_policy_keys(profile: &BTreeMap<String, LuaValue>) -> Result<(), RecipeError> {
+    for key in profile.keys() {
+        if key == "native_arch" || key == "foreign_arches" || key == "init" {
+            continue;
+        }
+        return Err(RecipeError::Parse(format!(
+            "profile field `{key}` is not supported in the current declarative slice"
         )));
     }
 

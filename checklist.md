@@ -29,7 +29,7 @@ Status source used for this tracker:
 | [x] SQLite installed-state DB + ownership model + manifests | [~] Repo/trust/cache slice is real but not full spec-complete supply-chain model | [ ] Full Linux `/usr` activation backend and full system transaction lifecycle |
 | [x] Recipe parse/check flow for `pkg.lua`, with legacy import path | [~] Build/runtime source-kind surface still narrower than declared model (`nix_flake`, `gentoo_overlay` gap) | [ ] Executable support for declared interbuild source kinds (`nix_flake`, `gentoo_overlay`) |
 | [x] Source/binary lane model (`i`, `ig`, `ib`, `--prefer-*`) | [~] Some command namespaces still not fully backended (`ci`, `forge`, `mg`, `adopt`, `ext`, `qa`, `daemon run`) | [ ] Remove remaining `handle_stub()` surfaces and land real backend implementations |
-| [x] Direct git installs + multi build-system execution (`cargo/cmake/meson/make/go/zig/python/nimble`) | [~] Prefix rollback is real; system backend rollback story is still pending | [ ] System backend archived-state + rollback parity |
+| [x] Direct git installs + multi build-system execution (`cargo/cmake/meson/make/go/zig/python/nimble`) | [~] Prefix rollback is real and disposable-root `/usr` rollback now restores staged archived state; live-host backend parity is still pending | [ ] Full live-host system backend archived-state + rollback parity |
 | [x] Vendor workflow (`vendor add/import/export`) | [~] Profile/daemon area has current slice support but broader system-change/trigger integration remains | [ ] Full typed trigger engine + provider-family/system-change handlers on live backend |
 | [x] Sync/search/info from verified merged snapshots | [~] CI/forge publication pipeline is not started | [ ] Native CI DAG/layer build + publish pipeline + `ci` namespace completion |
 | [x] Trust model baseline: signed index, TOFU/pinned, explicit rotated-key acceptance, offline verified snapshots | [~] Interepo/migration architecture is documented but implementation not landed | [ ] Interepo adapters + translation confidence flow + coexistence modes |
@@ -49,8 +49,8 @@ Status source used for this tracker:
 | Phase 4: Resolver/flags/planning | In Progress | [x] closure-aware planning; [x] conflicts/replaces/pin/hold checks; [~] full PubGrub + broader provider policy still pending |
 | Phase 5: Build/staging/payloads | In Progress | [x] stage + manifest + payload; [x] git/archive/github_release paths; [~] source-kind parity not complete |
 | Phase 6: Prefix transaction backend | In Progress | [x] install/remove/upgrade journals + verify/recover; [x] rollback + downgrade in prefix; [~] system backend parity pending |
-| Phase 7: Linux system backend + triggers | Not Started | [ ] live `/usr` backend; [ ] trigger engine; [ ] system change handlers; [ ] backend archive/rollback parity |
-| Phase 8: Profiles/machine shape/ops | In Progress | [x] `pf show/apply/set-init`; [x] state export/import; [~] broader daemon/system-management integration pending |
+| Phase 7: Linux system backend + triggers | In Progress | [x] disposable-root `/usr` staged backend; [x] internal trigger engine + `check`/`fix-triggers`; [x] disposable-root archive/rollback parity; [~] live-host cutover, provider-asset reconciliation, and broader boot/backend integration still pending |
+| Phase 8: Profiles/machine shape/ops | In Progress | [x] `pf show/apply/add/rm/set-init/clear-init/set-arch/add-foreign-arch/remove-foreign-arch`; [x] state export/import; [~] broader daemon/system-management integration pending |
 | Phase 9: Native CI + binary publishing | Not Started | [ ] CI submission pipeline; [ ] DAG/layer generation; [ ] artifact/signature/index publish path |
 | Phase 10: Git-mode interbuilds | Not Started | [ ] `nix_flake` bounded execution; [ ] `gentoo_overlay` bounded execution |
 | Phase 11: Interepo translation/coexistence | Not Started | [ ] foreign adapters; [ ] translated snapshot install path; [ ] coexist/warn/lock modes |
@@ -65,7 +65,8 @@ Status source used for this tracker:
 - [x] Mutation locking and transaction journal exist
 - [x] `verify`, `reverify`, and `recover` are real
 - [x] Prefix rollback and downgrade are real
-- [~] Backend parity between prefix and system-mode still incomplete
+- [~] Backend parity between prefix and system-mode is better, but system-mode is still disposable-root only
+- [~] Disposable-root system backend now has staged-state activation plus archive/rollback/trigger behavior
 - [ ] Full live system backend parity with archive/rollback/trigger behavior
 
 ### 2) Package Definition + Build Runtime
@@ -93,16 +94,17 @@ Status source used for this tracker:
 - [ ] Land full solver and policy configuration model
 
 ### 5) Operator Commands + UX
-- [x] Core command set is materially useful (`i/rm/u/sync/search/info/files/verify/recover/rollback/...`)
+- [x] Core command set is materially useful (`i/rm/u/sync/search/info/files/verify/recover/rollback/pf/...`)
 - [x] Human-readable output paths improved
 - [x] Branded help and command descriptions exist
 - [~] Several namespaces still mostly stubs (`ci/forge/mg/adopt/ext/qa`)
 - [ ] Complete all remaining stubbed namespaces
 
 ### 6) Profiles/Daemon/System Shape
-- [x] Profile read/apply/set-init current slice exists
+- [x] Profile read/apply/edit current slice exists (`pf show/apply/add/rm/set-init/clear-init/set-arch/add-foreign-arch/remove-foreign-arch`)
+- [x] Profile recipes can declare typed machine-shape defaults
 - [x] Desired state export/import exists
-- [~] Provider-asset reconciliation and full daemon/system-change behavior pending
+- [~] Typed pending system-change reporting exists, but provider-asset reconciliation and full daemon/system-change behavior are still pending
 - [ ] Full system change handler lifecycle and trigger repair flow on live backend
 
 ### 7) Replacement Readiness
@@ -115,10 +117,11 @@ Status source used for this tracker:
 
 ## Open Decisions / Design Blockers
 
-- [ ] `D-01` Linux activation materialization strategy finalization (staged tree vs alternatives) `(!)`
+- [x] `D-01` Linux activation materialization strategy finalized as staged tree + explicit current-state metadata
 - [ ] `D-02` First isolated build backend implementation strategy `(!)`
 - [ ] `D-03` Interepo adapter order landing sequence (ALPM/APK/Portage)
 - [ ] `D-04` Native index publish layout decision (`yoka-ci/index` vs generated branch/artifact)
+- [ ] `D-05` Canonical package-definition contract for provider-specific assets `(!)`
 
 ---
 
@@ -127,9 +130,9 @@ Status source used for this tracker:
 - [~] `ELDA-01` CLI surface still exceeds backend coverage in places
 - [~] `ELDA-02` Repo trust/cache slice is materially improved but still partial vs full spec
 - [ ] `ELDA-03` Declared source model wider than executable runtime (`nix_flake`, `gentoo_overlay`) `(!)`
-- [ ] `ELDA-04` Linux `/usr` backend + trigger engine missing `(!)`
-- [ ] `ELDA-05` Archived rollback story still prefix-focused
-- [ ] `ELDA-06` Placeholder crates still boundary-only (`elda-fetch`, `elda-git`, `elda-ext`, `elda-linux`, `elda-unix`, `xtask`)
+- [~] `ELDA-04` Linux `/usr` backend + trigger engine are real in disposable-root mode, but live-host cutover is still missing `(!)`
+- [~] `ELDA-05` Archived rollback is real in prefix mode and disposable-root `/usr` mode, but the live-system rollback model is still incomplete
+- [~] `ELDA-06` Placeholder crates still dominate some boundaries (`elda-fetch`, `elda-git`, `elda-ext`, `elda-unix`, `xtask`); `elda-linux` is now partial rather than boundary-only
 
 ---
 
@@ -145,7 +148,8 @@ Use this as the immediate sprint board.
 
 Suggested immediate candidates (based on current blockers):
 - [ ] Finish remaining resolver/provider-policy behavior
-- [ ] Start Linux `/usr` backend scaffolding in `elda-linux` + `elda-unix`
+- [ ] Push the Linux `/usr` backend from disposable-root staged-copy into real live-host cutover behavior
+- [ ] Freeze the provider-specific asset contract so real provider-asset reconciliation can land safely
 - [ ] Replace one stub namespace end-to-end (e.g., one `ci` command path)
 - [ ] Implement first executable `nix_flake` bounded path
 - [ ] Implement first executable `gentoo_overlay` bounded path
@@ -159,4 +163,3 @@ Suggested immediate candidates (based on current blockers):
 - [ ] "Done" entries must be code-backed and test-backed
 - [ ] Replacement-ready claim only flips after all `stage.md` gates are met
 - [ ] Full-fork-complete claim only flips after Phase 12 done
-

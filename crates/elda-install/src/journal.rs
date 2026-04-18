@@ -135,10 +135,12 @@ pub fn recover_pending_journals(layout: &StateLayout) -> Result<RecoveryReport, 
             }
             (TransactionKind::Install, _) => {
                 cleanup_paths(&pending.journal.created_paths)?;
+                restore_backups(&pending.journal.backup_entries)?;
                 cleanup_transaction_root(&pending.journal.transaction_root)?;
                 "rolled-back-install".to_owned()
             }
             (TransactionKind::Remove, _) => {
+                cleanup_paths(&pending.journal.created_paths)?;
                 restore_backups(&pending.journal.backup_entries)?;
                 cleanup_transaction_root(&pending.journal.transaction_root)?;
                 "rolled-back-remove".to_owned()

@@ -70,12 +70,67 @@ fn validate_package(package: &PackageDefinition, issues: &mut Vec<ValidationIssu
     validate_named_constraints("conflicts", &package.conflicts, issues);
     validate_named_constraints("replaces", &package.replaces, issues);
     metadata::validate_metadata(package, issues);
+    validate_profile_policy(package, issues);
     validate_build(package, issues);
 
     for conffile in &package.conffiles {
         if !conffile.starts_with("/etc/") {
             issues.push(error(format!(
                 "conffile `{conffile}` must be an absolute path under /etc"
+            )));
+        }
+    }
+}
+
+fn validate_profile_policy(package: &PackageDefinition, issues: &mut Vec<ValidationIssue>) {
+    let Some(profile) = &package.profile else {
+        return;
+    };
+
+    if package.kind != "profile" {
+        issues.push(error(
+            "pkg.profile metadata is allowed only when pkg.kind = `profile`",
+        ));
+    }
+
+    if profile
+        .native_arch
+        .as_deref()
+        .is_some_and(|arch| arch.trim().is_empty())
+    {
+        issues.push(error("profile.native_arch must not be empty"));
+    }
+    if let Some(native_arch) = &profile.native_arch
+        && !CANONICAL_ARCHES.contains(&native_arch.as_str())
+    {
+        issues.push(error(format!(
+            "profile.native_arch must use a canonical Elda architecture label, got `{native_arch}`"
+        )));
+    }
+    if profile
+        .init
+        .as_deref()
+        .is_some_and(|provider| provider.trim().is_empty())
+    {
+        issues.push(error("profile.init must not be empty"));
+    }
+
+    let mut seen_arches = BTreeSet::new();
+    for arch in &profile.foreign_arches {
+        if arch.trim().is_empty() {
+            issues.push(error(
+                "profile.foreign_arches must not contain empty architecture labels",
+            ));
+            continue;
+        }
+        if !CANONICAL_ARCHES.contains(&arch.as_str()) {
+            issues.push(error(format!(
+                "profile.foreign_arches contains unsupported architecture label `{arch}`"
+            )));
+        }
+        if !seen_arches.insert(arch) {
+            issues.push(warning(format!(
+                "profile.foreign_arches contains duplicate entry `{arch}`"
             )));
         }
     }

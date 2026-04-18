@@ -83,6 +83,8 @@ fn profile_apply_flags_round_trip_into_command_request() {
         "yoka-core",
         "--init",
         "dinit",
+        "--native-arch",
+        "amd64",
         "--foreign-arch",
         "i386",
         "--foreign-arch",
@@ -97,12 +99,66 @@ fn profile_apply_flags_round_trip_into_command_request() {
             "yoka-core",
             "--init",
             "dinit",
+            "--native-arch",
+            "amd64",
             "--foreign-arch",
             "i386",
             "--foreign-arch",
             "arm64",
         ]
     );
+}
+
+#[test]
+fn profile_edit_commands_round_trip_into_command_request() {
+    let add = Cli::parse_from(["elda", "pf", "add", "yoka-desktop"]);
+    let rm = Cli::parse_from(["elda", "pf", "rm", "yoka-core"]);
+    let set_arch = Cli::parse_from(["elda", "pf", "set-arch", "arm64"]);
+    let add_foreign = Cli::parse_from(["elda", "pf", "add-foreign-arch", "i386", "armhf"]);
+    let clear_init = Cli::parse_from(["elda", "pf", "clear-init"]);
+
+    assert_eq!(
+        add.command_request()
+            .expect("request should exist")
+            .command_path,
+        vec!["pf", "add"]
+    );
+    assert_eq!(
+        rm.command_request()
+            .expect("request should exist")
+            .command_path,
+        vec!["pf", "rm"]
+    );
+    assert_eq!(
+        set_arch
+            .command_request()
+            .expect("request should exist")
+            .operands,
+        vec!["arm64"]
+    );
+    assert_eq!(
+        add_foreign
+            .command_request()
+            .expect("request should exist")
+            .operands,
+        vec!["i386", "armhf"]
+    );
+    assert_eq!(
+        clear_init
+            .command_request()
+            .expect("request should exist")
+            .command_path,
+        vec!["pf", "clear-init"]
+    );
+}
+
+#[test]
+fn recipe_add_kind_round_trips_into_command_request() {
+    let cli = Cli::parse_from(["elda", "rc", "add", "yoka-core", "--kind", "profile"]);
+    let request = cli.command_request().expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["rc", "add"]);
+    assert_eq!(request.operands, vec!["yoka-core", "--kind", "profile"]);
 }
 
 #[test]

@@ -1,17 +1,18 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-
-use crate::config::{Config, InstallPreference, default_native_arch};
+use crate::config::{Config, InstallPreference};
 use crate::error::CoreError;
 use crate::flags::ResolvedFlagState;
 use crate::privilege::{PrivilegeRequest, PrivilegeStatus};
 use crate::{CommandReport, CommandRequest};
 use elda_build::{BinarySourceVerification, BuiltPackage};
 use elda_db::{Database, InstalledPackageDetails, StateLayout};
-use elda_repo::RemoteDocument;
 use elda_types::PackageVersion;
+
+pub(crate) use crate::app_model::{
+    DesiredStateDocument, DesiredStatePackage, DesiredStateProfile, ResolvedProfileState,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ParsedInstallRequest {
@@ -152,55 +153,6 @@ pub(crate) struct UpgradeDecision {
     pub(crate) hold_source: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct DesiredStateDocument {
-    pub(crate) format_version: u32,
-    pub(crate) exported_at: String,
-    pub(crate) installation_mode: String,
-    pub(crate) prefix: String,
-    pub(crate) profile: DesiredStateProfile,
-    pub(crate) remotes: Vec<RemoteDocument>,
-    pub(crate) world: Vec<String>,
-    pub(crate) installed: Vec<DesiredStatePackage>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct DesiredStateProfile {
-    #[serde(default)]
-    pub(crate) active_profiles: Vec<String>,
-    #[serde(default)]
-    pub(crate) base: String,
-    #[serde(default = "default_native_arch")]
-    pub(crate) native_arch: String,
-    #[serde(default)]
-    pub(crate) foreign_arches: Vec<String>,
-    #[serde(default)]
-    pub(crate) init: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ResolvedProfileState {
-    pub(crate) active_profiles: Vec<String>,
-    pub(crate) native_arch: String,
-    pub(crate) foreign_arches: Vec<String>,
-    pub(crate) init: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct DesiredStatePackage {
-    pub(crate) pkgname: String,
-    pub(crate) version: String,
-    pub(crate) install_reason: String,
-    pub(crate) package_kind: String,
-    #[serde(default)]
-    pub(crate) variant_id: Option<String>,
-    pub(crate) source_kind: String,
-    pub(crate) remote_name: Option<String>,
-    pub(crate) pinned_version: Option<String>,
-    pub(crate) held: bool,
-    pub(crate) hold_source: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 pub struct AppContext {
     pub(crate) config: Config,
@@ -304,8 +256,26 @@ impl AppContext {
             [namespace, command] if namespace == "pf" && command == "apply" => {
                 self.handle_profile_apply(request)
             }
+            [namespace, command] if namespace == "pf" && command == "add" => {
+                self.handle_profile_add(request)
+            }
+            [namespace, command] if namespace == "pf" && command == "rm" => {
+                self.handle_profile_remove(request)
+            }
             [namespace, command] if namespace == "pf" && command == "set-init" => {
                 self.handle_profile_set_init(request)
+            }
+            [namespace, command] if namespace == "pf" && command == "clear-init" => {
+                self.handle_profile_clear_init(request)
+            }
+            [namespace, command] if namespace == "pf" && command == "set-arch" => {
+                self.handle_profile_set_arch(request)
+            }
+            [namespace, command] if namespace == "pf" && command == "add-foreign-arch" => {
+                self.handle_profile_add_foreign_arch(request)
+            }
+            [namespace, command] if namespace == "pf" && command == "remove-foreign-arch" => {
+                self.handle_profile_remove_foreign_arch(request)
             }
             [namespace, command] if namespace == "fl" && command == "check" => {
                 self.handle_flag_check(request)

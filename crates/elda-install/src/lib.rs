@@ -10,6 +10,7 @@ mod install_tx;
 mod journal;
 mod remove_tx;
 mod rollback;
+mod system_backend;
 #[cfg(test)]
 mod tests;
 mod verify;
@@ -26,6 +27,10 @@ pub use install_tx::{install_built_package, install_upgraded_package};
 pub use journal::{RecoveredJournal, RecoveryReport};
 pub use remove_tx::{remove_package, remove_package_for_upgrade, remove_package_purge_conffiles};
 pub use rollback::{recover_pending_transactions, rollback_plan, rollback_state};
+pub use system_backend::{
+    PendingTriggerRecord, TriggerRepairReport, load_installed_system_metadata, pending_triggers,
+    repair_triggers,
+};
 pub use verify::{VerifyIssue, VerifyIssueKind, VerifyReport, verify_packages};
 
 pub const BOUNDARY: CrateBoundary = CrateBoundary::new(

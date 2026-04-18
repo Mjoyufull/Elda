@@ -15,8 +15,8 @@ pub use error::RecipeError;
 pub use import::{ImportReport, add_recipe, infer_recipe_name, is_git_like_target};
 pub use model::{
     BuildDefinition, DependencyEntry, GitHubReleaseAssetDefinition, IssueSeverity, LuaValue,
-    PackageDefinition, RecipeDocument, SOURCE_LANE_BINARY, SOURCE_LANE_SOURCE, ScalarValue,
-    SourceDefinition, SourceLaneDefinition, ValidationIssue,
+    PackageDefinition, ProfilePolicy, RecipeDocument, SOURCE_LANE_BINARY, SOURCE_LANE_SOURCE,
+    ScalarValue, SourceDefinition, SourceLaneDefinition, ValidationIssue,
 };
 pub use parser::parse_pkg_lua;
 pub use validate::validate_recipe;

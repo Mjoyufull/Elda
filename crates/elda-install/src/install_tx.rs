@@ -1,11 +1,17 @@
 use elda_build::BuiltPackage;
-use elda_db::{Database, InstallRecord, PackageDependencyRecord, PackageFileRecord};
+use elda_db::{
+    Database, InstallRecord, InstallationMode, PackageDependencyRecord, PackageFileRecord,
+};
 
 use crate::archive_state::archive_current_state;
 use crate::fsops::{
     apply_entry, cleanup_transaction_root, manifest_kind_label, map_manifest_path, unpack_payload,
 };
 use crate::journal::{JournalState, TransactionJournal, ensure_no_pending_journals};
+use crate::system_backend::{
+    activate_staged_state, activation_backend_name, next_state_prefix, prepare_staged_install,
+    reconcile_system_state_after_install, run_install_triggers,
+};
 use crate::{InstallConffileMode, InstallError, InstallExecution, InstallReport, next_state_id};
 
 pub fn install_built_package(
@@ -76,7 +82,7 @@ pub(crate) fn install_built_package_internal(
     ensure_no_pending_journals(database.layout())?;
     validate_install_paths(database, package)?;
 
-    let state_id = next_state_id("prefix");
+    let state_id = next_state_id(next_state_prefix(database.layout()));
     let transaction_root = database
         .layout()
         .tmp_dir
@@ -84,11 +90,11 @@ pub(crate) fn install_built_package_internal(
         .join(&state_id);
     let mut journal = begin_install_journal(database, package, &state_id, &transaction_root)?;
 
-    unpack_payload(&package.payload_path, &transaction_root)?;
-    apply_manifest(
+    apply_install_state(
         database,
         package,
         execution,
+        &state_id,
         &transaction_root,
         &mut journal,
     )?;
@@ -110,7 +116,7 @@ pub(crate) fn install_built_package_internal(
             remote_name: package.remote_name.clone(),
             channel: None,
             state_id: Some(state_id.clone()),
-            activation_backend: Some("prefix-copy".to_owned()),
+            activation_backend: Some(activation_backend_name(database.layout()).to_owned()),
             repo_commit: package.repo_commit.clone(),
             payload_sha256: Some(package.payload_sha256.clone()),
             manifest_hash: Some(package.manifest_hash.clone()),
@@ -121,6 +127,8 @@ pub(crate) fn install_built_package_internal(
         &files,
         &dependencies,
     )?;
+    reconcile_system_state_after_install(database, package)?;
+    run_install_triggers(database, package)?;
     database.set_current_state(&state_id)?;
     if execution.archive_state {
         archive_current_state(database, &state_id)?;
@@ -136,6 +144,7 @@ pub(crate) fn install_built_package_internal(
         installed_paths: files.len(),
     })
 }
+
 fn validate_install_paths(database: &Database, package: &BuiltPackage) -> Result<(), InstallError> {
     if database.installed_package(&package.package_name)?.is_some() {
         return Err(InstallError::AlreadyInstalled(package.package_name.clone()));
@@ -214,6 +223,33 @@ fn apply_manifest(
     journal.persist(database.layout())?;
 
     Ok(())
+}
+
+fn apply_install_state(
+    database: &Database,
+    package: &BuiltPackage,
+    execution: InstallExecution,
+    state_id: &str,
+    transaction_root: &std::path::Path,
+    journal: &mut TransactionJournal,
+) -> Result<(), InstallError> {
+    if database.layout().mode == InstallationMode::System {
+        let staged = prepare_staged_install(
+            database,
+            package,
+            state_id,
+            transaction_root,
+            journal,
+            execution.conffile_mode,
+        )?;
+        activate_staged_state(database, &staged, journal)?;
+        journal.state = JournalState::FilesApplied;
+        journal.persist(database.layout())?;
+        return Ok(());
+    }
+
+    unpack_payload(&package.payload_path, transaction_root)?;
+    apply_manifest(database, package, execution, transaction_root, journal)
 }
 
 fn package_file_records(package: &BuiltPackage) -> Vec<PackageFileRecord> {

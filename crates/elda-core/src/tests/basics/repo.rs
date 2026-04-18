@@ -65,10 +65,20 @@ fn sync_search_info_and_named_install_work_from_repo_snapshot() {
     assert!(
         info_report
             .details
+            .as_ref()
             .and_then(|details| details.get("synced").cloned())
             .and_then(|synced| synced.get("remote_name").cloned())
             .and_then(|remote_name| remote_name.as_str().map(ToOwned::to_owned))
             .is_some_and(|remote_name| remote_name == "main")
+    );
+    assert!(
+        info_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("provider_asset_visibility"))
+            .and_then(|visibility| visibility.get("declared_provider_assets"))
+            .and_then(|assets| assets.as_array())
+            .is_some()
     );
 
     let install_report = run_from_root(

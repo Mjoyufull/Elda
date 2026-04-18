@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 elda-types = { path = "../elda-types" }
+serde.workspace = true
 
 [lints]
 workspace = true
