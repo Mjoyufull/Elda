@@ -59,6 +59,7 @@ fn synced_binary_install_records_repo_binary_source_kind() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,

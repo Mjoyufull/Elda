@@ -38,17 +38,32 @@ pub(in crate::tests) fn current_state_id(root: &Path) -> String {
 }
 
 pub(in crate::tests) fn register_fixture_remote(root: &Path, name: &str, index_path: &Path) {
+    register_fixture_remote_with_packages(root, name, index_path, None);
+}
+
+pub(in crate::tests) fn register_fixture_remote_with_packages(
+    root: &Path,
+    name: &str,
+    index_path: &Path,
+    packages_url: Option<&str>,
+) {
+    let mut operands = vec![
+        format!("{name}=file://{}", index_path.display()),
+        "--trust".to_owned(),
+        "pinned".to_owned(),
+        "--trusted-key".to_owned(),
+        fixture_remote_key_fingerprint(),
+    ];
+    if let Some(packages_url) = packages_url {
+        operands.push("--packages-url".to_owned());
+        operands.push(packages_url.to_owned());
+    }
+
     run_from_root(
         root,
         CommandRequest::new(
             vec!["rmt".to_owned(), "add".to_owned()],
-            vec![
-                format!("{name}=file://{}", index_path.display()),
-                "--trust".to_owned(),
-                "pinned".to_owned(),
-                "--trusted-key".to_owned(),
-                fixture_remote_key_fingerprint(),
-            ],
+            operands,
             OutputMode::Json,
             false,
         ),

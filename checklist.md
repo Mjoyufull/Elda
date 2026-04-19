@@ -45,9 +45,9 @@ Status source used for this tracker:
 | Phase 0: Fork baseline + skeleton | Done | [x] Workspace landed; [x] canonical CLI surface wired; [x] pkgit fixtures captured |
 | Phase 1: Core types/config/state | Done | [x] identity/version parsing; [x] config defaults; [x] SQLite bootstrap + layout + lock |
 | Phase 2: Recipe model + legacy import | Done | [x] `rc add`; [x] `rc check`; [x] parser/validation for declarative metadata families |
-| Phase 3: Remotes/index/trust/cache | In Progress | [x] signed snapshot sync; [x] TOFU/pinned trust; [x] metadata rotation acceptance; [~] broader trust/cache completeness still pending |
-| Phase 4: Resolver/flags/planning | In Progress | [x] closure-aware planning; [x] conflicts/replaces/pin/hold checks; [~] full PubGrub + broader provider policy still pending |
-| Phase 5: Build/staging/payloads | In Progress | [x] stage + manifest + payload; [x] git/archive/github_release paths; [~] source-kind parity not complete |
+| Phase 3: Remotes/index/trust/cache | In Progress | [x] signed snapshot sync; [x] TOFU/pinned trust; [x] metadata rotation acceptance; [x] source-capable synced remotes can declare `packages_url` for pinned package-definition fetches; [~] broader trust/cache completeness still pending |
+| Phase 4: Resolver/flags/planning | In Progress | [x] closure-aware planning; [x] conflicts/replaces/pin/hold checks; [x] synced source-lane resolution can require remote `packages_url` when the selected lane needs a real package tree; [~] full PubGrub + broader provider policy still pending |
+| Phase 5: Build/staging/payloads | In Progress | [x] stage + manifest + payload; [x] git/archive/github_release paths; [x] synced source builds materialize pinned `packages/<pkgname>/` trees from `packages_url` + `repo_commit`; [~] source-kind parity not complete |
 | Phase 6: Prefix transaction backend | In Progress | [x] install/remove/upgrade journals + verify/recover; [x] rollback + downgrade in prefix; [~] system backend parity pending |
 | Phase 7: Linux system backend + triggers | In Progress | [x] disposable-root `/usr` staged backend; [x] internal trigger engine + `check`/`fix-triggers`; [x] disposable-root archive/rollback parity; [~] live-host cutover, provider-asset reconciliation, and broader boot/backend integration still pending |
 | Phase 8: Profiles/machine shape/ops | In Progress | [x] `pf show/apply/add/rm/set-init/clear-init/set-arch/add-foreign-arch/remove-foreign-arch`; [x] state export/import; [~] broader daemon/system-management integration pending |
@@ -74,6 +74,7 @@ Status source used for this tracker:
 - [x] Single-lane and dual source/binary lane definitions supported
 - [x] Build-system floor executed for current slice (`cargo/cmake/go/make/meson/nimble/python/zig`)
 - [x] GitHub release arch-specific asset tables supported
+- [x] Synced source-capable remotes can build from the pinned `packages/<pkgname>/` tree instead of snapshot text alone
 - [~] Runtime support lags declared source schema breadth
 - [ ] Implement `nix_flake` and `gentoo_overlay` execution path
 
@@ -82,6 +83,7 @@ Status source used for this tracker:
 - [x] TOFU and pinned trust modes, plus explicit rotated-key acceptance
 - [x] Secure remote payload verification path exists
 - [x] Cache priority routing + local retention cleanup exist
+- [x] Synced remotes may declare `packages_url` for pinned source-lane package-definition fetches
 - [~] Full repo/cache/trust depth from spec not complete yet
 - [ ] Complete supply-chain/audit surfaces and remaining trust features
 
@@ -121,7 +123,7 @@ Status source used for this tracker:
 - [ ] `D-02` First isolated build backend implementation strategy `(!)`
 - [ ] `D-03` Interepo adapter order landing sequence (ALPM/APK/Portage)
 - [ ] `D-04` Native index publish layout decision (`yoka-ci/index` vs generated branch/artifact)
-- [ ] `D-05` Canonical package-definition contract for provider-specific assets `(!)`
+- [x] `D-05` Canonical package-definition contract for provider-specific assets frozen in `SPEC.md` / `pkgitfork.md`
 
 ---
 
@@ -149,7 +151,7 @@ Use this as the immediate sprint board.
 Suggested immediate candidates (based on current blockers):
 - [ ] Finish remaining resolver/provider-policy behavior
 - [ ] Push the Linux `/usr` backend from disposable-root staged-copy into real live-host cutover behavior
-- [ ] Freeze the provider-specific asset contract so real provider-asset reconciliation can land safely
+- [ ] Implement real provider-asset reconciliation against the current `/usr` backend contract
 - [ ] Replace one stub namespace end-to-end (e.g., one `ci` command path)
 - [ ] Implement first executable `nix_flake` bounded path
 - [ ] Implement first executable `gentoo_overlay` bounded path

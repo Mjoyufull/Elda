@@ -19,6 +19,8 @@ pub struct RemoteDocument {
     pub name: String,
     pub index_url: String,
     #[serde(default)]
+    pub packages_url: Option<String>,
+    #[serde(default)]
     pub metadata_url: Option<String>,
     #[serde(default)]
     pub signature_url: Option<String>,

@@ -16,7 +16,9 @@ pub use model::{
     CacheDocument, RemoteDocument, RemotePayloadTrust, SyncReport, SyncedIndexSnapshot,
     SyncedPackageRecord, SyncedRemoteRecord, TrustMode, TrustedPublicKey,
 };
-pub use store::{add_cache, add_remote, list_caches, list_remotes, save_cache, save_remote};
+pub use store::{
+    add_cache, add_remote, list_caches, list_remotes, load_remote, save_cache, save_remote,
+};
 
 pub const BOUNDARY: CrateBoundary = CrateBoundary::new(
     "elda-repo",

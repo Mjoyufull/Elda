@@ -17,8 +17,20 @@ impl AppContext {
         resolved: &ResolvedInstallTarget,
         offline: bool,
     ) -> Result<BuiltInstallTarget, CoreError> {
+        let materialized_recipe = resolved
+            .remote_recipe_source
+            .as_ref()
+            .map(|source| self.materialize_remote_recipe(source, offline))
+            .transpose()?;
+        let projected_materialized_recipe = materialized_recipe
+            .as_ref()
+            .map(|recipe| self.project_materialized_recipe(recipe, &resolved.selected_lane))
+            .transpose()?;
+        let recipe = projected_materialized_recipe
+            .as_ref()
+            .unwrap_or_else(|| materialized_recipe.as_ref().unwrap_or(&resolved.recipe));
         let package = build_recipe(BuildRequest {
-            recipe: &resolved.recipe,
+            recipe,
             cache_src_dir: &self.database.layout().cache_src_dir,
             cache_pkg_dir: &self.database.layout().cache_pkg_dir,
             tmp_dir: &self.database.layout().tmp_dir,
@@ -90,6 +102,12 @@ impl AppContext {
                     )),
                 )?;
                 resolved.remote_name = Some(package.remote_name.clone());
+                if !matches!(
+                    resolved.selected_source_kind.as_str(),
+                    "url_archive" | "github_release"
+                ) {
+                    resolved.remote_recipe_source = Some(self.remote_recipe_source(&package)?);
+                }
                 if matches!(
                     resolved.selected_source_kind.as_str(),
                     "url_archive" | "github_release"
@@ -304,6 +322,7 @@ impl AppContext {
             flag_state,
             source_ref,
             remote_name: None,
+            remote_recipe_source: None,
             binary_source_verification: None,
             ad_hoc_git: false,
         })
@@ -325,5 +344,19 @@ impl AppContext {
             "url_archive" | "github_release" => "local_recipe".to_owned(),
             other => other.to_owned(),
         }
+    }
+
+    fn project_materialized_recipe(
+        &self,
+        recipe: &elda_recipe::RecipeDocument,
+        selected_lane: &str,
+    ) -> Result<elda_recipe::RecipeDocument, CoreError> {
+        let Some(selected) = recipe.package.source.lane_definition(selected_lane) else {
+            return Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
+                format!("materialized recipe is missing the selected `{selected_lane}` lane"),
+            )));
+        };
+
+        Ok(Self::project_recipe_lane(recipe.clone(), selected.clone()))
     }
 }

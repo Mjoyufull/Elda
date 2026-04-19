@@ -22,6 +22,7 @@ fn sync_verifies_pinned_remote_and_writes_snapshot_metadata() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,
@@ -69,6 +70,7 @@ fn sync_uses_stale_verified_snapshot_when_remote_is_unreachable_and_policy_allow
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,
@@ -123,6 +125,7 @@ fn sync_persists_trusted_public_keys_for_payload_verification() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,
@@ -166,6 +169,7 @@ fn offline_sync_uses_cached_verified_snapshots_only() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,
@@ -219,6 +223,7 @@ fn tofu_sync_allows_first_use_enrollment_when_enabled() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,
@@ -255,6 +260,7 @@ fn tofu_sync_rejects_first_use_enrollment_when_disabled() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,

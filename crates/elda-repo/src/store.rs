@@ -12,6 +12,7 @@ pub fn add_remote(remotes_dir: &Path, input: &str) -> Result<RemoteDocument, Rep
         RemoteDocument {
             name,
             index_url,
+            packages_url: None,
             metadata_url: None,
             signature_url: None,
             enabled: true,
@@ -62,6 +63,12 @@ pub fn list_caches(caches_dir: &Path) -> Result<Vec<CacheDocument>, RepoError> {
 
 pub fn list_remotes(remotes_dir: &Path) -> Result<Vec<RemoteDocument>, RepoError> {
     load_documents::<RemoteDocument>(remotes_dir)
+}
+
+pub fn load_remote(remotes_dir: &Path, name: &str) -> Result<Option<RemoteDocument>, RepoError> {
+    Ok(list_remotes(remotes_dir)?
+        .into_iter()
+        .find(|remote| remote.name == name))
 }
 
 fn load_documents<T>(directory: &Path) -> Result<Vec<T>, RepoError>

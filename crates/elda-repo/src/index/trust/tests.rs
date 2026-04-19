@@ -27,6 +27,7 @@ fn tofu_sync_accepts_rotated_key_from_signed_metadata_document() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: Some(format!("file://{}", metadata_path.display())),
             signature_url: None,
             enabled: true,
@@ -108,6 +109,7 @@ fn tofu_sync_rejects_rotated_key_without_authorizing_metadata() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            packages_url: None,
             metadata_url: Some(format!("file://{}", metadata_path.display())),
             signature_url: None,
             enabled: true,

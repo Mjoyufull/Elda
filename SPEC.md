@@ -150,6 +150,7 @@ pkg = {
   tmpfiles = {},
   alternatives = {},
   hooks = {},
+  provider_assets = {},
 
   flags_default = {},
   flags_allowed = {},
@@ -263,6 +264,7 @@ The following fields live in `pkg.lua` and are part of package policy. If a fiel
 | `tmpfiles` | Inline entry array or `{ file = "metadata/tmpfiles.conf" }` | Declarative runtime directory/file creation under §14.2. |
 | `alternatives` | Array of `{ name, link, path, priority }` tables | Command-alternative registrations under §14.2. |
 | `hooks` | Table keyed by lifecycle point; each value references a package-relative script or Lua chunk | Exceptional lifecycle hooks under §14.4. |
+| `provider_assets` | Table keyed by provider family, then provider name, then asset-entry arrays | Typed provider-specific assets such as init service files under §14.1. |
 | `profile` | Table with optional `native_arch`, `foreign_arches`, and `init` keys | Machine-shape defaults attached to a `package_kind = profile` anchor. |
 
 Representative shape:
@@ -286,12 +288,32 @@ alternatives = {
 hooks = {
   post_install = { file = "hooks/post_install.lua" },
 },
+
+provider_assets = {
+  init = {
+    dinit = {
+      {
+        kind = "file",
+        target = "/etc/dinit.d/example",
+        file = "providers/init/dinit/example",
+      },
+    },
+    runit = {
+      {
+        kind = "tree",
+        target = "/etc/sv/example",
+        dir = "providers/init/runit/example",
+      },
+    },
+  },
+},
 ```
 
 Rules:
 - declarative metadata belongs in `pkg.lua`; companion files are optional storage for larger structured inputs, not an implicit second schema
 - unreferenced helper files do not participate in package semantics
 - metadata that can be expressed declaratively should use these fields instead of lifecycle hooks
+- provider-specific service or backend assets use `provider_assets`, not hidden filename conventions or lifecycle-hook guessing
 
 Declarative common-case build shape:
 ```lua
@@ -716,10 +738,23 @@ Each repo index record carries:
 | `build_id` / `repo_commit` / `release_tag` | Provenance |
 | `sbom_url` / `attestation_url` | Supply-chain metadata |
 | `fallback_git_url` | Optional compile fallback |
+| `pkg_lua` | Exact package-definition snapshot for resolution, visibility, and source builds |
 | `ci_policy` | `none` \| `scheduled` \| `on_add` \| `manual_only` |
 | `channel` | `testing` \| `stable` or equivalent remote-defined lanes |
 
 `source_kind = adopted` is DB-only state. Adopted-package provenance appears in the installed DB and desired-state exports, not in native remote indexes.
+
+Maintained remote delivery rules:
+- `pkg_lua` is mandatory for maintained native records and is the exact package-definition snapshot used for resolution and source-capable installs; clients must not re-fetch `pkg.lua` from a mutable branch during planning
+- a record is binary-capable when it includes `asset_url`, `sha256`, and `payload_sig`
+- a record is source-only when those binary-fetch fields are absent
+- source-only records are still first-class named-package records from a signed remote index; Elda must not discover them by repository guessing or raw git URL expansion
+- source-only records must also carry `repo_commit`, and the indexed `pkg_lua` must expose a maintained source lane that can build the package without inventing missing metadata
+- when a source build needs `build.lua`, `patches/`, metadata companion files, or other package-relative assets, Elda fetches them from the authoritative package-definition repo at `packages/<pkgname>/` pinned to `repo_commit`
+- remote definitions may carry `packages_url` as the cloneable package-definition repo URL used for source-capable installs from synced remotes
+- source-capable installs from synced remotes fail closed if the selected remote does not define `packages_url`
+- the signed index plus `repo_commit` is the trust anchor for source-only maintained records; Elda must not build them from the package repo's moving default branch
+- `fallback_git_url` is an optional compile fallback for binary-indexed records and is not the primary source-only maintained-remote contract
 
 ### 11.3 Trust Model
 Trust rules:
@@ -964,6 +999,51 @@ Rules:
 - packages may ship provider-specific assets; Elda tracks ownership and activation policy, not service management
 - operator visibility is still required: `elda info` and machine-readable output must expose which provider assets a package ships and whether any active provider-specific system change handlers are pending
 
+Provider-specific asset contract:
+- provider-specific declarative assets live in `pkg.provider_assets`
+- the current first-class provider family is `init`; family keys stay explicit so later families such as boot strategy do not overload init semantics
+- `provider_assets` is keyed as `provider_assets.<family>.<provider> = { ... }`
+- each asset entry declares a `kind` plus an absolute live-root `target`
+- supported asset kinds are:
+  - `file`: requires exactly one of `file` or `text`; `file` is package-relative and `text` is inline content; `mode` is optional
+  - `tree`: requires package-relative `dir` and copies that tree to `target`
+- companion paths under `provider_assets` are package-relative and have no semantics unless referenced by `pkg.lua`
+- provider assets are typed system metadata, not normal payload files and not opaque hooks
+- Elda stores declared provider assets under `/usr/lib/elda/provider-assets/<family>/<provider>/<pkgname>/...` and materializes only the active provider's entries into their declared `target` paths
+- provider-change handlers remove or replace the previously active materialized targets they own before materializing the new provider's targets
+- provider-asset target-path conflicts fail closed under the same ownership rules as normal managed paths
+- if one provider needs materially different build inputs, library dependencies, or package identity, that is a separate provider package or variant, not `provider_assets`
+
+Representative shape:
+```lua
+provider_assets = {
+  init = {
+    dinit = {
+      {
+        kind = "file",
+        target = "/etc/dinit.d/networkmanager",
+        file = "providers/init/dinit/NetworkManager",
+      },
+    },
+    openrc = {
+      {
+        kind = "file",
+        target = "/etc/init.d/networkmanager",
+        file = "providers/init/openrc/networkmanager",
+        mode = "0755",
+      },
+    },
+    runit = {
+      {
+        kind = "tree",
+        target = "/etc/sv/networkmanager",
+        dir = "providers/init/runit/networkmanager",
+      },
+    },
+  },
+}
+```
+
 ### 14.2 Declarative-First Chores
 | Need | Preferred model |
 | --- | --- |
@@ -1150,6 +1230,8 @@ Post-merge flow:
 4. matrix jobs build satisfiable layers
 5. each successful build emits payload, manifest, signature, SBOM, attestation, and updated index entry
 6. published assets are uploaded and the repo index is republished
+
+Source-only maintained remotes still republish a signed repo index after merge. Their index entries pin `pkg_lua` plus `repo_commit`, omit binary-fetch fields such as `asset_url` and `payload_sig`, and let clients build from the authoritative package-definition repo instead of publishing payload assets.
 
 ### 17.4 Batch and Channel Model
 Rules:

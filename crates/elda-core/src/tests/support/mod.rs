@@ -1,6 +1,7 @@
 mod config;
 mod profile_recipes;
 mod recipes;
+mod remote_recipes;
 mod repos;
 mod runtime;
 mod trust;
@@ -8,6 +9,7 @@ mod trust;
 pub(super) use config::*;
 pub(super) use profile_recipes::*;
 pub(super) use recipes::*;
+pub(super) use remote_recipes::*;
 pub(super) use repos::*;
 pub(super) use runtime::*;
 pub(super) use trust::*;

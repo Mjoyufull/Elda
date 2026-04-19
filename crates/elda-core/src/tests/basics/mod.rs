@@ -8,4 +8,5 @@ mod profile_system_changes;
 mod repo;
 mod repo_info;
 mod root;
+mod source_remote;
 mod trust;

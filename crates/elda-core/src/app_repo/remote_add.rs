@@ -17,6 +17,7 @@ impl AppContext {
         let mut trusted_key_file = None::<String>;
         let mut signature_url = None::<String>;
         let mut metadata_url = None::<String>;
+        let mut packages_url = None::<String>;
         let mut allow_stale = false;
         let mut priority = 100_u32;
         let mut operands = request.operands.iter().skip(1);
@@ -69,6 +70,12 @@ impl AppContext {
                     })?;
                     metadata_url = Some(value.clone());
                 }
+                "--packages-url" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--packages-url` requires a URL".to_owned())
+                    })?;
+                    packages_url = Some(value.clone());
+                }
                 "--allow-stale" => allow_stale = true,
                 other => {
                     return Err(CoreError::Operator(format!(
@@ -96,6 +103,7 @@ impl AppContext {
         Ok(RemoteDocument {
             name,
             index_url,
+            packages_url,
             metadata_url,
             signature_url,
             enabled: true,

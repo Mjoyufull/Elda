@@ -83,8 +83,18 @@ pub(crate) struct ResolvedInstallTarget {
     pub(crate) flag_state: ResolvedFlagState,
     pub(crate) source_ref: Option<String>,
     pub(crate) remote_name: Option<String>,
+    pub(crate) remote_recipe_source: Option<RemoteRecipeSource>,
     pub(crate) binary_source_verification: Option<BinarySourceVerification>,
     pub(crate) ad_hoc_git: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RemoteRecipeSource {
+    pub(crate) remote_name: String,
+    pub(crate) packages_url: String,
+    pub(crate) package_name: String,
+    pub(crate) repo_commit: String,
+    pub(crate) indexed_pkg_lua: String,
 }
 
 #[derive(Debug, Clone)]

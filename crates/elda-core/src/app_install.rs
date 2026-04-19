@@ -1,6 +1,7 @@
 mod binary_source;
 mod dependency;
 mod plan;
+mod remote_recipe;
 mod resolve;
 
 pub(crate) use dependency::constraint::{
