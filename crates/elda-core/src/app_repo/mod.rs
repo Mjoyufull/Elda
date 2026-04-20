@@ -1,4 +1,5 @@
 mod info;
+mod info_visibility;
 mod remote_add;
 
 use std::path::PathBuf;

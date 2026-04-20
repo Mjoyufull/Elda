@@ -12,7 +12,6 @@ impl AppContext {
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
-        let dry_run = request.dry_run;
         let provider = parse_single_value(&request, "pf set-init", "init-provider")?;
         let mut profile = self.resolve_profile_state()?;
         let previous = profile.init.clone();
@@ -31,15 +30,6 @@ impl AppContext {
                 "kind": "profile-set-init",
                 "previous_init": empty_to(previous, "unset".to_owned()),
                 "next_init": provider,
-                "provider_reconciliation": {
-                    "applied": !dry_run,
-                    "actions": [],
-                    "reason": if dry_run {
-                        "dry-run"
-                    } else {
-                        "the current backend slice does not model provider-scoped service assets yet"
-                    },
-                },
             }),
         )
     }
@@ -49,7 +39,6 @@ impl AppContext {
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
-        let dry_run = request.dry_run;
         ensure_no_operands(&request, "pf clear-init")?;
         let mut profile = self.resolve_profile_state()?;
         let previous = profile.init.clone();
@@ -67,15 +56,6 @@ impl AppContext {
                 "kind": "profile-clear-init",
                 "previous_init": empty_to(previous, "unset".to_owned()),
                 "next_init": "unset",
-                "provider_reconciliation": {
-                    "applied": !dry_run,
-                    "actions": [],
-                    "reason": if dry_run {
-                        "dry-run"
-                    } else {
-                        "the current backend slice does not model provider-scoped service assets yet"
-                    },
-                },
             }),
         )
     }
@@ -182,6 +162,13 @@ impl AppContext {
         details: serde_json::Value,
     ) -> Result<CommandReport, CoreError> {
         let desired = profile.to_desired_profile(self.profile_state_base(&profile)?);
+        let provider_reconciliation = if request.dry_run {
+            self.plan_profile_backend_state(&desired)?
+        } else {
+            let reconciliation = self.apply_profile_backend_state(&desired)?;
+            self.write_profile_state(&desired)?;
+            reconciliation
+        };
         let runtime_view = self.profile_runtime_view(&profile)?;
         let detail_key = if request.dry_run { "plan" } else { "change" };
         let flattened = details.clone();
@@ -191,6 +178,10 @@ impl AppContext {
             detail_map.extend(fields);
         }
         detail_map.insert("desired_profile".to_owned(), json!(desired));
+        detail_map.insert(
+            "provider_reconciliation".to_owned(),
+            provider_reconciliation,
+        );
         detail_map.insert(
             "provider_families".to_owned(),
             json!(&runtime_view.provider_families),
@@ -218,8 +209,6 @@ impl AppContext {
                 details: Some(serde_json::Value::Object(detail_map)),
             });
         }
-
-        self.write_profile_state(&desired)?;
 
         Ok(CommandReport {
             area: "profile",

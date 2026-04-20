@@ -7,6 +7,7 @@ use elda_build::SystemPackageMetadata;
 use elda_db::{Database, InstallationMode, StateLayout};
 
 use crate::InstallError;
+use crate::snapshot::SnapshotRecord;
 use crate::system_backend::load_installed_system_metadata;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,6 +17,8 @@ pub(crate) struct ArchivedStateDocument {
     pub(crate) installation_mode: String,
     pub(crate) prefix: String,
     pub(crate) world: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) snapshots: Vec<SnapshotRecord>,
     pub(crate) packages: Vec<ArchivedPackage>,
 }
 
@@ -58,6 +61,7 @@ pub(crate) struct ArchivedDependency {
 pub(crate) fn archive_current_state(
     database: &Database,
     state_id: &str,
+    snapshots: &[SnapshotRecord],
 ) -> Result<(), InstallError> {
     let snapshot = database.state_snapshot()?;
     let packages = database
@@ -80,6 +84,7 @@ pub(crate) fn archive_current_state(
         },
         prefix: database.layout().prefix.display().to_string(),
         world: snapshot.world,
+        snapshots: snapshots.to_vec(),
         packages: archived_packages,
     };
     let archive_path = state_archive_path(database.layout(), state_id);

@@ -8,11 +8,15 @@ use crate::fsops::{
     apply_entry, cleanup_transaction_root, manifest_kind_label, map_manifest_path, unpack_payload,
 };
 use crate::journal::{JournalState, TransactionJournal, ensure_no_pending_journals};
+use crate::snapshot::{post_activation_snapshot, pre_activation_snapshot};
 use crate::system_backend::{
     activate_staged_state, activation_backend_name, next_state_prefix, prepare_staged_install,
     reconcile_system_state_after_install, run_install_triggers,
 };
-use crate::{InstallConffileMode, InstallError, InstallExecution, InstallReport, next_state_id};
+use crate::{
+    InstallConffileMode, InstallError, InstallExecution, InstallReport, MutationPolicy,
+    next_state_id,
+};
 
 pub fn install_built_package(
     database: &Database,
@@ -21,6 +25,7 @@ pub fn install_built_package(
     pinned_version: Option<String>,
     held: bool,
     hold_source: Option<String>,
+    policy: &MutationPolicy,
 ) -> Result<InstallReport, InstallError> {
     install_built_package_internal(
         database,
@@ -34,6 +39,7 @@ pub fn install_built_package(
             take_lock: true,
             conffile_mode: InstallConffileMode::FirstOwnership,
         },
+        policy,
     )
 }
 
@@ -44,6 +50,7 @@ pub fn install_upgraded_package(
     pinned_version: Option<String>,
     held: bool,
     hold_source: Option<String>,
+    policy: &MutationPolicy,
 ) -> Result<InstallReport, InstallError> {
     install_built_package_internal(
         database,
@@ -57,6 +64,7 @@ pub fn install_upgraded_package(
             take_lock: true,
             conffile_mode: InstallConffileMode::Upgrade,
         },
+        policy,
     )
 }
 
@@ -68,6 +76,7 @@ pub(crate) fn install_built_package_internal(
     held: bool,
     hold_source: Option<String>,
     execution: InstallExecution,
+    policy: &MutationPolicy,
 ) -> Result<InstallReport, InstallError> {
     if execution.take_lock {
         database.bootstrap()?;
@@ -89,6 +98,10 @@ pub(crate) fn install_built_package_internal(
         .join("transactions")
         .join(&state_id);
     let mut journal = begin_install_journal(database, package, &state_id, &transaction_root)?;
+    if let Some(snapshot) = pre_activation_snapshot(database.layout(), &state_id, policy) {
+        journal.snapshots.push(snapshot);
+        journal.persist(database.layout())?;
+    }
 
     apply_install_state(
         database,
@@ -130,18 +143,24 @@ pub(crate) fn install_built_package_internal(
     reconcile_system_state_after_install(database, package)?;
     run_install_triggers(database, package)?;
     database.set_current_state(&state_id)?;
+    if let Some(snapshot) = post_activation_snapshot(database.layout(), &state_id, policy) {
+        journal.snapshots.push(snapshot);
+        journal.persist(database.layout())?;
+    }
     if execution.archive_state {
-        archive_current_state(database, &state_id)?;
+        archive_current_state(database, &state_id, &journal.snapshots)?;
     }
     journal.state = JournalState::DbCommitted;
     journal.persist(database.layout())?;
     cleanup_transaction_root(&transaction_root)?;
+    let snapshots = journal.snapshots.clone();
     journal.remove(database.layout())?;
 
     Ok(InstallReport {
         package_name: package.package_name.clone(),
         state_id,
         installed_paths: files.len(),
+        snapshots,
     })
 }
 

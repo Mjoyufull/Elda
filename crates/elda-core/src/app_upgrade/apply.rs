@@ -9,6 +9,7 @@ impl AppContext {
         offline: bool,
     ) -> Result<Vec<serde_json::Value>, CoreError> {
         let mut upgrades = Vec::new();
+        let mutation_policy = self.mutation_policy();
 
         for action in actions {
             let decision = self.upgrade_decision(action)?;
@@ -23,11 +24,12 @@ impl AppContext {
                 replaced.push(serde_json::to_value(remove_package_for_upgrade(
                     &self.database,
                     package_name,
+                    &mutation_policy,
                 )?)?);
             }
 
             if let Some(installed) = &action.installed {
-                remove_package_for_upgrade(&self.database, &action.package_name)?;
+                remove_package_for_upgrade(&self.database, &action.package_name, &mutation_policy)?;
                 let report = install_upgraded_package(
                     &self.database,
                     &built.package,
@@ -35,6 +37,7 @@ impl AppContext {
                     installed.pinned_version.clone(),
                     installed.held,
                     installed.hold_source.clone(),
+                    &mutation_policy,
                 )?;
                 upgrades.push(upgrade_json(action, &decision, report, replaced));
             } else {
@@ -45,6 +48,7 @@ impl AppContext {
                     None,
                     false,
                     None,
+                    &mutation_policy,
                 )?;
                 upgrades.push(upgrade_json(action, &decision, report, replaced));
             }

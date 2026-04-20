@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::InstallError;
 use crate::fsops::{cleanup_paths, restore_backups};
+use crate::snapshot::SnapshotRecord;
 use elda_db::StateLayout;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,8 @@ pub struct TransactionJournal {
     pub state_id: Option<String>,
     pub created_paths: Vec<PathBuf>,
     pub backup_entries: Vec<BackupEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snapshots: Vec<SnapshotRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +80,7 @@ impl TransactionJournal {
             state_id: None,
             created_paths: Vec::new(),
             backup_entries: Vec::new(),
+            snapshots: Vec::new(),
         }
     }
 
@@ -90,6 +94,7 @@ impl TransactionJournal {
             state_id: None,
             created_paths: Vec::new(),
             backup_entries: Vec::new(),
+            snapshots: Vec::new(),
         }
     }
 

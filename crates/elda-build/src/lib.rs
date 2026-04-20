@@ -35,7 +35,8 @@ pub use cache_meta::{
 pub use error::BuildError;
 pub use manifest::{ManifestEntry, ManifestEntryKind, PackageManifest};
 pub use system_metadata::{
-    AlternativeAsset, DeclarativeAsset, LifecycleHookAsset, SystemPackageMetadata,
+    AlternativeAsset, DeclarativeAsset, LifecycleHookAsset, ProviderAsset, ProviderTreeEntry,
+    SystemPackageMetadata,
 };
 
 pub const BOUNDARY: CrateBoundary = CrateBoundary::new(

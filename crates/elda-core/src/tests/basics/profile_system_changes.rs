@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn profile_show_reports_pending_init_and_multilib_handlers() {
     let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
 
     run_from_root(
         tempdir.path(),
@@ -99,6 +100,7 @@ fn profile_apply_dry_run_reports_pending_profile_reconciliation() {
 #[test]
 fn fix_triggers_reports_pending_profile_handlers() {
     let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
 
     run_from_root(
         tempdir.path(),

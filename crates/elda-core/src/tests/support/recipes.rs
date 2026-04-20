@@ -151,12 +151,34 @@ pub(in crate::tests) fn write_local_binary_recipe_with_lua_fields(
     recommends_lua: &str,
     provides_lua: &str,
 ) {
+    write_local_binary_recipe_with_policy_fields(
+        root,
+        name,
+        binary_source,
+        version,
+        depends_lua,
+        recommends_lua,
+        provides_lua,
+        "{}",
+    );
+}
+
+pub(in crate::tests) fn write_local_binary_recipe_with_policy_fields(
+    root: &Path,
+    name: &str,
+    binary_source: &Path,
+    version: &str,
+    depends_lua: &str,
+    recommends_lua: &str,
+    provides_lua: &str,
+    conflicts_lua: &str,
+) {
     let recipes_dir = root.join("etc/elda/recipes").join(name);
     fs::create_dir_all(&recipes_dir).expect("recipe dir should exist");
     fs::write(
         recipes_dir.join("pkg.lua"),
         format!(
-            "pkg = {{\n  name = \"{name}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = 1,\n  arch = {{ \"amd64\" }},\n  kind = \"normal\",\n  source = {{\n    kind = \"url_archive\",\n    url = \"file://{binary}\",\n    sha256 = \"{sha256}\",\n    rename = \"{name}\",\n  }},\n  depends = {depends},\n  makedepends = {{}},\n  checkdepends = {{}},\n  recommends = {recommends},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n  provides = {provides},\n  conflicts = {{}},\n  replaces = {{}},\n  conffiles = {{}},\n}}\n",
+            "pkg = {{\n  name = \"{name}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = 1,\n  arch = {{ \"amd64\" }},\n  kind = \"normal\",\n  source = {{\n    kind = \"url_archive\",\n    url = \"file://{binary}\",\n    sha256 = \"{sha256}\",\n    rename = \"{name}\",\n  }},\n  depends = {depends},\n  makedepends = {{}},\n  checkdepends = {{}},\n  recommends = {recommends},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n  provides = {provides},\n  conflicts = {conflicts},\n  replaces = {{}},\n  conffiles = {{}},\n}}\n",
             name = name,
             version = version,
             binary = binary_source.display(),
@@ -164,6 +186,7 @@ pub(in crate::tests) fn write_local_binary_recipe_with_lua_fields(
             depends = depends_lua,
             recommends = recommends_lua,
             provides = provides_lua,
+            conflicts = conflicts_lua,
         ),
     )
     .expect("binary recipe should be written");

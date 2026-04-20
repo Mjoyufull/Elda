@@ -5,7 +5,8 @@ use crate::cached_archive::built_package_from_archive;
 use crate::install_tx::install_built_package_internal;
 use crate::remove_tx::remove_package_internal;
 use crate::{
-    InstallConffileMode, InstallError, InstallExecution, InstallReport, RemoveConffileMode,
+    InstallConffileMode, InstallError, InstallExecution, InstallReport, MutationPolicy,
+    RemoveConffileMode,
 };
 
 pub fn recover_pending_transactions(
@@ -28,6 +29,7 @@ pub(super) fn remove_rollback_packages(
                 false,
                 false,
                 RemoveConffileMode::PreserveAsSave,
+                &MutationPolicy::default(),
             )?;
         }
     }
@@ -52,6 +54,7 @@ pub(super) fn restore_rollback_packages(
                     false,
                     false,
                     RemoveConffileMode::PreserveAsSave,
+                    &MutationPolicy::default(),
                 )?;
             }
             restored_packages.push(restore_archived_package(database, archived)?);
@@ -86,5 +89,6 @@ fn restore_archived_package(
             take_lock: false,
             conffile_mode: InstallConffileMode::FirstOwnership,
         },
+        &MutationPolicy::default(),
     )
 }

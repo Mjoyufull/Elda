@@ -119,6 +119,7 @@ impl AppContext {
         };
         let desired =
             next_profile.to_desired_profile(active_profiles.first().cloned().unwrap_or_default());
+        let provider_reconciliation = self.plan_profile_backend_state(&desired)?;
         let runtime_view = self.profile_runtime_view(&next_profile)?;
 
         if request.dry_run {
@@ -142,6 +143,7 @@ impl AppContext {
                         &declared_policy,
                         &install_plan,
                         &removed_profile_anchors,
+                        &provider_reconciliation,
                         &runtime_view,
                     ),
                 })),
@@ -158,6 +160,7 @@ impl AppContext {
         }
 
         let removed = self.remove_profile_anchors(&removed_profile_anchors)?;
+        let provider_reconciliation = self.apply_profile_backend_state(&desired)?;
         self.write_profile_state(&desired)?;
         let runtime_view = self.profile_runtime_view(&next_profile)?;
 
@@ -185,6 +188,7 @@ impl AppContext {
                 "declared_profile_policy": profile_policy_json(&declared_policy),
                 "install_actions": installs,
                 "removed_profile_anchors": removed,
+                "provider_reconciliation": provider_reconciliation,
                 "provider_families": &runtime_view.provider_families,
                 "pending_handler_transitions": &runtime_view.pending_handler_transitions,
                 "required_activation_class": runtime_view.required_activation_class,
@@ -273,10 +277,15 @@ impl AppContext {
         removed_profile_anchors: &[String],
     ) -> Result<Vec<serde_json::Value>, CoreError> {
         let mut removed = Vec::new();
+        let mutation_policy = self.mutation_policy();
 
         for anchor in removed_profile_anchors {
             if self.database.installed_package(anchor)?.is_some() {
-                removed.push(json!(remove_package(&self.database, anchor)?));
+                removed.push(json!(remove_package(
+                    &self.database,
+                    anchor,
+                    &mutation_policy,
+                )?));
             }
         }
 
@@ -291,6 +300,7 @@ impl AppContext {
         declared_policy: &super::policy::ProfilePolicyResolution,
         install_plan: &[PlannedInstallAction],
         removed_profile_anchors: &[String],
+        provider_reconciliation: &serde_json::Value,
         runtime_view: &super::system_changes::ProfileRuntimeView,
     ) -> serde_json::Value {
         json!({
@@ -309,6 +319,7 @@ impl AppContext {
                 .map(profile_plan_action_json)
                 .collect::<Vec<_>>(),
             "remove_profile_anchors": removed_profile_anchors,
+            "provider_reconciliation": provider_reconciliation,
             "provider_families": &runtime_view.provider_families,
             "pending_handler_transitions": &runtime_view.pending_handler_transitions,
             "required_activation_class": runtime_view.required_activation_class,

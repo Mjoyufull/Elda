@@ -17,6 +17,7 @@ use crate::cached_archive::built_package_from_installed;
 use crate::conffile::{apply_conffile_entry, record_matches_live_file};
 use crate::fsops::{sidecar_path, unpack_payload};
 use crate::journal::TransactionJournal;
+use crate::system_backend::{active_provider_families, provider_assets};
 use crate::{InstallConffileMode, RemoveConffileMode};
 
 pub(crate) fn prepare_staged_install(
@@ -41,7 +42,12 @@ pub(crate) fn prepare_staged_install(
         package.package_name.clone(),
         package.system_metadata.clone(),
     );
-    materialize_system_assets(&stage_root, &database.layout().root_dir, &system_packages)?;
+    materialize_system_assets(
+        database.layout(),
+        &stage_root,
+        &database.layout().root_dir,
+        &system_packages,
+    )?;
 
     Ok(StagedSystemState {
         tracked_paths: collect_stage_paths(&stage_root)?,
@@ -71,7 +77,12 @@ pub(crate) fn prepare_staged_remove(
         );
     }
     materialize_removed_conffiles(database, &stage_root, package_name, conffile_mode)?;
-    materialize_system_assets(&stage_root, &database.layout().root_dir, &system_packages)?;
+    materialize_system_assets(
+        database.layout(),
+        &stage_root,
+        &database.layout().root_dir,
+        &system_packages,
+    )?;
 
     Ok(StagedSystemState {
         tracked_paths: collect_stage_paths(&stage_root)?,
@@ -216,6 +227,7 @@ fn materialize_removed_conffiles(
 }
 
 fn materialize_system_assets(
+    layout: &StateLayout,
     stage_root: &Path,
     live_root: &Path,
     packages: &BTreeMap<String, SystemPackageMetadata>,
@@ -236,6 +248,12 @@ fn materialize_system_assets(
         }
         symlink(resolved_target, link_path)?;
     }
+
+    provider_assets::materialize_provider_assets_under_root(
+        stage_root,
+        packages,
+        &active_provider_families(layout)?,
+    )?;
 
     Ok(())
 }

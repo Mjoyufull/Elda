@@ -9,6 +9,7 @@ pub(super) fn validate_metadata(package: &PackageDefinition, issues: &mut Vec<Va
     validate_inline_or_file("tmpfiles", package.tmpfiles.as_ref(), issues);
     validate_alternatives(package.alternatives.as_ref(), issues);
     validate_hooks(package.hooks.as_ref(), issues);
+    validate_provider_assets(package.provider_assets.as_ref(), issues);
     validate_flag_table("flags_default", package.flags_default.as_ref(), issues);
     validate_flag_table("flags_allowed", package.flags_allowed.as_ref(), issues);
     validate_flag_table("flags_implies", package.flags_implies.as_ref(), issues);
@@ -98,6 +99,118 @@ fn validate_hooks(value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
     }
 }
 
+fn validate_provider_assets(value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
+    let Some(LuaValue::Table(families)) = value else {
+        if value.is_some() {
+            issues.push(error(
+                "provider_assets must be a table keyed by provider family, then provider name",
+            ));
+        }
+        return;
+    };
+
+    for (family, providers) in families {
+        let LuaValue::Table(providers) = providers else {
+            issues.push(error(format!(
+                "provider_assets.{family} must be a table keyed by provider name"
+            )));
+            continue;
+        };
+        for (provider, assets) in providers {
+            let LuaValue::Array(entries) = assets else {
+                issues.push(error(format!(
+                    "provider_assets.{family}.{provider} must be an array of asset tables"
+                )));
+                continue;
+            };
+            for entry in entries {
+                validate_provider_asset_entry(family, provider, entry, issues);
+            }
+        }
+    }
+}
+
+fn validate_provider_asset_entry(
+    family: &str,
+    provider: &str,
+    value: &LuaValue,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let field = format!("provider_assets.{family}.{provider}");
+    let LuaValue::Table(table) = value else {
+        issues.push(error(format!(
+            "{field} entries must be tables such as {{ kind = \"file\", target = \"/...\", file = \"...\" }}"
+        )));
+        return;
+    };
+
+    let kind = match table.get("kind").and_then(as_non_empty_string) {
+        Some(kind) => kind,
+        None => {
+            issues.push(error(format!(
+                "{field} entries require a non-empty `kind` field"
+            )));
+            return;
+        }
+    };
+    match table.get("target").and_then(as_non_empty_string) {
+        Some(target) if target.starts_with('/') => {}
+        Some(_) => issues.push(error(format!(
+            "{field} entries require an absolute `target` path"
+        ))),
+        None => issues.push(error(format!(
+            "{field} entries require a non-empty `target` field"
+        ))),
+    }
+
+    match kind {
+        "file" => validate_provider_file_asset(&field, table, issues),
+        "tree" => validate_provider_tree_asset(&field, table, issues),
+        _ => issues.push(error(format!(
+            "{field} entries must use supported kinds `file` or `tree`"
+        ))),
+    }
+}
+
+fn validate_provider_file_asset(
+    field: &str,
+    table: &BTreeMap<String, LuaValue>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let has_file = table.get("file").and_then(as_non_empty_string).is_some();
+    let has_text = table.get("text").and_then(as_non_empty_string).is_some();
+    if has_file == has_text {
+        issues.push(error(format!(
+            "{field} file assets must define exactly one of `file` or `text`"
+        )));
+    }
+    if table.contains_key("dir") {
+        issues.push(error(format!("{field} file assets must not define `dir`")));
+    }
+    if matches!(table.get("mode"), Some(value) if as_non_empty_string(value).is_none()) {
+        issues.push(error(format!(
+            "{field} file assets must use a non-empty string `mode` when present"
+        )));
+    }
+}
+
+fn validate_provider_tree_asset(
+    field: &str,
+    table: &BTreeMap<String, LuaValue>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if table.get("dir").and_then(as_non_empty_string).is_none() {
+        issues.push(error(format!(
+            "{field} tree assets require a non-empty `dir` field"
+        )));
+    }
+    if table.contains_key("file") || table.contains_key("text") {
+        issues.push(error(format!(
+            "{field} tree assets must not define `file` or `text`"
+        )));
+    }
+}
+
 fn validate_flag_table(field: &str, value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
     let Some(LuaValue::Table(table)) = value else {
         if value.is_some() {
@@ -155,5 +268,12 @@ fn validate_string_key(
         issues.push(error(format!(
             "{field} entries require a non-empty `{key}` field"
         )));
+    }
+}
+
+fn as_non_empty_string(value: &LuaValue) -> Option<&str> {
+    match value {
+        LuaValue::String(value) if !value.trim().is_empty() => Some(value.as_str()),
+        _ => None,
     }
 }

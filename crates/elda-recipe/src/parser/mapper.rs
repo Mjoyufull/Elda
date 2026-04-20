@@ -50,6 +50,7 @@ pub(super) fn map_package_definition(
         tmpfiles: get_optional_value(&root, "tmpfiles"),
         alternatives: get_optional_value(&root, "alternatives"),
         hooks: get_optional_value(&root, "hooks"),
+        provider_assets: get_optional_value(&root, "provider_assets"),
         flags_default: get_optional_value(&root, "flags_default"),
         flags_allowed: get_optional_value(&root, "flags_allowed"),
         flags_implies: get_optional_value(&root, "flags_implies"),

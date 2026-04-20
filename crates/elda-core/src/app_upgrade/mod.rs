@@ -10,9 +10,7 @@ use std::str::FromStr;
 
 use serde_json::json;
 
-use crate::app::{
-    AppContext, ParsedInstallRequest, PlannedUpgradeAction, ResolvedDependencyPlan, UpgradeDecision,
-};
+use crate::app::{AppContext, ParsedInstallRequest, PlannedUpgradeAction, UpgradeDecision};
 use crate::app_parse::installed_version;
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};

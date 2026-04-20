@@ -50,6 +50,7 @@ impl AppContext {
             installed.pinned_version.clone(),
             installed.held,
             installed.hold_source.clone(),
+            &self.mutation_policy(),
         )?;
 
         Ok(CommandReport {

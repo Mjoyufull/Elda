@@ -68,96 +68,42 @@ impl AppContext {
         request: &ParsedInstallRequest,
         refresh_weak_deps: bool,
     ) -> Result<Vec<PlannedUpgradeAction>, CoreError> {
-        let mut actions = Vec::new();
-        let mut planned_by_package = BTreeMap::new();
-        let mut visiting = BTreeSet::new();
+        let solved = self.solve_upgrade_request(request, targets, refresh_weak_deps)?;
+        let explicit_targets = solved
+            .explicit_targets
+            .values()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let dependency_origins = dependency_origins(&solved.order, &solved.packages);
+        let mut actions = Vec::with_capacity(solved.order.len());
 
-        for target in targets {
-            self.plan_upgrade_target_closure(
-                target,
-                request,
-                refresh_weak_deps,
-                true,
-                None,
-                None,
-                &mut visiting,
-                &mut planned_by_package,
-                &mut actions,
-            )?;
+        for package_name in &solved.order {
+            let package = solved
+                .packages
+                .get(package_name)
+                .expect("solved package should exist in the final order");
+            let installed = self.ensure_installed(package_name).ok();
+            let replaced_packages = self.planned_replacements(&package.resolved)?;
+            let origin = dependency_origins.get(package_name);
+
+            actions.push(PlannedUpgradeAction {
+                package_name: package_name.clone(),
+                resolved: package.resolved.clone(),
+                replaced_packages,
+                install_reason: installed
+                    .as_ref()
+                    .map(|package| package.install_reason.clone())
+                    .unwrap_or_else(|| "dep".to_owned()),
+                requested_by: origin.map(|origin| origin.requested_by.clone()),
+                dependency_kind: origin.map(|origin| origin.dependency_kind.clone()),
+                raw_expr: origin.map(|origin| origin.raw_expr.clone()),
+                dependencies: package.dependencies.clone(),
+                installed,
+                explicit_target: explicit_targets.contains(package_name),
+            });
         }
 
         Ok(actions)
-    }
-
-    fn plan_upgrade_target_closure(
-        &self,
-        target: &str,
-        request: &ParsedInstallRequest,
-        refresh_weak_deps: bool,
-        explicit_target: bool,
-        requested_by: Option<&str>,
-        resolved_by: Option<&ResolvedDependencyPlan>,
-        visiting: &mut BTreeSet<String>,
-        planned_by_package: &mut BTreeMap<String, usize>,
-        actions: &mut Vec<PlannedUpgradeAction>,
-    ) -> Result<(), CoreError> {
-        let installed = self.ensure_installed(target).ok();
-        let resolved = self.resolve_install_target(target, request)?;
-        let package_name = resolved.recipe.package.name.clone();
-
-        if let Some(index) = planned_by_package.get(&package_name).copied() {
-            if explicit_target {
-                actions[index].explicit_target = true;
-            }
-            return Ok(());
-        }
-
-        if !visiting.insert(package_name.clone()) {
-            return Err(CoreError::Operator(format!(
-                "dependency cycle detected while planning upgrade for `{package_name}`"
-            )));
-        }
-
-        let dependencies = if explicit_target && refresh_weak_deps {
-            self.collect_install_dependencies(&resolved.recipe.package, "explicit", request)?
-        } else {
-            self.collect_required_dependencies(&resolved.recipe.package, request)?
-        };
-        let replaced_packages = self.planned_replacements(&resolved)?;
-        for dependency in &dependencies {
-            self.plan_upgrade_target_closure(
-                &dependency.target,
-                &self.dependency_install_request(request),
-                false,
-                false,
-                Some(&package_name),
-                Some(dependency),
-                visiting,
-                planned_by_package,
-                actions,
-            )?;
-        }
-        visiting.remove(&package_name);
-
-        let install_reason = installed
-            .as_ref()
-            .map(|package| package.install_reason.clone())
-            .unwrap_or_else(|| "dep".to_owned());
-        planned_by_package.insert(package_name.clone(), actions.len());
-        actions.push(PlannedUpgradeAction {
-            package_name,
-            resolved,
-            replaced_packages,
-            install_reason,
-            requested_by: requested_by.map(ToOwned::to_owned),
-            dependency_kind: resolved_by.map(|dependency| dependency.dependency_kind.clone()),
-            raw_expr: resolved_by.map(|dependency| dependency.raw_expr.clone()),
-            dependencies,
-            installed,
-            explicit_target,
-        });
-
-        Ok(())
     }
 
     fn validate_upgrade_conflicts(
@@ -223,4 +169,35 @@ impl AppContext {
             "hold_source": decision.hold_source,
         }))
     }
+}
+
+#[derive(Debug, Clone)]
+struct DependencyOrigin {
+    requested_by: String,
+    dependency_kind: String,
+    raw_expr: String,
+}
+
+fn dependency_origins(
+    order: &[String],
+    packages: &BTreeMap<String, crate::app_install::solver::SolvedPackage>,
+) -> BTreeMap<String, DependencyOrigin> {
+    let mut origins = BTreeMap::new();
+
+    for package_name in order.iter().rev() {
+        let Some(package) = packages.get(package_name) else {
+            continue;
+        };
+        for dependency in &package.dependencies {
+            origins
+                .entry(dependency.target.clone())
+                .or_insert_with(|| DependencyOrigin {
+                    requested_by: package.package_name.clone(),
+                    dependency_kind: dependency.dependency_kind.clone(),
+                    raw_expr: dependency.raw_expr.clone(),
+                });
+        }
+    }
+
+    origins
 }

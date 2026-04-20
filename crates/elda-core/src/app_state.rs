@@ -156,6 +156,7 @@ impl AppContext {
             .ok_or_else(|| CoreError::Operator("state import requires an input path".to_owned()))?;
         let content = fs::read_to_string(input_path)?;
         let document = serde_json::from_str::<DesiredStateDocument>(&content)?;
+        let profile_backend_reconciliation = self.plan_profile_backend_state(&document.profile)?;
 
         if request.dry_run {
             return Ok(CommandReport {
@@ -176,6 +177,7 @@ impl AppContext {
                         "kind": "state-import",
                         "remotes": document.remotes,
                         "world": document.world,
+                        "profile_backend_reconciliation": profile_backend_reconciliation,
                     },
                 })),
             });
@@ -201,6 +203,7 @@ impl AppContext {
             self.validate_install_conflicts(&plan)?;
             self.apply_install_plan(&plan, request.offline)?;
         }
+        let profile_backend_reconciliation = self.apply_profile_backend_state(&document.profile)?;
 
         Ok(CommandReport {
             area: "state",
@@ -219,6 +222,7 @@ impl AppContext {
                     "remotes": document.remotes,
                     "world": document.world,
                     "profile": document.profile,
+                    "profile_backend_reconciliation": profile_backend_reconciliation,
                 },
             })),
         })

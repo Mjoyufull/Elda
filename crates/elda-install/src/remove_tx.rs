@@ -6,15 +6,17 @@ use crate::archive_state::archive_current_state;
 use crate::conffile::remove_conffile_entry;
 use crate::fsops::{backup_file_for_restore, cleanup_transaction_root, map_manifest_path};
 use crate::journal::{JournalState, TransactionJournal, ensure_no_pending_journals};
+use crate::snapshot::{post_activation_snapshot, pre_activation_snapshot};
 use crate::system_backend::{
     activate_staged_state, next_state_prefix, prepare_staged_remove,
     reconcile_system_state_after_remove, run_remove_triggers,
 };
-use crate::{InstallError, RemoveConffileMode, RemoveReport, next_state_id};
+use crate::{InstallError, MutationPolicy, RemoveConffileMode, RemoveReport, next_state_id};
 
 pub fn remove_package(
     database: &Database,
     package_name: &str,
+    policy: &MutationPolicy,
 ) -> Result<RemoveReport, InstallError> {
     remove_package_internal(
         database,
@@ -22,12 +24,14 @@ pub fn remove_package(
         true,
         true,
         RemoveConffileMode::PreserveAsSave,
+        policy,
     )
 }
 
 pub fn remove_package_purge_conffiles(
     database: &Database,
     package_name: &str,
+    policy: &MutationPolicy,
 ) -> Result<RemoveReport, InstallError> {
     remove_package_internal(
         database,
@@ -35,12 +39,14 @@ pub fn remove_package_purge_conffiles(
         true,
         true,
         RemoveConffileMode::Purge,
+        policy,
     )
 }
 
 pub fn remove_package_for_upgrade(
     database: &Database,
     package_name: &str,
+    policy: &MutationPolicy,
 ) -> Result<RemoveReport, InstallError> {
     remove_package_internal(
         database,
@@ -48,6 +54,7 @@ pub fn remove_package_for_upgrade(
         false,
         true,
         RemoveConffileMode::PreserveInPlaceForUpgrade,
+        policy,
     )
 }
 
@@ -57,6 +64,7 @@ pub(crate) fn remove_package_internal(
     archive_state: bool,
     take_lock: bool,
     conffile_mode: RemoveConffileMode,
+    policy: &MutationPolicy,
 ) -> Result<RemoveReport, InstallError> {
     if take_lock {
         database.bootstrap()?;
@@ -78,6 +86,10 @@ pub(crate) fn remove_package_internal(
         .join("transactions")
         .join(format!("remove-{state_id}"));
     let mut journal = begin_remove_journal(database, package_name, &state_id, &transaction_root)?;
+    if let Some(snapshot) = pre_activation_snapshot(database.layout(), &state_id, policy) {
+        journal.snapshots.push(snapshot);
+        journal.persist(database.layout())?;
+    }
     let files = apply_remove_state(
         database,
         package_name,
@@ -96,17 +108,23 @@ pub(crate) fn remove_package_internal(
         .collect::<Vec<_>>();
     run_remove_triggers(database, &removed_paths)?;
     database.set_current_state(&state_id)?;
+    if let Some(snapshot) = post_activation_snapshot(database.layout(), &state_id, policy) {
+        journal.snapshots.push(snapshot);
+        journal.persist(database.layout())?;
+    }
     if archive_state {
-        archive_current_state(database, &state_id)?;
+        archive_current_state(database, &state_id, &journal.snapshots)?;
     }
     journal.state = JournalState::DbCommitted;
     journal.persist(database.layout())?;
     cleanup_transaction_root(&transaction_root)?;
+    let snapshots = journal.snapshots.clone();
     journal.remove(database.layout())?;
 
     Ok(RemoveReport {
         package_name: package_name.to_owned(),
         removed_paths: files.len(),
+        snapshots,
     })
 }
 fn ensure_package_installed(database: &Database, package_name: &str) -> Result<(), InstallError> {

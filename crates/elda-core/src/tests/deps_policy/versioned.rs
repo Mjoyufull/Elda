@@ -63,11 +63,9 @@ fn install_rejects_unsatisfied_versioned_exact_dependency_constraints() {
     )
     .expect_err("install should fail");
 
-    assert!(
-        error
-            .to_string()
-            .contains("no package or explicit versioned provide satisfies `dep-tool>=1.1.0`")
-    );
+    let error = error.to_string();
+    assert!(error.contains("dependency resolution failed"));
+    assert!(error.contains("app-tool"));
 }
 
 #[test]
@@ -146,11 +144,9 @@ fn install_rejects_unversioned_provider_for_versioned_dependency() {
     )
     .expect_err("install should fail");
 
-    assert!(
-        error
-            .to_string()
-            .contains("no package or explicit versioned provide satisfies `gl-provider>=2`")
-    );
+    let error = error.to_string();
+    assert!(error.contains("dependency resolution failed"));
+    assert!(error.contains("app-tool"));
 }
 
 #[test]
@@ -199,4 +195,53 @@ fn exact_package_name_beats_virtual_provider_for_versioned_dependency() {
 
     assert!(tempdir.path().join("opt/elda/bin/gl-provider").exists());
     assert!(!tempdir.path().join("opt/elda/bin/mesa-provider").exists());
+}
+
+#[test]
+fn install_reports_cross_target_version_conflicts() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let shared_binary = create_vendor_binary(tempdir.path(), "shared-tool");
+    let left_binary = create_script_binary(tempdir.path(), "left-tool", "left tool");
+    let right_binary = create_script_binary(tempdir.path(), "right-tool", "right tool");
+    write_local_binary_recipe_with_version(
+        tempdir.path(),
+        "shared-tool",
+        &shared_binary,
+        &[],
+        "2.0.0",
+    );
+    write_local_binary_recipe_with_lua_fields(
+        tempdir.path(),
+        "left-tool",
+        &left_binary,
+        "0.1.0",
+        "{ \"shared-tool<2.0.0\" }",
+        "{}",
+        "{}",
+    );
+    write_local_binary_recipe_with_lua_fields(
+        tempdir.path(),
+        "right-tool",
+        &right_binary,
+        "0.1.0",
+        "{ \"shared-tool>=2.0.0\" }",
+        "{}",
+        "{}",
+    );
+
+    let error = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["left-tool".to_owned(), "right-tool".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect_err("solver should reject incompatible shared constraints");
+
+    let error = error.to_string();
+    assert!(error.contains("dependency resolution failed"));
+    assert!(error.contains("left-tool"));
 }

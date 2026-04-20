@@ -42,6 +42,25 @@ pkg = {
   hooks = {
     post_install = { file = "hooks/post_install.lua" },
   },
+  provider_assets = {
+    init = {
+      dinit = {
+        {
+          kind = "file",
+          target = "/etc/dinit.d/example",
+          file = "providers/init/dinit/example",
+          mode = "0755",
+        },
+      },
+      runit = {
+        {
+          kind = "tree",
+          target = "/etc/sv/example",
+          dir = "providers/init/runit/example",
+        },
+      },
+    },
+  },
   flags_default = {
     wayland = true,
   },
@@ -77,6 +96,10 @@ pkg = {
         Some(LuaValue::Array(_))
     ));
     assert!(matches!(document.package.hooks, Some(LuaValue::Table(_))));
+    assert!(matches!(
+        document.package.provider_assets,
+        Some(LuaValue::Table(_))
+    ));
     assert!(matches!(
         document.package.flags_default,
         Some(LuaValue::Table(_))
@@ -171,6 +194,25 @@ pkg = {
   hooks = {
     post_install = "hooks/post_install.lua",
   },
+  provider_assets = {
+    init = {
+      dinit = {
+        {
+          kind = "file",
+          target = "etc/dinit.d/example",
+          file = "providers/init/dinit/example",
+          text = "duplicate",
+        },
+      },
+      runit = {
+        {
+          kind = "tree",
+          target = "/etc/sv/example",
+          file = "providers/init/runit/example",
+        },
+      },
+    },
+  },
   flags_default = { wayland = "yes" },
   flags_implies = {
     desktop = "wayland",
@@ -196,6 +238,21 @@ pkg = {
             .iter()
             .any(|issue| { issue.message.contains("hooks.post_install must be a table") })
     );
+    assert!(issues.iter().any(|issue| {
+        issue.message.contains(
+            "provider_assets.init.dinit file assets must define exactly one of `file` or `text`",
+        )
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("provider_assets.init.dinit entries require an absolute `target` path")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("provider_assets.init.runit tree assets require a non-empty `dir` field")
+    }));
     assert!(issues.iter().any(|issue| {
         issue
             .message

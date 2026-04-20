@@ -14,6 +14,7 @@ pub struct Config {
     pub defaults: DefaultsConfig,
     pub privilege: PrivilegeConfig,
     pub profile: ProfileConfig,
+    pub resolver: ResolverConfig,
     pub flags: FlagsConfig,
 }
 
@@ -38,6 +39,7 @@ pub struct DefaultsConfig {
     pub build_mode: String,
     pub prefix: PathBuf,
     pub allow_system_mode: bool,
+    pub snapshot_tool: String,
     pub install_recommends: bool,
     pub refresh_weak_deps: bool,
     pub install_preference: InstallPreference,
@@ -50,6 +52,7 @@ impl Default for DefaultsConfig {
             build_mode: "isolated".to_owned(),
             prefix: PathBuf::from("/usr"),
             allow_system_mode: false,
+            snapshot_tool: "none".to_owned(),
             install_recommends: true,
             refresh_weak_deps: false,
             install_preference: InstallPreference::Binary,
@@ -91,6 +94,12 @@ pub struct FlagsConfig {
     pub global: BTreeMap<String, bool>,
     pub profile: BTreeMap<String, BTreeMap<String, bool>>,
     pub package: BTreeMap<String, BTreeMap<String, bool>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ResolverConfig {
+    pub provider_preferences: BTreeMap<String, Vec<String>>,
 }
 
 #[must_use]
@@ -155,6 +164,9 @@ native_arch = "amd64"
 foreign_arches = ["i386"]
 init = "dinit"
 
+[resolver.provider_preferences]
+gl-provider = ["mesa-provider", "zink-provider"]
+
 [flags.global]
 wayland = true
 x11 = false
@@ -186,6 +198,7 @@ show_remote = true
         assert_eq!(config.defaults.build_mode, "host");
         assert_eq!(config.defaults.prefix, PathBuf::from("/opt/elda"));
         assert!(config.defaults.allow_system_mode);
+        assert_eq!(config.defaults.snapshot_tool, "snapper");
         assert!(!config.defaults.install_recommends);
         assert!(!config.defaults.refresh_weak_deps);
         assert_eq!(
@@ -198,6 +211,13 @@ show_remote = true
         assert_eq!(config.profile.native_arch, "amd64");
         assert_eq!(config.profile.foreign_arches, vec!["i386"]);
         assert_eq!(config.profile.init, "dinit");
+        assert_eq!(
+            config.resolver.provider_preferences.get("gl-provider"),
+            Some(&vec![
+                "mesa-provider".to_owned(),
+                "zink-provider".to_owned(),
+            ])
+        );
         assert_eq!(config.flags.global.get("wayland"), Some(&true));
         assert_eq!(config.flags.global.get("x11"), Some(&false));
         assert_eq!(

@@ -8,6 +8,7 @@ impl AppContext {
         self.database.bootstrap()?;
         let parsed = self.parse_remove_request(&request)?;
         let packages = self.removal_order(&parsed.packages, parsed.cascade)?;
+        let mutation_policy = self.mutation_policy();
 
         if request.dry_run {
             let actions = packages
@@ -30,9 +31,9 @@ impl AppContext {
         let mut removals = Vec::new();
         for package in packages {
             let report = if parsed.purge_conffiles {
-                remove_package_purge_conffiles(&self.database, &package)?
+                remove_package_purge_conffiles(&self.database, &package, &mutation_policy)?
             } else {
-                remove_package(&self.database, &package)?
+                remove_package(&self.database, &package, &mutation_policy)?
             };
             removals.push(report);
         }
@@ -57,6 +58,7 @@ impl AppContext {
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
         let packages = self.orphan_candidates()?;
+        let mutation_policy = self.mutation_policy();
         let actions = packages
             .iter()
             .map(|package| json!({ "target": package, "action": "autoremove" }))
@@ -78,7 +80,7 @@ impl AppContext {
 
         let mut removals = Vec::new();
         for package in packages {
-            removals.push(remove_package(&self.database, &package)?);
+            removals.push(remove_package(&self.database, &package, &mutation_policy)?);
         }
         let _ = self.reconcile_cache_policy()?;
 

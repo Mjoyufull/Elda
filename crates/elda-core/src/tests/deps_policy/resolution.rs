@@ -156,14 +156,25 @@ fn dependency_install_populates_why_rdeps_and_autoremove() {
 }
 
 #[test]
-fn install_fails_on_ambiguous_any_of_dependency() {
+fn install_backtracks_any_of_exact_alternatives_to_avoid_conflicts() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/opt/elda");
     let dep_a = create_vendor_binary(tempdir.path(), "dep-a");
     let dep_b = create_vendor_binary(tempdir.path(), "dep-b");
+    let base_binary = create_vendor_binary(tempdir.path(), "base-tool");
     let app_binary = create_script_binary(tempdir.path(), "app-tool", "app tool");
-    write_local_binary_recipe(tempdir.path(), "dep-a", &dep_a, &[]);
+    write_local_binary_recipe_with_policy_fields(
+        tempdir.path(),
+        "dep-a",
+        &dep_a,
+        "0.1.0",
+        "{}",
+        "{}",
+        "{}",
+        "{ \"base-tool\" }",
+    );
     write_local_binary_recipe(tempdir.path(), "dep-b", &dep_b, &[]);
+    write_local_binary_recipe(tempdir.path(), "base-tool", &base_binary, &[]);
     write_local_binary_recipe_with_lua_fields(
         tempdir.path(),
         "app-tool",
@@ -174,21 +185,20 @@ fn install_fails_on_ambiguous_any_of_dependency() {
         "{}",
     );
 
-    let error = run_from_root(
+    run_from_root(
         tempdir.path(),
         CommandRequest::new(
             vec!["i".to_owned()],
-            vec!["app-tool".to_owned()],
+            vec!["base-tool".to_owned(), "app-tool".to_owned()],
             OutputMode::Json,
             false,
         ),
     )
-    .expect_err("ambiguous any-of dependency should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("ambiguous dependency alternatives")
-    );
+    .expect("solver should pick the conflict-free any-of alternative");
+
+    assert!(tempdir.path().join("opt/elda/bin/base-tool").exists());
+    assert!(tempdir.path().join("opt/elda/bin/dep-b").exists());
+    assert!(!tempdir.path().join("opt/elda/bin/dep-a").exists());
 }
 
 #[test]

@@ -10,6 +10,7 @@ mod install_tx;
 mod journal;
 mod remove_tx;
 mod rollback;
+mod snapshot;
 mod system_backend;
 #[cfg(test)]
 mod tests;
@@ -27,8 +28,11 @@ pub use install_tx::{install_built_package, install_upgraded_package};
 pub use journal::{RecoveredJournal, RecoveryReport};
 pub use remove_tx::{remove_package, remove_package_for_upgrade, remove_package_purge_conffiles};
 pub use rollback::{recover_pending_transactions, rollback_plan, rollback_state};
+pub use snapshot::SnapshotRecord;
 pub use system_backend::{
-    PendingTriggerRecord, TriggerRepairReport, load_installed_system_metadata, pending_triggers,
+    PendingTriggerRecord, ProfileInitReconciliation, TriggerRepairReport,
+    load_applied_profile_init, load_installed_system_metadata, pending_triggers,
+    plan_profile_init_reconciliation, reconcile_profile_init, reconcile_provider_assets,
     repair_triggers,
 };
 pub use verify::{VerifyIssue, VerifyIssueKind, VerifyReport, verify_packages};
@@ -43,12 +47,16 @@ pub struct InstallReport {
     pub package_name: String,
     pub state_id: String,
     pub installed_paths: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snapshots: Vec<SnapshotRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RemoveReport {
     pub package_name: String,
     pub removed_paths: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snapshots: Vec<SnapshotRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -87,6 +95,11 @@ pub(crate) enum RemoveConffileMode {
     PreserveAsSave,
     Purge,
     PreserveInPlaceForUpgrade,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MutationPolicy {
+    pub snapshot_tool: Option<String>,
 }
 
 #[must_use]

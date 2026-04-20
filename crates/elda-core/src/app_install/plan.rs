@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::app::{AppContext, ParsedInstallRequest, PlannedInstallAction, ResolvedDependencyPlan};
+use crate::app::{AppContext, ParsedInstallRequest, PlannedInstallAction};
 use crate::app_parse::dependency_name_from_constraint;
 use crate::error::CoreError;
 
@@ -9,102 +9,52 @@ impl AppContext {
         &self,
         request: &ParsedInstallRequest,
     ) -> Result<Vec<PlannedInstallAction>, CoreError> {
-        let mut actions = Vec::new();
-        let mut planned_by_package = BTreeMap::new();
-        let mut visiting = BTreeSet::new();
+        let solved = self.solve_install_request(request)?;
+        let explicit_targets = solved.explicit_targets.iter().fold(
+            BTreeMap::<String, String>::new(),
+            |mut targets, (target, package_name)| {
+                targets
+                    .entry(package_name.clone())
+                    .or_insert_with(|| target.clone());
+                targets
+            },
+        );
+        let dependency_origins = dependency_origins(&solved.order, &solved.packages);
+        let mut actions = Vec::with_capacity(solved.order.len());
 
-        for target in &request.targets {
-            self.plan_install_target_closure(
-                target,
-                request,
-                "explicit",
-                None,
-                None,
-                &mut visiting,
-                &mut planned_by_package,
-                &mut actions,
-            )?;
+        for package_name in &solved.order {
+            let package = solved
+                .packages
+                .get(package_name)
+                .expect("solved package should exist in the final order");
+            let replaced_packages = self.planned_replacements(&package.resolved)?;
+            let already_installed = self.database.installed_package(package_name)?;
+            let explicit_target = explicit_targets.get(package_name);
+            let origin = dependency_origins.get(package_name);
+
+            actions.push(PlannedInstallAction {
+                target: explicit_target
+                    .cloned()
+                    .unwrap_or_else(|| package_name.clone()),
+                package_name: package_name.clone(),
+                resolved: package.resolved.clone(),
+                replaced_packages,
+                install_reason: if explicit_target.is_some() {
+                    "explicit".to_owned()
+                } else {
+                    "dep".to_owned()
+                },
+                requested_by: origin.map(|origin| origin.requested_by.clone()),
+                dependency_kind: origin.map(|origin| origin.dependency_kind.clone()),
+                raw_expr: origin.map(|origin| origin.raw_expr.clone()),
+                is_weak: origin.is_some_and(|origin| origin.is_weak),
+                provider_group: origin.and_then(|origin| origin.provider_group.clone()),
+                dependencies: package.dependencies.clone(),
+                already_installed,
+            });
         }
 
         Ok(actions)
-    }
-
-    pub(crate) fn plan_install_target_closure(
-        &self,
-        target: &str,
-        request: &ParsedInstallRequest,
-        install_reason: &str,
-        requested_by: Option<&str>,
-        resolved_by: Option<&ResolvedDependencyPlan>,
-        visiting: &mut BTreeSet<String>,
-        planned_by_package: &mut BTreeMap<String, usize>,
-        actions: &mut Vec<PlannedInstallAction>,
-    ) -> Result<(), CoreError> {
-        let dependency_request = self.dependency_install_request(request);
-        let selected_request = if install_reason == "explicit" {
-            request
-        } else {
-            &dependency_request
-        };
-        let resolved = self.resolve_install_target(target, selected_request)?;
-        let package_name = resolved.recipe.package.name.clone();
-
-        if let Some(index) = planned_by_package.get(&package_name).copied() {
-            if install_reason == "explicit" && actions[index].install_reason != "explicit" {
-                actions[index].install_reason = "explicit".to_owned();
-                actions[index].requested_by = None;
-                actions[index].dependency_kind = None;
-                actions[index].raw_expr = None;
-                actions[index].is_weak = false;
-                actions[index].provider_group = None;
-            }
-            return Ok(());
-        }
-
-        if !visiting.insert(package_name.clone()) {
-            return Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
-                format!("dependency cycle detected while planning `{package_name}`"),
-            )));
-        }
-
-        let dependencies = self.collect_install_dependencies(
-            &resolved.recipe.package,
-            install_reason,
-            &dependency_request,
-        )?;
-        let replaced_packages = self.planned_replacements(&resolved)?;
-        for dependency in &dependencies {
-            self.plan_install_target_closure(
-                &dependency.target,
-                &dependency_request,
-                "dep",
-                Some(&package_name),
-                Some(dependency),
-                visiting,
-                planned_by_package,
-                actions,
-            )?;
-        }
-        visiting.remove(&package_name);
-
-        let already_installed = self.database.installed_package(&package_name)?;
-        planned_by_package.insert(package_name.clone(), actions.len());
-        actions.push(PlannedInstallAction {
-            target: target.to_owned(),
-            package_name,
-            resolved,
-            replaced_packages,
-            install_reason: install_reason.to_owned(),
-            requested_by: requested_by.map(ToOwned::to_owned),
-            dependency_kind: resolved_by.map(|dependency| dependency.dependency_kind.clone()),
-            raw_expr: resolved_by.map(|dependency| dependency.raw_expr.clone()),
-            is_weak: resolved_by.is_some_and(|dependency| dependency.is_weak),
-            provider_group: resolved_by.and_then(|dependency| dependency.provider_group.clone()),
-            dependencies,
-            already_installed,
-        });
-
-        Ok(())
     }
 
     pub(crate) fn validate_install_conflicts(
@@ -173,4 +123,39 @@ impl AppContext {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone)]
+struct DependencyOrigin {
+    requested_by: String,
+    dependency_kind: String,
+    raw_expr: String,
+    is_weak: bool,
+    provider_group: Option<String>,
+}
+
+fn dependency_origins(
+    order: &[String],
+    packages: &BTreeMap<String, crate::app_install::solver::SolvedPackage>,
+) -> BTreeMap<String, DependencyOrigin> {
+    let mut origins = BTreeMap::new();
+
+    for package_name in order.iter().rev() {
+        let Some(package) = packages.get(package_name) else {
+            continue;
+        };
+        for dependency in &package.dependencies {
+            origins
+                .entry(dependency.target.clone())
+                .or_insert_with(|| DependencyOrigin {
+                    requested_by: package.package_name.clone(),
+                    dependency_kind: dependency.dependency_kind.clone(),
+                    raw_expr: dependency.raw_expr.clone(),
+                    is_weak: dependency.is_weak,
+                    provider_group: dependency.provider_group.clone(),
+                });
+        }
+    }
+
+    origins
 }

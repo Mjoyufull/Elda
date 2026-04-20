@@ -61,6 +61,8 @@ impl AppContext {
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
         let profile = self.resolve_profile_state()?;
+        let desired = profile.to_desired_profile(self.profile_state_base(&profile)?);
+        let profile_backend_repair = self.apply_profile_backend_state(&desired)?;
         let runtime_view = self.profile_runtime_view(&profile)?;
         let trigger_report = repair_triggers(&self.database)?;
         let pending_count =
@@ -83,6 +85,8 @@ impl AppContext {
             },
             details: Some(json!({
                 "pending_handlers": &runtime_view.pending_handler_transitions,
+                "provider_asset_repair": profile_backend_repair.clone(),
+                "profile_backend_repair": profile_backend_repair,
                 "trigger_repair": trigger_report,
                 "provider_families": &runtime_view.provider_families,
                 "required_activation_class": runtime_view.required_activation_class,

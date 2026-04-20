@@ -51,12 +51,32 @@ pub(super) fn write_system_recipe(
     sysusers_entry: &str,
     tmpfiles_entry: &str,
 ) {
+    write_system_recipe_with_provider_assets(
+        root,
+        name,
+        repo_dir,
+        version,
+        sysusers_entry,
+        tmpfiles_entry,
+        "{}",
+    );
+}
+
+pub(super) fn write_system_recipe_with_provider_assets(
+    root: &Path,
+    name: &str,
+    repo_dir: &Path,
+    version: &str,
+    sysusers_entry: &str,
+    tmpfiles_entry: &str,
+    provider_assets: &str,
+) {
     let recipes_dir = root.join("etc/elda/recipes").join(name);
     fs::create_dir_all(&recipes_dir).expect("recipe dir should exist");
     fs::write(
         recipes_dir.join("pkg.lua"),
         format!(
-            "pkg = {{\n  name = \"{name}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = 1,\n  arch = {{ \"amd64\" }},\n  kind = \"normal\",\n  source = {{\n    kind = \"git\",\n    url = \"file://{repo}\",\n    branch = \"main\",\n  }},\n  depends = {{}},\n  makedepends = {{}},\n  checkdepends = {{}},\n  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n  provides = {{}},\n  conflicts = {{}},\n  replaces = {{}},\n  conffiles = {{}},\n  sysusers = {{ \"{sysusers_entry}\" }},\n  tmpfiles = {{ \"{tmpfiles_entry}\" }},\n  alternatives = {{\n    {{\n      name = \"toolctl\",\n      link = \"/usr/bin/toolctl\",\n      path = \"/usr/bin/{name}\",\n      priority = 50,\n    }},\n  }},\n}}\n",
+            "pkg = {{\n  name = \"{name}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = 1,\n  arch = {{ \"amd64\" }},\n  kind = \"normal\",\n  source = {{\n    kind = \"git\",\n    url = \"file://{repo}\",\n    branch = \"main\",\n  }},\n  depends = {{}},\n  makedepends = {{}},\n  checkdepends = {{}},\n  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n  provides = {{}},\n  conflicts = {{}},\n  replaces = {{}},\n  conffiles = {{}},\n  sysusers = {{ \"{sysusers_entry}\" }},\n  tmpfiles = {{ \"{tmpfiles_entry}\" }},\n  alternatives = {{\n    {{\n      name = \"toolctl\",\n      link = \"/usr/bin/toolctl\",\n      path = \"/usr/bin/{name}\",\n      priority = 50,\n    }},\n  }},\n  provider_assets = {provider_assets},\n}}\n",
             repo = repo_dir.display(),
         ),
     )

@@ -3,10 +3,7 @@ use std::fs;
 use std::str::FromStr;
 
 use crate::app::{AppContext, DependencyCandidate, ParsedInstallRequest};
-use crate::app_install::dependency::constraint::{
-    installed_package_satisfies_constraint, package_satisfies_constraint,
-    provides_satisfy_constraint,
-};
+use crate::app_install::dependency::constraint::provides_satisfy_constraint;
 use crate::error::CoreError;
 use elda_recipe::load_recipe;
 use elda_repo::{RepoError, load_snapshot};
@@ -20,46 +17,6 @@ struct ProviderPackageRecord {
 }
 
 impl AppContext {
-    pub(crate) fn exact_dependency_candidate(
-        &self,
-        constraint: &NamedConstraint,
-        request: &ParsedInstallRequest,
-    ) -> Result<Option<DependencyCandidate>, CoreError> {
-        let installed = self
-            .database
-            .installed_package(&constraint.name)?
-            .is_some_and(|package| installed_package_satisfies_constraint(&package, constraint));
-        if installed {
-            return Ok(Some(DependencyCandidate {
-                target: constraint.name.clone(),
-                installed: true,
-                source_priority: None,
-                candidate_version: self.database.installed_package(&constraint.name)?.map(
-                    |package| PackageVersion {
-                        epoch: package.epoch,
-                        pkgver: package.pkgver,
-                        pkgrel: package.pkgrel,
-                    },
-                ),
-            }));
-        }
-
-        let available = self
-            .resolve_install_target(&constraint.name, request)
-            .map(|resolved| package_satisfies_constraint(&resolved.recipe.package, constraint))
-            .unwrap_or(false);
-        if available {
-            return Ok(Some(DependencyCandidate {
-                target: constraint.name.clone(),
-                installed: false,
-                source_priority: None,
-                candidate_version: None,
-            }));
-        }
-
-        Ok(None)
-    }
-
     pub(crate) fn provider_candidates(
         &self,
         constraint: &NamedConstraint,
@@ -153,33 +110,13 @@ impl AppContext {
         &self,
         candidates: &mut BTreeMap<String, DependencyCandidate>,
         packages: Vec<ProviderPackageRecord>,
-        constraint: &NamedConstraint,
+        _constraint: &NamedConstraint,
     ) -> Result<(), CoreError> {
         for package in packages {
-            let installed = self
-                .database
-                .installed_package(&package.package_name)?
-                .is_some_and(|installed_package| {
-                    installed_package_satisfies_constraint(&installed_package, constraint)
-                });
-            if installed {
-                candidates.insert(
-                    package.package_name.clone(),
-                    DependencyCandidate {
-                        target: package.package_name,
-                        installed: true,
-                        source_priority: package.source_priority,
-                        candidate_version: Some(package.candidate_version),
-                    },
-                );
-                continue;
-            }
-
             candidates.insert(
                 package.package_name.clone(),
                 DependencyCandidate {
                     target: package.package_name,
-                    installed: false,
                     source_priority: package.source_priority,
                     candidate_version: Some(package.candidate_version),
                 },

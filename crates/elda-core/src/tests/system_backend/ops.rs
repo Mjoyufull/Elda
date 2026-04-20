@@ -6,7 +6,9 @@ use elda_db::StateLayout;
 
 use super::super::support::*;
 use super::super::*;
-use super::fixtures::{create_system_make_repo, write_system_recipe};
+use super::fixtures::{
+    create_system_make_repo, write_system_recipe, write_system_recipe_with_provider_assets,
+};
 
 #[test]
 fn fix_triggers_repairs_current_system_backend_outputs_and_check_reports_pending_records() {
@@ -107,4 +109,203 @@ fn fix_triggers_repairs_current_system_backend_outputs_and_check_reports_pending
             })
     );
     assert!(ldconfig_output.exists());
+}
+
+#[test]
+fn fix_triggers_reconciles_provider_assets_after_init_change() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/usr");
+    let repo_dir = create_system_make_repo(tempdir.path(), "system-service", "system backend v1");
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["pf".to_owned(), "set-init".to_owned()],
+            vec!["dinit".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("pf set-init should succeed");
+
+    write_system_recipe_with_provider_assets(
+        tempdir.path(),
+        "system-service",
+        &repo_dir,
+        "0.1.0",
+        "u service - ServiceUser /usr/bin/false",
+        "d /run/system-service 0755 root root -",
+        r##"{
+    init = {
+      dinit = {
+        {
+          kind = "file",
+          target = "/etc/dinit.d/system-service",
+          text = "#!/bin/sh\necho dinit\n",
+          mode = "0755",
+        },
+      },
+      openrc = {
+        {
+          kind = "file",
+          target = "/etc/init.d/system-service",
+          text = "#!/bin/sh\necho openrc\n",
+          mode = "0755",
+        },
+      },
+    },
+  }"##,
+    );
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["system-service".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("system-mode install should succeed");
+
+    assert!(tempdir.path().join("etc/dinit.d/system-service").exists());
+    assert!(!tempdir.path().join("etc/init.d/system-service").exists());
+
+    let set_init = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["pf".to_owned(), "set-init".to_owned()],
+            vec!["openrc".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("pf set-init should succeed");
+    assert!(
+        set_init
+            .details
+            .as_ref()
+            .and_then(|details| details.get("provider_reconciliation"))
+            .and_then(|reconciliation| reconciliation.get("backend"))
+            .and_then(|backend| backend.as_str())
+            .is_some_and(|backend| backend == "linux-copy")
+    );
+    assert!(
+        set_init
+            .details
+            .as_ref()
+            .and_then(|details| details.get("pending_handler_transitions"))
+            .and_then(|handlers| handlers.as_array())
+            .is_some_and(|handlers| handlers.is_empty())
+    );
+    assert!(!tempdir.path().join("etc/dinit.d/system-service").exists());
+    assert_eq!(
+        fs::read_to_string(tempdir.path().join("etc/init.d/system-service"))
+            .expect("openrc provider asset should exist"),
+        "#!/bin/sh\necho openrc\n"
+    );
+
+    fs::remove_file(tempdir.path().join("etc/init.d/system-service"))
+        .expect("provider asset should be removable for repair test");
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["fix-triggers".to_owned()],
+            Vec::new(),
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("fix-triggers should succeed");
+
+    assert_eq!(report.status, "ok");
+    assert!(
+        report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("provider_asset_repair"))
+            .and_then(|repair| repair.get("backend"))
+            .and_then(|backend| backend.as_str())
+            .is_some_and(|backend| backend == "linux-copy")
+    );
+    assert_eq!(
+        fs::read_to_string(tempdir.path().join("etc/init.d/system-service"))
+            .expect("openrc provider asset should exist"),
+        "#!/bin/sh\necho openrc\n"
+    );
+}
+
+#[test]
+fn system_mode_set_init_reports_packages_missing_assets_for_the_new_provider() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/usr");
+    let repo_dir = create_system_make_repo(tempdir.path(), "system-service", "system backend v1");
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["pf".to_owned(), "set-init".to_owned()],
+            vec!["dinit".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("pf set-init should succeed");
+
+    write_system_recipe_with_provider_assets(
+        tempdir.path(),
+        "system-service",
+        &repo_dir,
+        "0.1.0",
+        "u service - ServiceUser /usr/bin/false",
+        "d /run/system-service 0755 root root -",
+        r##"{
+    init = {
+      dinit = {
+        {
+          kind = "file",
+          target = "/etc/dinit.d/system-service",
+          text = "#!/bin/sh\necho dinit\n",
+          mode = "0755",
+        },
+      },
+    },
+  }"##,
+    );
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["system-service".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("system-mode install should succeed");
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["pf".to_owned(), "set-init".to_owned()],
+            vec!["openrc".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("pf set-init should succeed");
+
+    assert!(!tempdir.path().join("etc/dinit.d/system-service").exists());
+    assert!(
+        report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("provider_reconciliation"))
+            .and_then(|reconciliation| reconciliation.get("missing_provider_packages"))
+            .and_then(|packages| packages.as_array())
+            .is_some_and(|packages| {
+                packages.len() == 1 && packages[0].as_str() == Some("system-service")
+            })
+    );
 }

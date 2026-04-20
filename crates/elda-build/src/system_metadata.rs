@@ -1,3 +1,5 @@
+mod provider_assets;
+
 use std::collections::BTreeMap;
 use std::fs;
 
@@ -6,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use elda_recipe::{LuaValue, RecipeDocument};
 
 use crate::BuildError;
+pub use provider_assets::{ProviderAsset, ProviderTreeEntry, collect_provider_assets};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct SystemPackageMetadata {
@@ -13,6 +16,7 @@ pub struct SystemPackageMetadata {
     pub tmpfiles: Option<DeclarativeAsset>,
     pub alternatives: Vec<AlternativeAsset>,
     pub hooks: Vec<LifecycleHookAsset>,
+    pub provider_assets: Vec<ProviderAsset>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +48,7 @@ pub fn collect_system_metadata(
         tmpfiles: collect_declarative_asset(recipe, "tmpfiles", recipe.package.tmpfiles.as_ref())?,
         alternatives: collect_alternatives(recipe.package.alternatives.as_ref())?,
         hooks: collect_hooks(recipe.package.hooks.as_ref())?,
+        provider_assets: collect_provider_assets(recipe)?,
     })
 }
 

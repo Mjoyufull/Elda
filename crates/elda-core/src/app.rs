@@ -8,6 +8,7 @@ use crate::privilege::{PrivilegeRequest, PrivilegeStatus};
 use crate::{CommandReport, CommandRequest};
 use elda_build::{BinarySourceVerification, BuiltPackage};
 use elda_db::{Database, InstalledPackageDetails, StateLayout};
+use elda_install::MutationPolicy;
 use elda_types::PackageVersion;
 
 pub(crate) use crate::app_model::{
@@ -146,7 +147,6 @@ pub(crate) struct PlannedUpgradeAction {
 #[derive(Debug, Clone)]
 pub(crate) struct DependencyCandidate {
     pub(crate) target: String,
-    pub(crate) installed: bool,
     pub(crate) source_priority: Option<u32>,
     pub(crate) candidate_version: Option<PackageVersion>,
 }
@@ -309,6 +309,15 @@ impl AppContext {
                 self.handle_state_import(request)
             }
             _ => Ok(self.handle_stub(request)),
+        }
+    }
+
+    pub(crate) fn mutation_policy(&self) -> MutationPolicy {
+        let snapshot_tool = self.config.defaults.snapshot_tool.trim().to_owned();
+
+        MutationPolicy {
+            snapshot_tool: (!snapshot_tool.is_empty() && snapshot_tool != "none")
+                .then_some(snapshot_tool),
         }
     }
 }

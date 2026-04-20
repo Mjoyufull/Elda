@@ -9,7 +9,7 @@ use crate::archive_state::{ArchivedPackage, available_state_ids, read_state_arch
 use crate::cached_archive::{archive_package_paths, built_package_from_archive};
 use crate::install_tx::install_upgraded_package;
 use crate::remove_tx::remove_package_for_upgrade;
-use crate::{InstallError, InstallReport};
+use crate::{InstallError, InstallReport, MutationPolicy};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DowngradeCandidate {
@@ -82,6 +82,7 @@ pub fn downgrade_to_candidate(
     pinned_version: Option<String>,
     held: bool,
     hold_source: Option<String>,
+    policy: &MutationPolicy,
 ) -> Result<InstallReport, InstallError> {
     let archived = archived_package_for_candidate(database, candidate)?;
     let package = built_package_from_archive(database, &archived)?;
@@ -90,7 +91,7 @@ pub fn downgrade_to_candidate(
         .installed_package(&candidate.package_name)?
         .is_some()
     {
-        remove_package_for_upgrade(database, &candidate.package_name)?;
+        remove_package_for_upgrade(database, &candidate.package_name, policy)?;
     }
 
     install_upgraded_package(
@@ -100,6 +101,7 @@ pub fn downgrade_to_candidate(
         pinned_version,
         held,
         hold_source,
+        policy,
     )
 }
 

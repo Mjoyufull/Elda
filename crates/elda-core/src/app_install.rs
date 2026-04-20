@@ -3,6 +3,7 @@ mod dependency;
 mod plan;
 mod remote_recipe;
 mod resolve;
+pub(crate) mod solver;
 
 pub(crate) use dependency::constraint::{
     package_satisfies_constraint, parse_dependency_constraint, provides_satisfy_constraint,
@@ -11,9 +12,10 @@ pub(crate) use dependency::constraint::{
 use serde_json::json;
 
 use crate::app::{AppContext, PlannedInstallAction};
+use crate::app_parse::installed_version;
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
-use elda_install::{install_built_package, remove_package_for_upgrade};
+use elda_install::{install_built_package, install_upgraded_package, remove_package_for_upgrade};
 
 impl AppContext {
     pub(crate) fn handle_install(
@@ -84,9 +86,14 @@ impl AppContext {
         offline: bool,
     ) -> Result<Vec<serde_json::Value>, CoreError> {
         let mut installs = Vec::with_capacity(install_plan.len());
+        let mutation_policy = self.mutation_policy();
 
         for action in install_plan {
-            if let Some(installed) = &action.already_installed {
+            let decision = install_execution_decision(action);
+
+            if let Some(installed) = &action.already_installed
+                && !decision.needs_change
+            {
                 if action.install_reason == "explicit" && installed.install_reason != "explicit" {
                     self.database
                         .set_install_reason(&action.package_name, "explicit")?;
@@ -121,6 +128,7 @@ impl AppContext {
                         "variant_id": action.resolved.flag_state.variant_id,
                         "effective_flags": action.resolved.flag_state.effective_flags,
                     },
+                    "action": decision.change_kind,
                 }));
                 continue;
             }
@@ -129,16 +137,55 @@ impl AppContext {
             built.package.dependencies = Self::planned_dependency_records(&action.dependencies);
             let mut replaced = Vec::new();
             for package_name in &action.replaced_packages {
-                replaced.push(remove_package_for_upgrade(&self.database, package_name)?);
+                replaced.push(remove_package_for_upgrade(
+                    &self.database,
+                    package_name,
+                    &mutation_policy,
+                )?);
             }
-            let install = install_built_package(
-                &self.database,
-                &built.package,
-                &action.install_reason,
-                None,
-                false,
-                None,
-            )?;
+            let install = if let Some(installed) = &action.already_installed {
+                if installed.held {
+                    return Err(CoreError::Operator(format!(
+                        "cannot change `{}` while it is held; clear the hold first",
+                        action.package_name
+                    )));
+                }
+                let candidate_version = format!(
+                    "{}:{}-{}",
+                    action.resolved.recipe.package.epoch,
+                    action.resolved.recipe.package.version,
+                    action.resolved.recipe.package.rel,
+                );
+                if let Some(pinned_version) = &installed.pinned_version
+                    && pinned_version != &candidate_version
+                {
+                    return Err(CoreError::Operator(format!(
+                        "cannot change `{}` while it is pinned to {}; clear the pin first",
+                        action.package_name, pinned_version
+                    )));
+                }
+
+                remove_package_for_upgrade(&self.database, &action.package_name, &mutation_policy)?;
+                install_upgraded_package(
+                    &self.database,
+                    &built.package,
+                    &action.install_reason,
+                    installed.pinned_version.clone(),
+                    installed.held,
+                    installed.hold_source.clone(),
+                    &mutation_policy,
+                )?
+            } else {
+                install_built_package(
+                    &self.database,
+                    &built.package,
+                    &action.install_reason,
+                    None,
+                    false,
+                    None,
+                    &mutation_policy,
+                )?
+            };
             installs.push(json!({
                 "target": action.target,
                 "selected_lane": built.resolved.selected_lane,
@@ -158,6 +205,7 @@ impl AppContext {
                     "variant_id": built.resolved.flag_state.variant_id,
                     "effective_flags": built.resolved.flag_state.effective_flags,
                 },
+                "action": decision.change_kind,
             }));
         }
         let _ = self.reconcile_cache_policy()?;
@@ -166,54 +214,92 @@ impl AppContext {
     }
 
     fn install_action_json(action: &PlannedInstallAction) -> serde_json::Value {
+        let decision = install_execution_decision(action);
+
         json!({
-            "action": match (
-                &action.already_installed,
-                action.replaced_packages.is_empty(),
-                action.is_weak,
-                action.install_reason.as_str(),
-            ) {
-                (Some(_), _, _, _) => "keep-installed",
-                (None, false, _, "explicit") => "install-replacing",
-                (None, _, true, _) => "install-recommended",
-                (None, _, false, "explicit") => "install-explicit",
-                _ => "install-dependency",
-            },
-            "target": action.target,
-            "package": action.package_name,
-            "version": format!(
-                "{}:{}-{}",
-                action.resolved.recipe.package.epoch,
-                action.resolved.recipe.package.version,
-                action.resolved.recipe.package.rel,
-            ),
-            "selected_lane": action.resolved.selected_lane,
-            "source_kind": action.resolved.selected_source_kind,
-            "persisted_source_kind": action.resolved.persisted_source_kind,
-            "source_ref": action.resolved.source_ref,
-            "variant_id": action.resolved.flag_state.variant_id,
-            "install_reason": action.install_reason,
-            "requested_by": action.requested_by,
-            "dependency_kind": action.dependency_kind,
-            "raw_expr": action.raw_expr,
-            "is_weak": action.is_weak,
-            "provider_group": action.provider_group,
-            "replaced_packages": action.replaced_packages,
-            "already_installed": action.already_installed.is_some(),
-            "effective_flags": action.resolved.flag_state.effective_flags,
-            "dependencies": action
-                .dependencies
-                .iter()
-                .map(|dependency| {
-                    json!({
-                        "target": dependency.target,
-                        "dependency_kind": dependency.dependency_kind,
-                        "raw_expr": dependency.raw_expr,
-                        "is_weak": dependency.is_weak,
-                        "provider_group": dependency.provider_group,
-                    })
+        "action": decision.change_kind,
+        "target": action.target,
+        "package": action.package_name,
+        "version": format!(
+            "{}:{}-{}",
+            action.resolved.recipe.package.epoch,
+            action.resolved.recipe.package.version,
+            action.resolved.recipe.package.rel,
+        ),
+        "selected_lane": action.resolved.selected_lane,
+        "source_kind": action.resolved.selected_source_kind,
+        "persisted_source_kind": action.resolved.persisted_source_kind,
+        "source_ref": action.resolved.source_ref,
+        "variant_id": action.resolved.flag_state.variant_id,
+        "install_reason": action.install_reason,
+        "requested_by": action.requested_by,
+        "dependency_kind": action.dependency_kind,
+        "raw_expr": action.raw_expr,
+        "is_weak": action.is_weak,
+        "provider_group": action.provider_group,
+        "replaced_packages": action.replaced_packages,
+        "already_installed": action.already_installed.is_some(),
+        "needs_change": decision.needs_change,
+        "effective_flags": action.resolved.flag_state.effective_flags,
+        "dependencies": action
+            .dependencies
+            .iter()
+            .map(|dependency| {
+                json!({
+                    "target": dependency.target,
+                    "dependency_kind": dependency.dependency_kind,
+                    "raw_expr": dependency.raw_expr,
+                    "is_weak": dependency.is_weak,
+                    "provider_group": dependency.provider_group,
                 })
-                .collect::<Vec<_>>(),
+            })
+            .collect::<Vec<_>>(),
         })
+    }
+}
+
+struct InstallExecutionDecision {
+    needs_change: bool,
+    change_kind: &'static str,
+}
+
+fn install_execution_decision(action: &PlannedInstallAction) -> InstallExecutionDecision {
+    let Some(installed) = &action.already_installed else {
+        return InstallExecutionDecision {
+            needs_change: true,
+            change_kind: if !action.replaced_packages.is_empty()
+                && action.install_reason == "explicit"
+            {
+                "install-replacing"
+            } else if action.is_weak {
+                "install-recommended"
+            } else if action.install_reason == "explicit" {
+                "install-explicit"
+            } else {
+                "install-dependency"
+            },
+        };
+    };
+    let candidate_version = format!(
+        "{}:{}-{}",
+        action.resolved.recipe.package.epoch,
+        action.resolved.recipe.package.version,
+        action.resolved.recipe.package.rel,
+    );
+    let needs_change = installed_version(installed) != candidate_version
+        || installed.variant_id != Some(action.resolved.flag_state.variant_id.clone())
+        || installed.source_kind != action.resolved.persisted_source_kind;
+
+    InstallExecutionDecision {
+        needs_change,
+        change_kind: if needs_change {
+            if action.install_reason == "explicit" {
+                "upgrade-explicit"
+            } else {
+                "upgrade-dependency"
+            }
+        } else {
+            "keep-installed"
+        },
     }
 }

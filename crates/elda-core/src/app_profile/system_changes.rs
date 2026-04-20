@@ -3,10 +3,16 @@ use serde::Serialize;
 use crate::app::{AppContext, ResolvedProfileState};
 use crate::config::default_native_arch;
 use crate::error::CoreError;
+use elda_db::InstallationMode;
 
-const CURRENT_PROFILE_BACKEND: &str = "prefix-copy";
+const PREFIX_PROFILE_BACKEND: &str = "prefix-copy";
+const SYSTEM_PROFILE_BACKEND: &str = "linux-copy";
 const DEFERRED_REASON: &str =
     "the current backend does not reconcile provider-scoped system changes yet";
+const SYSTEM_PROVIDER_REASON: &str =
+    "provider-scoped asset reconciliation can be applied on the current backend via `fix-triggers`";
+const SYSTEM_INIT_REASON: &str =
+    "the current backend can reconcile the active init-provider asset set directly";
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ProfileRuntimeView {
@@ -70,7 +76,11 @@ impl AppContext {
         desired: &ResolvedProfileState,
     ) -> Result<ProfileRuntimeView, CoreError> {
         let applied = self.resolve_applied_profile_state()?;
-        Ok(build_profile_runtime_view(&applied, desired))
+        Ok(build_profile_runtime_view(
+            &applied,
+            desired,
+            self.database.layout().mode == InstallationMode::System,
+        ))
     }
 
     fn resolve_applied_profile_state(&self) -> Result<ResolvedProfileState, CoreError> {
@@ -82,11 +92,18 @@ impl AppContext {
             .map(|package| package.pkgname)
             .collect::<Vec<_>>();
 
+        let system_backend = self.database.layout().mode == InstallationMode::System;
+        let applied_init = if system_backend {
+            elda_install::load_applied_profile_init(self.database.layout())?
+        } else {
+            String::new()
+        };
+
         Ok(ResolvedProfileState {
             active_profiles,
             native_arch: default_native_arch(),
             foreign_arches: Vec::new(),
-            init: String::new(),
+            init: applied_init,
         })
     }
 }
@@ -94,9 +111,15 @@ impl AppContext {
 fn build_profile_runtime_view(
     applied: &ResolvedProfileState,
     desired: &ResolvedProfileState,
+    system_backend: bool,
 ) -> ProfileRuntimeView {
     let mut pending = Vec::new();
     let mut strongest = ActivationClass::None;
+    let backend = if system_backend {
+        SYSTEM_PROFILE_BACKEND
+    } else {
+        PREFIX_PROFILE_BACKEND
+    };
 
     if applied.active_profiles != desired.active_profiles {
         push_transition(
@@ -107,9 +130,13 @@ fn build_profile_runtime_view(
                 summary: "provider-family reconciliation is pending for the requested profile set."
                     .to_owned(),
                 activation_class: ActivationClass::Live.as_str(),
-                backend: CURRENT_PROFILE_BACKEND,
-                supported: false,
-                reason: DEFERRED_REASON,
+                backend,
+                supported: system_backend,
+                reason: if system_backend {
+                    SYSTEM_PROVIDER_REASON
+                } else {
+                    DEFERRED_REASON
+                },
                 current: SystemChangeState {
                     active_profiles: applied.active_profiles.clone(),
                     ..SystemChangeState::default()
@@ -126,6 +153,12 @@ fn build_profile_runtime_view(
     }
 
     if applied.init != desired.init {
+        let init_transition_supported = system_backend;
+        let activation_class = if init_transition_supported {
+            ActivationClass::Live
+        } else {
+            ActivationClass::RebootRequired
+        };
         push_transition(
             &mut pending,
             &mut strongest,
@@ -136,10 +169,14 @@ fn build_profile_runtime_view(
                     empty_to_unset(&applied.init),
                     empty_to_unset(&desired.init),
                 ),
-                activation_class: ActivationClass::RebootRequired.as_str(),
-                backend: CURRENT_PROFILE_BACKEND,
-                supported: false,
-                reason: DEFERRED_REASON,
+                activation_class: activation_class.as_str(),
+                backend,
+                supported: init_transition_supported,
+                reason: if init_transition_supported {
+                    SYSTEM_INIT_REASON
+                } else {
+                    DEFERRED_REASON
+                },
                 current: SystemChangeState {
                     init: applied.init.clone(),
                     ..SystemChangeState::default()
@@ -151,7 +188,7 @@ fn build_profile_runtime_view(
                 added_foreign_arches: Vec::new(),
                 removed_foreign_arches: Vec::new(),
             },
-            ActivationClass::RebootRequired,
+            activation_class,
         );
     }
 
@@ -165,7 +202,7 @@ fn build_profile_runtime_view(
                 kind: "multilib-policy-transition",
                 summary: "foreign-architecture policy reconciliation is pending.".to_owned(),
                 activation_class: ActivationClass::Live.as_str(),
-                backend: CURRENT_PROFILE_BACKEND,
+                backend,
                 supported: false,
                 reason: DEFERRED_REASON,
                 current: SystemChangeState {
@@ -189,7 +226,7 @@ fn build_profile_runtime_view(
         },
         pending_handler_transitions: pending,
         required_activation_class: strongest.as_str(),
-        backend: CURRENT_PROFILE_BACKEND,
+        backend,
     }
 }
 

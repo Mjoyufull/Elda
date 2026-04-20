@@ -1,5 +1,4 @@
 use crate::error::CoreError;
-use elda_db::InstalledPackageDetails;
 use elda_recipe::PackageDefinition;
 use elda_types::{ConstraintVersion, NamedConstraint};
 
@@ -20,18 +19,6 @@ pub(crate) fn package_satisfies_constraint(
             package.epoch,
             package.version.clone(),
             Some(package.rel),
-        ))
-}
-
-pub(crate) fn installed_package_satisfies_constraint(
-    package: &InstalledPackageDetails,
-    constraint: &NamedConstraint,
-) -> bool {
-    constraint.matches_name(&package.pkgname)
-        && constraint.matches_version(&ConstraintVersion::from_parts(
-            package.epoch,
-            package.pkgver.clone(),
-            Some(package.pkgrel),
         ))
 }
 

@@ -36,6 +36,7 @@ pub struct PackageDefinition {
     pub tmpfiles: Option<LuaValue>,
     pub alternatives: Option<LuaValue>,
     pub hooks: Option<LuaValue>,
+    pub provider_assets: Option<LuaValue>,
     pub flags_default: Option<LuaValue>,
     pub flags_allowed: Option<LuaValue>,
     pub flags_implies: Option<LuaValue>,

@@ -3,6 +3,7 @@ use super::*;
 #[test]
 fn profile_apply_installs_base_anchor_and_persists_policy() {
     let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
     let dep_binary = create_vendor_binary(tempdir.path(), "base-tool");
     let profile_repo = create_git_make_repo(tempdir.path(), "yoka-core-source");
 

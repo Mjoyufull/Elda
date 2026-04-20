@@ -246,6 +246,13 @@ Ad hoc git normalization rules:
 - `source_ref` stores the requested git target and `repo_commit` stores the fully resolved commit
 - branch or tag names are provenance for ad hoc installs, not version authority; maintained recipes own human-facing package versioning
 
+Ad hoc git upgrade rules:
+- plain `elda u` treats installed ad hoc git packages as upgrade candidates only through their persisted `source_ref`, not through synced package indexes
+- if `source_ref` tracks a moving branch, including an implicit default-branch install, `elda u` may re-resolve that branch during planning and upgrades only when the resolved commit differs from installed `repo_commit`
+- if `source_ref` names a tag or exact revision, plain `elda u` treats that install as pinned to the requested ref and does not auto-advance it
+- changing a pinned ad hoc git target requires an explicit new install request or conversion into a maintained recipe
+- when an ad hoc git upgrade does occur, the new installed version is re-normalized from the new resolved commit and `repo_commit` is updated accordingly
+
 Lane-selection rules:
 - `elda i` selection precedence is: explicit command (`ig` / `ib`), explicit preference flag (`--prefer-source` / `--prefer-binary`), `source.default_lane`, then config `defaults.install_preference`
 - `defaults.install_preference` defaults to `binary`
@@ -740,7 +747,7 @@ Each repo index record carries:
 | `fallback_git_url` | Optional compile fallback |
 | `pkg_lua` | Exact package-definition snapshot for resolution, visibility, and source builds |
 | `ci_policy` | `none` \| `scheduled` \| `on_add` \| `manual_only` |
-| `channel` | `testing` \| `stable` or equivalent remote-defined lanes |
+| `channel` | `testing` \| `stable` \| delayed-stability lanes such as `stable-7d` / `stable-30d`, or equivalent remote-defined lanes |
 
 `source_kind = adopted` is DB-only state. Adopted-package provenance appears in the installed DB and desired-state exports, not in native remote indexes.
 
@@ -755,6 +762,13 @@ Maintained remote delivery rules:
 - source-capable installs from synced remotes fail closed if the selected remote does not define `packages_url`
 - the signed index plus `repo_commit` is the trust anchor for source-only maintained records; Elda must not build them from the package repo's moving default branch
 - `fallback_git_url` is an optional compile fallback for binary-indexed records and is not the primary source-only maintained-remote contract
+
+Channel rules:
+- each enabled remote resolves against one selected channel; if no channel is configured for that remote, Elda defaults to `stable`
+- delayed rollout policy such as "one week late" or "one month late" is expressed as a channel choice like `stable-7d` or `stable-30d`, not as per-package local delay timers inside the client
+- delayed channels are remote-published signed snapshots that intentionally trail another channel by the remote's policy
+- `elda sync` fetches the selected channel snapshot for each remote, and `elda u` upgrades only against the currently selected channel for that remote
+- if a configured remote does not publish the requested channel, sync fails loudly instead of silently falling back to another lane
 
 ### 11.3 Trust Model
 Trust rules:
@@ -789,6 +803,7 @@ Install and upgrade rules:
 - stale remotes may use the last verified snapshot only when policy allows it
 - `--offline` means no network access and uses only cached payloads plus last verified index snapshots
 - if required metadata or payloads are missing locally, offline operations fail loudly
+- installed ad hoc git packages are the explicit exception to snapshot-based upgrade inputs: `elda u` resolves them from their persisted `source_ref` only when that ref is a moving branch/default-branch target
 
 ### 11.5 Cache Policy
 Cache rules:
@@ -1302,6 +1317,9 @@ native_arch = "amd64"
 foreign_arches = ["i386"]
 init = "dinit"
 
+[resolver.provider_preferences]
+gl-provider = ["mesa-provider", "zink-provider"]
+
 [flags.global]
 wayland = true
 x11 = false
@@ -1326,6 +1344,11 @@ show_remote = true
 ```
 
 Separate remote, extension, and cache documents are additional TOML files under their dedicated directories and are interpreted according to the contracts in this specification.
+
+Provider policy uses `[resolver.provider_preferences]`. Each key is a virtual dependency or
+`provides` name, and each value is an ordered list of concrete package names. The resolver tries
+configured packages first, then falls back to remote priority and same-priority version ordering;
+if provider choice still remains ambiguous, resolution fails loudly.
 
 Install-lane rule:
 - `install_preference = "binary"` means `elda i` prefers a declared binary lane when one exists

@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use serde_json::json;
+
 use crate::app::{AppContext, DesiredStateProfile, ResolvedProfileState};
 use crate::config::default_native_arch;
 use crate::error::CoreError;
@@ -62,6 +64,26 @@ impl AppContext {
         fs::write(path, serde_json::to_vec_pretty(profile)?)?;
 
         Ok(())
+    }
+
+    pub(crate) fn plan_profile_backend_state(
+        &self,
+        desired: &DesiredStateProfile,
+    ) -> Result<serde_json::Value, CoreError> {
+        Ok(json!(elda_install::plan_profile_init_reconciliation(
+            self.database.layout(),
+            &desired.init,
+        )?))
+    }
+
+    pub(crate) fn apply_profile_backend_state(
+        &self,
+        desired: &DesiredStateProfile,
+    ) -> Result<serde_json::Value, CoreError> {
+        Ok(json!(elda_install::reconcile_profile_init(
+            self.database.layout(),
+            &desired.init,
+        )?))
     }
 
     pub(crate) fn profile_state_base(

@@ -1,13 +1,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::os::unix::fs::symlink;
-use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use elda_build::{BuiltPackage, SystemPackageMetadata};
 use elda_db::{Database, InstallationMode, StateLayout};
 
+use super::paths::{
+    alternative_registry_path, package_metadata_dir, package_metadata_path, resolve_symlink_target,
+    strip_leading_slash,
+};
+use super::provider_assets::{
+    active_provider_families, active_provider_paths, all_provider_target_paths,
+    clear_provider_storage_root, materialize_provider_assets_under_root, provider_storage_paths,
+    remove_provider_paths,
+};
 use crate::InstallError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +53,7 @@ pub(crate) fn reconcile_system_state_after_install(
         &package.package_name,
         &package.system_metadata,
     )?;
+    reconcile_provider_assets(database.layout())?;
     reconcile_alternatives(database.layout())
 }
 
@@ -56,8 +65,24 @@ pub(crate) fn reconcile_system_state_after_remove(
         return Ok(());
     }
 
+    let removed_provider_paths = load_installed_system_metadata(database.layout(), package_name)?
+        .map(|metadata| {
+            let mut paths = provider_storage_paths(&metadata);
+            paths.extend(all_provider_target_paths(&metadata));
+            paths
+        })
+        .unwrap_or_default();
     remove_package_metadata(database.layout(), package_name)?;
-    remove_package_assets(database.layout(), package_name)?;
+    remove_asset(
+        database.layout(),
+        &format!("/usr/lib/elda/sysusers.d/{package_name}.conf"),
+    )?;
+    remove_asset(
+        database.layout(),
+        &format!("/usr/lib/elda/tmpfiles.d/{package_name}.conf"),
+    )?;
+    remove_provider_paths(database.layout(), removed_provider_paths)?;
+    reconcile_provider_assets(database.layout())?;
     reconcile_alternatives(database.layout())
 }
 
@@ -67,13 +92,19 @@ pub(crate) fn active_system_paths(layout: &StateLayout) -> Result<BTreeSet<Strin
     }
 
     let mut paths = BTreeSet::new();
+    let active_families = active_provider_families(layout)?;
     for record in load_all_package_metadata(layout)? {
-        if let Some(asset) = record.system_metadata.sysusers {
-            paths.insert(asset.path);
+        if let Some(asset) = record.system_metadata.sysusers.as_ref() {
+            paths.insert(asset.path.clone());
         }
-        if let Some(asset) = record.system_metadata.tmpfiles {
-            paths.insert(asset.path);
+        if let Some(asset) = record.system_metadata.tmpfiles.as_ref() {
+            paths.insert(asset.path.clone());
         }
+        paths.extend(provider_storage_paths(&record.system_metadata));
+        paths.extend(active_provider_paths(
+            &record.system_metadata,
+            &active_families,
+        ));
     }
     paths.extend(load_alternative_registry(layout)?.winners.into_keys());
 
@@ -146,19 +177,6 @@ fn materialize_package_assets(
     Ok(())
 }
 
-fn remove_package_assets(layout: &StateLayout, package_name: &str) -> Result<(), InstallError> {
-    remove_asset(
-        layout,
-        &format!("/usr/lib/elda/sysusers.d/{package_name}.conf"),
-    )?;
-    remove_asset(
-        layout,
-        &format!("/usr/lib/elda/tmpfiles.d/{package_name}.conf"),
-    )?;
-
-    Ok(())
-}
-
 fn write_asset(
     layout: &StateLayout,
     asset: Option<&elda_build::DeclarativeAsset>,
@@ -182,6 +200,25 @@ fn remove_asset(layout: &StateLayout, asset_path: &str) -> Result<(), InstallErr
     }
 
     Ok(())
+}
+
+pub fn reconcile_provider_assets(layout: &StateLayout) -> Result<(), InstallError> {
+    let packages = load_all_package_metadata(layout)?
+        .into_iter()
+        .map(|record| (record.package_name, record.system_metadata))
+        .collect::<BTreeMap<_, _>>();
+    let provider_targets = packages
+        .values()
+        .flat_map(all_provider_target_paths)
+        .collect::<BTreeSet<_>>();
+
+    remove_provider_paths(layout, provider_targets)?;
+    clear_provider_storage_root(layout)?;
+    materialize_provider_assets_under_root(
+        layout.root_dir.as_path(),
+        &packages,
+        &active_provider_families(layout)?,
+    )
 }
 
 fn reconcile_alternatives(layout: &StateLayout) -> Result<(), InstallError> {
@@ -237,6 +274,15 @@ fn reconcile_alternatives(layout: &StateLayout) -> Result<(), InstallError> {
         write_link_path(layout, link, &winner.target)?;
     }
     save_alternative_registry(layout, &AlternativeRegistry { winners })
+}
+
+pub(crate) fn load_all_installed_system_metadata(
+    layout: &StateLayout,
+) -> Result<BTreeMap<String, SystemPackageMetadata>, InstallError> {
+    Ok(load_all_package_metadata(layout)?
+        .into_iter()
+        .map(|record| (record.package_name, record.system_metadata))
+        .collect())
 }
 
 fn load_all_package_metadata(
@@ -306,34 +352,4 @@ fn remove_link_path(layout: &StateLayout, link: &str) -> Result<(), InstallError
     }
 
     Ok(())
-}
-
-fn resolve_symlink_target(layout: &StateLayout, target: &str) -> PathBuf {
-    if layout.root_dir == Path::new("/") {
-        PathBuf::from(target)
-    } else {
-        layout
-            .root_dir
-            .join(strip_leading_slash(target).unwrap_or(target))
-    }
-}
-
-fn package_metadata_dir(layout: &StateLayout) -> PathBuf {
-    layout.state_dir.join("system-backend").join("packages")
-}
-
-fn package_metadata_path(layout: &StateLayout, package_name: &str) -> PathBuf {
-    package_metadata_dir(layout).join(format!("{package_name}.json"))
-}
-
-fn alternative_registry_path(layout: &StateLayout) -> PathBuf {
-    layout
-        .state_dir
-        .join("system-backend")
-        .join("alternatives.json")
-}
-
-fn strip_leading_slash(path: &str) -> Result<&str, InstallError> {
-    path.strip_prefix('/')
-        .ok_or_else(|| InstallError::Unsupported(format!("expected absolute path `{path}`")))
 }
