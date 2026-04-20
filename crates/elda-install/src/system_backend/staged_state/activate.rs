@@ -192,10 +192,13 @@ fn sync_live_path(
     if same_live_entry(&source, &target)? {
         return Ok(());
     }
+    let switch_path = next_switch_path(&target, journal);
+    materialize_switch_path(&source, &switch_path)?;
+    journal.created_paths.push(switch_path.clone());
     if target.exists() || target.is_symlink() {
         backup_and_remove_existing(&target, journal)?;
     }
-    copy_existing_path(&source, &target)?;
+    fs::rename(&switch_path, &target)?;
     journal.created_paths.push(target);
 
     Ok(())
@@ -225,6 +228,16 @@ fn same_live_entry(source: &Path, target: &Path) -> Result<bool, InstallError> {
 
 fn next_backup_path(transaction_root: &Path, journal: &TransactionJournal) -> PathBuf {
     transaction_root.join(format!("activate-backup-{}", journal.backup_entries.len()))
+}
+
+fn next_switch_path(target: &Path, journal: &TransactionJournal) -> PathBuf {
+    let mut path = target.as_os_str().to_os_string();
+    path.push(format!(".elda-switch-{}", journal.created_paths.len()));
+    PathBuf::from(path)
+}
+
+fn materialize_switch_path(source: &Path, switch_path: &Path) -> Result<(), InstallError> {
+    copy_existing_path(source, switch_path)
 }
 
 fn backup_and_remove_existing(

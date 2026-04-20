@@ -4,7 +4,7 @@ use std::fs;
 use crate::app::{AppContext, DesiredStateDocument, DesiredStatePackage, ParsedInstallRequest};
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
-use elda_install::pending_triggers;
+use elda_install::{load_system_backend_status, pending_triggers};
 use elda_repo::list_remotes;
 
 impl AppContext {
@@ -32,6 +32,7 @@ impl AppContext {
         self.database.bootstrap()?;
         let snapshot = self.database.state_snapshot()?;
         let packages = self.database.list_installed_packages()?;
+        let backend = load_system_backend_status(self.database.layout())?;
 
         Ok(CommandReport {
             area: "state",
@@ -50,6 +51,7 @@ impl AppContext {
                 "active_state": snapshot.active_state,
                 "world": snapshot.world,
                 "packages": packages,
+                "backend": backend,
             })),
         })
     }
@@ -58,10 +60,20 @@ impl AppContext {
         self.database.bootstrap()?;
         let mut report = self.database.health_report()?;
         let pending_triggers = pending_triggers(self.database.layout())?;
+        let backend = load_system_backend_status(self.database.layout())?;
         if !pending_triggers.is_empty() {
             report.issues.push(format!(
                 "pending trigger repair exists for {} system trigger(s)",
                 pending_triggers.len()
+            ));
+        }
+        let critical_pending = pending_triggers
+            .iter()
+            .filter(|record| record.critical)
+            .count();
+        if critical_pending > 0 {
+            report.issues.push(format!(
+                "pending critical boot trigger repair exists for {critical_pending} system trigger(s)"
             ));
         }
 
@@ -84,6 +96,7 @@ impl AppContext {
             details: Some(json!({
                 "health": report,
                 "pending_triggers": pending_triggers,
+                "backend": backend,
             })),
         })
     }

@@ -13,6 +13,14 @@ pub enum ActivationBackend {
     LinuxCopy,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivationBackendCapabilities {
+    pub live_activation: bool,
+    pub reboot_only: bool,
+    pub boot_integrated: bool,
+    pub archives_states: bool,
+}
+
 impl ActivationBackend {
     #[must_use]
     pub const fn name(self) -> &'static str {
@@ -27,6 +35,24 @@ impl ActivationBackend {
         match self {
             Self::PrefixCopy => "prefix",
             Self::LinuxCopy => "system",
+        }
+    }
+
+    #[must_use]
+    pub const fn capabilities(self) -> ActivationBackendCapabilities {
+        match self {
+            Self::PrefixCopy => ActivationBackendCapabilities {
+                live_activation: true,
+                reboot_only: false,
+                boot_integrated: false,
+                archives_states: false,
+            },
+            Self::LinuxCopy => ActivationBackendCapabilities {
+                live_activation: true,
+                reboot_only: false,
+                boot_integrated: true,
+                archives_states: true,
+            },
         }
     }
 }
@@ -53,6 +79,16 @@ impl SystemTrigger {
             Self::Depmod => "depmod",
             Self::Initramfs => "initramfs",
         }
+    }
+
+    #[must_use]
+    pub const fn is_boot_trigger(self) -> bool {
+        matches!(self, Self::Depmod | Self::Initramfs)
+    }
+
+    #[must_use]
+    pub const fn is_critical(self) -> bool {
+        matches!(self, Self::Initramfs)
     }
 }
 

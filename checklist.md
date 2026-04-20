@@ -25,17 +25,17 @@ Status source used for this tracker:
 
 | Done | In Progress | Todo |
 |---|---|---|
-| [x] Workspace/crate baseline exists (`elda-cli`, `elda-core`, `elda-db`, etc.) | [~] Repo/trust/cache slice is real but not full spec-complete supply-chain model | [ ] Full Linux `/usr` activation backend and full system transaction lifecycle |
+| [x] Workspace/crate baseline exists (`elda-cli`, `elda-core`, `elda-db`, etc.) | [~] Repo/trust/cache slice is real but not full spec-complete supply-chain model | [ ] Broader daemon/system-management lifecycle on top of the current backend |
 | [x] SQLite installed-state DB + ownership model + manifests | [~] Build/runtime source-kind surface still narrower than declared model (`nix_flake`, `gentoo_overlay` gap) | [ ] Executable support for declared interbuild source kinds (`nix_flake`, `gentoo_overlay`) |
 | [x] Recipe parse/check flow for `pkg.lua`, with legacy import path | [~] Some command namespaces still not fully backended (`ci`, `forge`, `mg`, `adopt`, `ext`, `qa`, `daemon run`) | [ ] Remove remaining `handle_stub()` surfaces and land real backend implementations |
-| [x] Source/binary lane model (`i`, `ig`, `ib`, `--prefer-*`) | [~] Prefix rollback is real and disposable-root `/usr` rollback now restores staged archived state; live-host backend parity is still pending | [ ] Full live-host system backend archived-state + rollback parity |
+| [x] Source/binary lane model (`i`, `ig`, `ib`, `--prefer-*`) | [~] Prefix rollback is real and the current `/usr` backend now performs staged switch activation with archived-state rollback parity | [ ] Broader daemon/system-management layers on top of the current backend |
 | [x] Direct git installs + multi build-system execution (`cargo/cmake/meson/make/go/zig/python/nimble`) | [~] Profile/daemon area has current slice support but broader system-change/trigger integration remains | [ ] Full typed trigger engine + provider-family/system-change handlers on live backend |
 | [x] Vendor workflow (`vendor add/import/export`) | [~] CI/forge publication pipeline is not started | [ ] Native CI DAG/layer build + publish pipeline + `ci` namespace completion |
 | [x] Sync/search/info from verified merged snapshots | [~] Interepo/migration architecture is documented but implementation not landed | [ ] Interepo adapters + translation confidence flow + coexistence modes |
 | [x] Trust model baseline: signed index, TOFU/pinned, explicit rotated-key acceptance, offline verified snapshots | [~] Replacement claim is still blocked by remaining backend/system gaps | [ ] Reach "pkgit replacement ready" gate and then full spec-complete gate |
 | [x] Policy + introspection (`pin`, `hold`, `why`, `rdeps`, `autoremove`, `diff`, `downgrade`) | [~] File-size/code-standards cleanup mostly done, a few files still over soft limit | [ ] Finish standards cleanup and keep large files split sustainably |
-| [x] Prefix-safe transaction + verify/recover + conffile behavior (`.eldanew`/`.eldasave`) | [~] Live-host `/usr` cutover is now the largest remaining runtime gap | [ ] Finish live-host system activation, archive, and rollback parity |
-| [x] Full PubGrub-style dependency solver with provider-policy/config control | [~] Live-host `/usr` cutover is now the largest remaining runtime gap | [ ] Finish live-host system activation, archive, and rollback parity |
+| [x] Prefix-safe transaction + verify/recover + conffile behavior (`.eldanew`/`.eldasave`) | [~] The current `/usr` backend is real; broader system-management and later-phase Linux work remain | [ ] Finish broader daemon/system-management behavior on top of the backend |
+| [x] Full PubGrub-style dependency solver with provider-policy/config control | [~] The current `/usr` backend is real; broader system-management and later-phase Linux work remain | [ ] Finish broader daemon/system-management behavior on top of the backend |
 
 ---
 
@@ -50,7 +50,7 @@ Status source used for this tracker:
 | Phase 4: Resolver/flags/planning | Completed | [x] PubGrub-style install/upgrade solver; [x] conflicts/replaces/pin/hold checks; [x] config-backed provider preferences through `[resolver.provider_preferences]`; [x] synced source-lane resolution can require remote `packages_url` when the selected lane needs a real package tree |
 | Phase 5: Build/staging/payloads | In Progress | [x] stage + manifest + payload; [x] git/archive/github_release paths; [x] synced source builds materialize pinned `packages/<pkgname>/` trees from `packages_url` + `repo_commit`; [x] build metadata now captures typed `provider_assets`; [~] source-kind parity not complete |
 | Phase 6: Prefix transaction backend | In Progress | [x] install/remove/upgrade journals + verify/recover; [x] rollback + downgrade in prefix; [~] system backend parity pending |
-| Phase 7: Linux system backend + triggers | In Progress | [x] disposable-root `/usr` staged backend; [x] internal trigger engine + `check`/`fix-triggers`; [x] disposable-root archive/rollback parity; [x] provider-asset storage/materialization/reconciliation on the disposable-root backend; [x] applied init-provider backend state now persists under `state/system-backend/` and drives current provider-asset materialization; [x] configured `snapshot_tool` requests now record pre/post activation attempts into journals, reports, and archived state metadata for system install/remove transactions; [~] live-host cutover and broader boot/backend integration still pending |
+| Phase 7: Linux system backend + triggers | Completed | [x] staged `/usr` backend; [x] live file-switch activation; [x] internal trigger engine + `check`/`fix-triggers`; [x] archive/rollback parity on the current `/usr` backend; [x] provider-asset storage/materialization/reconciliation on the current backend; [x] applied init-provider backend state persists under `state/system-backend/` and drives current provider-asset materialization; [x] configured `snapshot_tool` requests now record pre/post activation attempts into journals, reports, and archived state metadata for system install/remove transactions; [x] activation-backend capability reporting plus persisted boot status landed |
 | Phase 8: Profiles/machine shape/ops | In Progress | [x] `pf show/apply/add/rm/set-init/clear-init/set-arch/add-foreign-arch/remove-foreign-arch`; [x] state export/import; [x] current `/usr` backend now applies supported init-provider asset changes through profile edits/import/fix-triggers instead of leaving them permanently pending; [~] broader daemon/system-management integration pending |
 | Phase 9: Native CI + binary publishing | Not Started | [ ] CI submission pipeline; [ ] DAG/layer generation; [ ] artifact/signature/index publish path |
 | Phase 10: Git-mode interbuilds | Not Started | [ ] `nix_flake` bounded execution; [ ] `gentoo_overlay` bounded execution |
@@ -66,10 +66,10 @@ Status source used for this tracker:
 - [x] Mutation locking and transaction journal exist
 - [x] `verify`, `reverify`, and `recover` are real
 - [x] Prefix rollback and downgrade are real
-- [~] Backend parity between prefix and system-mode is better, but system-mode is still disposable-root only
-- [~] Disposable-root system backend now has staged-state activation plus archive/rollback/trigger behavior
-- [~] Disposable-root system backend now records configured activation-snapshot requests, but live-host snapshot execution and broader boot integration are still pending
-- [ ] Full live system backend parity with archive/rollback/trigger behavior
+- [x] Backend parity between prefix and the current `/usr` backend is real for activation/archive/rollback/trigger behavior
+- [x] The current `/usr` backend now has staged-state activation plus archive/rollback/trigger behavior
+- [x] The current `/usr` backend now records configured activation-snapshot requests, performs staged file-switch activation, and persists backend/boot status for operator reporting
+- [~] Broader system-management layers on top of the current backend are still Phase 8+ work
 
 ### 2) Package Definition + Build Runtime
 - [x] `pkg.lua` parse/validate path exists
@@ -136,8 +136,8 @@ Status source used for this tracker:
 - [~] `ELDA-01` CLI surface still exceeds backend coverage in places
 - [~] `ELDA-02` Repo trust/cache slice is materially improved but still partial vs full spec
 - [ ] `ELDA-03` Declared source model wider than executable runtime (`nix_flake`, `gentoo_overlay`) `(!)`
-- [~] `ELDA-04` Linux `/usr` backend + trigger engine are real in disposable-root mode, now including recorded activation-snapshot requests, but live-host cutover is still missing `(!)`
-- [~] `ELDA-05` Archived rollback is real in prefix mode and disposable-root `/usr` mode, but the live-system rollback model is still incomplete
+- [x] `ELDA-04` Linux `/usr` backend + trigger engine now perform staged file-switch activation, archive/rollback parity, and backend/boot status reporting
+- [x] `ELDA-05` Archived rollback now covers the current prefix and `/usr` backends
 - [~] `ELDA-06` Placeholder crates still dominate some boundaries (`elda-fetch`, `elda-git`, `elda-ext`, `elda-unix`, `xtask`); `elda-linux` is now partial rather than boundary-only
 
 ---
@@ -148,14 +148,13 @@ Use this as the immediate sprint board.
 
 - [x] Previous focus completed: persist applied init-provider backend state for disposable-root `/usr` mode and stop reporting it as permanently deferred after asset reconciliation succeeds
 - [x] Previous focus completed: land the full PubGrub-style solver and config-backed provider policy
-- [ ] Next active focus: live-host `/usr` cutover and live-backend parity
+- [ ] Next active focus: broader daemon/system-management integration and remaining stub namespaces
 - [ ] Break next focus into 3-7 concrete PR-sized tasks
 - [ ] Mark exactly one next task as "currently being worked on"
 - [ ] Keep all other active tasks queued in this section
 
 Suggested immediate candidates (based on current blockers):
-- [ ] Push the Linux `/usr` backend from disposable-root staged-copy into real live-host cutover behavior
-- [ ] Push provider-asset reconciliation from disposable-root coverage into live-host/backend-integration coverage
+- [ ] Push broader daemon/system-management behavior on top of the now-real `/usr` backend
 - [ ] Replace one stub namespace end-to-end (e.g., one `ci` command path)
 - [ ] Implement first executable `nix_flake` bounded path
 - [ ] Implement first executable `gentoo_overlay` bounded path

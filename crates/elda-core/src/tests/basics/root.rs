@@ -51,6 +51,7 @@ fn ls_bootstraps_empty_root() {
 #[test]
 fn state_show_reports_empty_world() {
     let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
     let report = run_from_root(
         tempdir.path(),
         CommandRequest::new(
@@ -65,8 +66,19 @@ fn state_show_reports_empty_world() {
     assert!(
         report
             .details
-            .and_then(|details| details.get("world").cloned())
-            .and_then(|world| world.as_array().cloned())
+            .as_ref()
+            .and_then(|details| details.get("world"))
+            .and_then(|world| world.as_array())
             .is_some_and(|world| world.is_empty())
+    );
+    assert_eq!(
+        report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("backend"))
+            .and_then(|backend| backend.get("activation"))
+            .and_then(|activation| activation.get("name"))
+            .and_then(|name| name.as_str()),
+        Some("prefix-copy")
     );
 }

@@ -3,6 +3,7 @@ mod paths;
 mod profile_state;
 mod provider_assets;
 mod staged_state;
+mod status;
 mod triggers;
 
 use elda_db::{InstallationMode, StateLayout};
@@ -23,7 +24,10 @@ pub(crate) use staged_state::{
     activate_staged_state, capture_active_system_state, prepare_staged_install,
     prepare_staged_remove,
 };
-pub use triggers::{PendingTriggerRecord, TriggerRepairReport, pending_triggers, repair_triggers};
+pub use status::{ActivationBackendStatus, SystemBackendStatus, load_system_backend_status};
+pub use triggers::{
+    BootStatusReport, PendingTriggerRecord, TriggerRepairReport, pending_triggers, repair_triggers,
+};
 pub(crate) use triggers::{run_install_triggers, run_remove_triggers};
 
 #[must_use]

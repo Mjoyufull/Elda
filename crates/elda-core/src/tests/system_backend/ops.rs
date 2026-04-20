@@ -112,6 +112,88 @@ fn fix_triggers_repairs_current_system_backend_outputs_and_check_reports_pending
 }
 
 #[test]
+fn check_reports_pending_critical_boot_trigger_repair() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/usr");
+    let repo_dir = create_system_make_repo(tempdir.path(), "system-tool", "system backend v1");
+    write_system_recipe(
+        tempdir.path(),
+        "system-tool",
+        &repo_dir,
+        "0.1.0",
+        "u elda - EldaUser /usr/bin/false",
+        "d /run/elda 0755 root root -",
+    );
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["system-tool".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("system-mode install should succeed");
+
+    let layout = StateLayout::new(tempdir.path(), "/usr");
+    let trigger_state_path = layout.state_dir.join("system-backend/triggers.json");
+    fs::write(
+        &trigger_state_path,
+        serde_json::to_vec_pretty(&json!({
+            "pending": [{
+                "name": "initramfs",
+                "reason": "manual critical test injection",
+                "boot_path": true,
+                "critical": true
+            }],
+            "last_run": [],
+        }))
+        .expect("trigger state should serialize"),
+    )
+    .expect("trigger state should be writable");
+
+    let check_report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["check".to_owned()],
+            Vec::new(),
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("check should succeed");
+
+    assert_eq!(check_report.area, "check");
+    assert_eq!(check_report.status, "issues");
+    assert!(
+        check_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("health"))
+            .and_then(|health| health.get("issues"))
+            .and_then(|issues| issues.as_array())
+            .is_some_and(|issues| issues.iter().any(|issue| {
+                issue
+                    .as_str()
+                    .is_some_and(|issue| issue.contains("critical boot trigger repair"))
+            }))
+    );
+    assert!(
+        check_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("backend"))
+            .and_then(|backend| backend.get("boot"))
+            .and_then(|boot| boot.get("pending_triggers"))
+            .and_then(|pending| pending.as_array())
+            .is_some_and(|pending| pending.iter().any(|record| {
+                record.get("name").and_then(|name| name.as_str()) == Some("initramfs")
+            }))
+    );
+}
+
+#[test]
 fn fix_triggers_reconciles_provider_assets_after_init_change() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/usr");

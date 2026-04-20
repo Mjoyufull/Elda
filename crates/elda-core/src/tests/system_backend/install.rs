@@ -84,6 +84,48 @@ fn system_mode_install_materializes_metadata_and_records_linux_backend() {
             .join("system-backend/triggers/desktop_db.json")
             .exists()
     );
+    let state_report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["state".to_owned(), "show".to_owned()],
+            Vec::new(),
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("state show should succeed");
+    assert_eq!(
+        state_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("backend"))
+            .and_then(|backend| backend.get("activation"))
+            .and_then(|activation| activation.get("name"))
+            .and_then(|name| name.as_str()),
+        Some("linux-copy")
+    );
+    assert_eq!(
+        state_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("backend"))
+            .and_then(|backend| backend.get("activation"))
+            .and_then(|activation| activation.get("capabilities"))
+            .and_then(|capabilities| capabilities.get("live_activation"))
+            .and_then(|value| value.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        state_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("backend"))
+            .and_then(|backend| backend.get("boot"))
+            .and_then(|boot| boot.get("pending_triggers"))
+            .and_then(|pending| pending.as_array())
+            .map(Vec::len),
+        Some(0)
+    );
 
     run_from_root(
         tempdir.path(),
@@ -267,5 +309,87 @@ fn system_mode_stages_the_composed_next_root_under_states_dir() {
     assert_eq!(
         run_installed_binary(tempdir.path(), "/usr/bin/beta-tool"),
         "beta v1"
+    );
+}
+
+#[test]
+fn system_mode_tracks_boot_inputs_in_backend_status() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    let repo_dir = tempdir.path().join("boot-kernel");
+    fs::create_dir_all(repo_dir.join("modules")).expect("repo dir should exist");
+    fs::write(
+        repo_dir.join("boot-kernel"),
+        "#!/bin/sh\necho boot kernel\n",
+    )
+    .expect("boot binary should be written");
+    make_executable(&repo_dir.join("boot-kernel"));
+    fs::write(
+        repo_dir.join("modules/boot-kernel.ko"),
+        "fake kernel module\n",
+    )
+    .expect("kernel module should be written");
+    fs::write(
+        repo_dir.join("Makefile"),
+        "all:\n\ninstall:\n\tinstall -d $(DESTDIR)$(PREFIX)/bin\n\tinstall -d $(DESTDIR)$(PREFIX)/lib/modules/test\n\tinstall -m 0755 boot-kernel $(DESTDIR)$(PREFIX)/bin/boot-kernel\n\tinstall -m 0644 modules/boot-kernel.ko $(DESTDIR)$(PREFIX)/lib/modules/test/boot-kernel.ko\n",
+    )
+    .expect("makefile should be written");
+    make_git_repo(&repo_dir);
+
+    write_prefix_config(tempdir.path(), "/usr");
+    write_system_recipe(
+        tempdir.path(),
+        "boot-kernel",
+        &repo_dir,
+        "0.1.0",
+        "u boot - BootUser /usr/bin/false",
+        "d /run/boot-kernel 0755 root root -",
+    );
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["boot-kernel".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("system-mode install should succeed");
+
+    let state_report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["state".to_owned(), "show".to_owned()],
+            Vec::new(),
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("state show should succeed");
+    assert!(
+        state_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("backend"))
+            .and_then(|backend| backend.get("boot"))
+            .and_then(|boot| boot.get("managed_inputs"))
+            .and_then(|inputs| inputs.as_array())
+            .is_some_and(|inputs| {
+                inputs
+                    .iter()
+                    .any(|input| input.as_str() == Some("/usr/lib/modules/test/boot-kernel.ko"))
+            })
+    );
+    assert!(
+        tempdir
+            .path()
+            .join("var/lib/elda/state/system-backend/boot.json")
+            .exists()
+    );
+    assert!(
+        tempdir
+            .path()
+            .join("var/lib/elda/state/system-backend/triggers/initramfs.json")
+            .exists()
     );
 }
