@@ -1,8 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::json;
 
 use crate::app::AppContext;
+use crate::editor::open_path_in_editor;
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
 use elda_recipe::{
@@ -60,6 +61,57 @@ impl AppContext {
             dry_run: request.dry_run,
             summary: format!("checked {} local recipe(s).", report.recipes.len()),
             details: Some(json!({ "check": report })),
+        })
+    }
+
+    pub(crate) fn handle_recipe_edit(
+        &self,
+        request: CommandRequest,
+    ) -> Result<CommandReport, CoreError> {
+        let recipe_name =
+            request.operands.first().cloned().ok_or_else(|| {
+                CoreError::Operator("rc edit requires one package name".to_owned())
+            })?;
+        let recipe_dir = recipe_directory(&self.database.layout().recipes_dir, &recipe_name)?;
+        if request.dry_run {
+            return Ok(CommandReport {
+                area: "recipe",
+                status: "planned",
+                exit_status: ExitStatus::Success,
+                command_path: request.command_path,
+                operands: request.operands,
+                output_mode: request.output_mode,
+                dry_run: true,
+                summary: format!("would open local recipe `{recipe_name}` in the selected editor."),
+                details: Some(json!({
+                    "recipe": {
+                        "package_name": recipe_name,
+                        "path": recipe_dir,
+                    },
+                })),
+            });
+        }
+        let editor = open_path_in_editor(&recipe_dir)?;
+
+        Ok(CommandReport {
+            area: "recipe",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: request.dry_run,
+            summary: format!("opened local recipe `{recipe_name}` in the selected editor."),
+            details: Some(json!({
+                "recipe": {
+                    "package_name": recipe_name,
+                    "path": recipe_dir,
+                    "editor": {
+                        "source": editor.source(),
+                        "program": editor.display_program(),
+                    },
+                },
+            })),
         })
     }
 
@@ -147,6 +199,24 @@ impl AppContext {
     }
 }
 
+fn recipe_directory(recipes_dir: &Path, recipe_name: &str) -> Result<PathBuf, CoreError> {
+    if recipe_name.trim().is_empty() {
+        return Err(CoreError::Operator(
+            "rc edit does not accept an empty package name".to_owned(),
+        ));
+    }
+
+    let recipe_dir = recipes_dir.join(recipe_name);
+    if !recipe_dir.join("pkg.lua").is_file() {
+        return Err(CoreError::Operator(format!(
+            "local recipe `{recipe_name}` does not exist under {}",
+            recipes_dir.display(),
+        )));
+    }
+
+    Ok(recipe_dir)
+}
+
 fn parse_recipe_add_request(
     request: &CommandRequest,
 ) -> Result<(String, Option<String>), CoreError> {
@@ -183,4 +253,39 @@ fn parse_recipe_add_request(
     }
 
     Ok((target, recipe_kind))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::recipe_directory;
+
+    #[test]
+    fn recipe_directory_requires_existing_pkg_lua() {
+        let tempdir = tempfile::TempDir::new().expect("tempdir should exist");
+
+        let error = recipe_directory(tempdir.path(), "missing")
+            .expect_err("missing recipe should be rejected");
+
+        assert!(
+            error
+                .to_string()
+                .contains("local recipe `missing` does not exist")
+        );
+    }
+
+    #[test]
+    fn recipe_directory_returns_recipe_root() {
+        let tempdir = tempfile::TempDir::new().expect("tempdir should exist");
+        let recipe_dir = tempdir.path().join("example");
+        std::fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+        std::fs::write(recipe_dir.join("pkg.lua"), "pkg = { name = 'example' }")
+            .expect("pkg.lua should exist");
+
+        let resolved =
+            recipe_directory(tempdir.path(), "example").expect("recipe directory should resolve");
+
+        assert_eq!(resolved, PathBuf::from(recipe_dir));
+    }
 }

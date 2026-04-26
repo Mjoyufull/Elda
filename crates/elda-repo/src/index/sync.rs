@@ -29,7 +29,7 @@ pub fn sync_remotes(
     });
 
     let mut snapshot = SyncedIndexSnapshot {
-        schema_version: 2,
+        schema_version: 3,
         generated_at: current_unix_timestamp(),
         offline: options.offline,
         remotes: Vec::new(),
@@ -64,10 +64,16 @@ pub fn sync_remotes(
         .any(|remote| remote.package_count > 0);
 
     if options.offline && failed_remote_count > 0 {
-        return Err(RepoError::Trust(
-            "offline sync could not satisfy all enabled remotes from verified local snapshots"
-                .to_owned(),
-        ));
+        let issue = snapshot
+            .remotes
+            .iter()
+            .find_map(|remote| remote.issue.as_deref())
+            .unwrap_or(
+                "offline sync could not satisfy all enabled remotes from verified local snapshots",
+            );
+        return Err(RepoError::Trust(format!(
+            "offline sync could not satisfy all enabled remotes from verified local snapshots: {issue}"
+        )));
     }
     if failed_remote_count > 0 && !has_usable_snapshot {
         let issue = snapshot
@@ -166,6 +172,7 @@ fn fetch_remote(
     let record = SyncedRemoteRecord {
         name: remote.name.clone(),
         index_url: remote.index_url.clone(),
+        channel: remote.channel.clone(),
         priority: remote.priority,
         package_count: packages.len(),
         trust: remote.trust.clone(),
@@ -236,11 +243,13 @@ fn load_offline_remote(
             remote.name
         )));
     }
+    ensure_cached_snapshot_matches_remote(remote, &snapshot.remote)?;
 
     Ok(RemoteSyncResult {
         record: SyncedRemoteRecord {
             name: remote.name.clone(),
             index_url: remote.index_url.clone(),
+            channel: remote.channel.clone(),
             priority: remote.priority,
             package_count: snapshot.packages.len(),
             trust: remote.trust.clone(),
@@ -269,11 +278,13 @@ fn load_stale_remote(
     if remote.allow_stale
         && let Some(snapshot) = load_cached_remote_snapshot(snapshot_path, &remote.name)?
         && snapshot.remote.verified
+        && cached_snapshot_matches_remote(remote, &snapshot.remote)
     {
         return Ok(RemoteSyncResult {
             record: SyncedRemoteRecord {
                 name: remote.name.clone(),
                 index_url: remote.index_url.clone(),
+                channel: remote.channel.clone(),
                 priority: remote.priority,
                 package_count: snapshot.packages.len(),
                 trust: remote.trust.clone(),
@@ -297,6 +308,7 @@ fn load_stale_remote(
         record: SyncedRemoteRecord {
             name: remote.name.clone(),
             index_url: remote.index_url.clone(),
+            channel: remote.channel.clone(),
             priority: remote.priority,
             package_count: 0,
             trust: remote.trust.clone(),
@@ -321,6 +333,24 @@ fn load_stale_remote(
 struct VerificationResult {
     verified: bool,
     selected_key: Option<String>,
+}
+
+fn ensure_cached_snapshot_matches_remote(
+    remote: &RemoteDocument,
+    cached: &SyncedRemoteRecord,
+) -> Result<(), RepoError> {
+    if cached_snapshot_matches_remote(remote, cached) {
+        return Ok(());
+    }
+
+    Err(RepoError::Trust(format!(
+        "cached snapshot for remote `{}` is for channel `{}` but the configured channel is `{}`",
+        remote.name, cached.channel, remote.channel
+    )))
+}
+
+fn cached_snapshot_matches_remote(remote: &RemoteDocument, cached: &SyncedRemoteRecord) -> bool {
+    cached.channel == remote.channel
 }
 
 fn current_unix_timestamp() -> u64 {

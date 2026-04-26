@@ -25,6 +25,7 @@ tar = "0.4.44"
 tempfile = "3.23.0"
 thiserror = "2.0.17"
 toml = "0.8.23"
+ureq = "2.12.1"
 zstd = "0.13.3"
 
 [workspace.lints.rust]

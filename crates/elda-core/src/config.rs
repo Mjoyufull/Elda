@@ -8,6 +8,12 @@ use serde::{Deserialize, Serialize};
 use crate::error::CoreError;
 use crate::privilege::PrivilegeConfig;
 
+mod submission;
+
+pub use submission::{
+    ResolvedSubmissionConfig, SubmissionAuthKind, SubmissionConfig, SubmissionMode,
+};
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -16,6 +22,8 @@ pub struct Config {
     pub profile: ProfileConfig,
     pub resolver: ResolverConfig,
     pub flags: FlagsConfig,
+    pub logging: LoggingConfig,
+    pub submission: SubmissionConfig,
 }
 
 impl Config {
@@ -102,6 +110,22 @@ pub struct ResolverConfig {
     pub provider_preferences: BTreeMap<String, Vec<String>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct LoggingConfig {
+    pub dir: String,
+    pub level: u8,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            dir: "~/.config/elda/logs".to_owned(),
+            level: 1,
+        }
+    }
+}
+
 #[must_use]
 pub fn default_native_arch() -> String {
     match env::consts::ARCH {
@@ -129,7 +153,10 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{Config, InstallPreference, ProfileConfig, default_native_arch};
+    use super::{
+        Config, InstallPreference, LoggingConfig, ProfileConfig, SubmissionAuthKind,
+        SubmissionMode, default_native_arch,
+    };
 
     #[test]
     fn load_accepts_public_config_shape_and_reads_runtime_fields() {
@@ -167,6 +194,10 @@ init = "dinit"
 [resolver.provider_preferences]
 gl-provider = ["mesa-provider", "zink-provider"]
 
+[logging]
+dir = "~/.config/elda/logs"
+level = 2
+
 [flags.global]
 wayland = true
 x11 = false
@@ -180,6 +211,18 @@ wayland = true
 [submission]
 mode = "pr"
 auto_open = true
+auth = "token"
+token_env = "ELDA_GITHUB_TOKEN"
+api_base = "https://api.github.example"
+remote_name = "upstream"
+base_branch = "stable"
+
+[submission.remotes.upstream]
+auto_assign = true
+auth = "ssh"
+token_env = "ELDA_UPSTREAM_TOKEN"
+api_base = "https://forge.example/api/v1"
+base_branch = "release"
 
 [daemon]
 refresh = "30m"
@@ -205,6 +248,26 @@ show_remote = true
             config.defaults.install_preference,
             InstallPreference::Source
         );
+        assert_eq!(config.submission.mode, SubmissionMode::Pr);
+        assert!(config.submission.auto_open);
+        assert_eq!(config.submission.auth, SubmissionAuthKind::Token);
+        assert_eq!(config.submission.token_env, "ELDA_GITHUB_TOKEN");
+        assert_eq!(
+            config.submission.api_base.as_deref(),
+            Some("https://api.github.example")
+        );
+        assert_eq!(config.submission.remote_name(), "upstream");
+        assert_eq!(config.submission.base_branch(), "stable");
+        let resolved = config.submission.resolve_target();
+        assert_eq!(resolved.remote_name, "upstream");
+        assert_eq!(resolved.base_branch, "release");
+        assert_eq!(resolved.auth, SubmissionAuthKind::Ssh);
+        assert_eq!(resolved.token_env, "ELDA_UPSTREAM_TOKEN");
+        assert_eq!(
+            resolved.api_base.as_deref(),
+            Some("https://forge.example/api/v1")
+        );
+        assert!(resolved.auto_assign);
         assert!(config.privilege.preserve_env);
         assert!(!config.privilege.interactive);
         assert_eq!(config.profile.base, "yoka-desktop");
@@ -218,6 +281,8 @@ show_remote = true
                 "zink-provider".to_owned(),
             ])
         );
+        assert_eq!(config.logging.dir, LoggingConfig::default().dir);
+        assert_eq!(config.logging.level, 2);
         assert_eq!(config.flags.global.get("wayland"), Some(&true));
         assert_eq!(config.flags.global.get("x11"), Some(&false));
         assert_eq!(

@@ -1,8 +1,10 @@
 mod binary_source;
 mod dependency;
 mod plan;
+mod progress;
 mod remote_recipe;
 mod resolve;
+mod review;
 pub(crate) mod solver;
 
 pub(crate) use dependency::constraint::{
@@ -17,6 +19,11 @@ use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
 use elda_install::{install_built_package, install_upgraded_package, remove_package_for_upgrade};
 
+use progress::{
+    install_progress_for_completed, install_progress_for_existing, install_progress_for_plan,
+    planned_activation_backend,
+};
+
 impl AppContext {
     pub(crate) fn handle_install(
         &self,
@@ -28,9 +35,10 @@ impl AppContext {
         self.validate_install_conflicts(&install_plan)?;
 
         if request.dry_run {
+            let activation_backend = planned_activation_backend(self.database.layout().mode);
             let actions = install_plan
                 .iter()
-                .map(Self::install_action_json)
+                .map(|action| Self::install_action_json(action, activation_backend))
                 .collect::<Vec<_>>();
 
             return Ok(CommandReport {
@@ -58,6 +66,7 @@ impl AppContext {
             });
         }
 
+        self.review_generated_metadata_if_needed(&request, &install_plan)?;
         let installs = self.apply_install_plan(&install_plan, request.offline)?;
         Ok(CommandReport {
             area: "install",
@@ -104,6 +113,10 @@ impl AppContext {
                     "selected_lane": action.resolved.selected_lane,
                     "selected_source_kind": action.resolved.selected_source_kind,
                     "persisted_source_kind": action.resolved.persisted_source_kind,
+                    "source_ref": action.resolved.source_ref,
+                    "generated_metadata_path": action.resolved.generated_recipe_dir,
+                    "remote_name": action.resolved.remote_name,
+                    "binary_source_verification": action.resolved.binary_source_verification,
                     "package": {
                         "package_name": installed.pkgname,
                         "epoch": installed.epoch,
@@ -128,6 +141,17 @@ impl AppContext {
                         "variant_id": action.resolved.flag_state.variant_id,
                         "effective_flags": action.resolved.flag_state.effective_flags,
                     },
+                    "activation_backend": installed
+                        .activation_backend
+                        .clone()
+                        .unwrap_or_else(|| planned_activation_backend(self.database.layout().mode).to_owned()),
+                    "progress": install_progress_for_existing(
+                        action,
+                        installed
+                            .activation_backend
+                            .as_deref()
+                            .unwrap_or(planned_activation_backend(self.database.layout().mode)),
+                    ),
                     "action": decision.change_kind,
                 }));
                 continue;
@@ -191,6 +215,10 @@ impl AppContext {
                 "selected_lane": built.resolved.selected_lane,
                 "selected_source_kind": built.resolved.selected_source_kind,
                 "persisted_source_kind": built.resolved.persisted_source_kind,
+                "source_ref": built.resolved.source_ref,
+                "generated_metadata_path": built.resolved.generated_recipe_dir,
+                "remote_name": built.resolved.remote_name,
+                "binary_source_verification": built.resolved.binary_source_verification,
                 "package": built.package,
                 "install": install,
                 "replacements": replaced,
@@ -201,10 +229,12 @@ impl AppContext {
                 "is_weak": action.is_weak,
                 "provider_group": action.provider_group,
                 "replaced_packages": action.replaced_packages,
+                "activation_backend": install.activation_backend,
                 "flag_state": {
                     "variant_id": built.resolved.flag_state.variant_id,
                     "effective_flags": built.resolved.flag_state.effective_flags,
                 },
+                "progress": install_progress_for_completed(action, &built.package, &install),
                 "action": decision.change_kind,
             }));
         }
@@ -213,7 +243,10 @@ impl AppContext {
         Ok(installs)
     }
 
-    fn install_action_json(action: &PlannedInstallAction) -> serde_json::Value {
+    fn install_action_json(
+        action: &PlannedInstallAction,
+        activation_backend: &str,
+    ) -> serde_json::Value {
         let decision = install_execution_decision(action);
 
         json!({
@@ -230,6 +263,9 @@ impl AppContext {
         "source_kind": action.resolved.selected_source_kind,
         "persisted_source_kind": action.resolved.persisted_source_kind,
         "source_ref": action.resolved.source_ref,
+        "generated_metadata_path": action.resolved.generated_recipe_dir,
+        "remote_name": action.resolved.remote_name,
+        "binary_source_verification": action.resolved.binary_source_verification,
         "variant_id": action.resolved.flag_state.variant_id,
         "install_reason": action.install_reason,
         "requested_by": action.requested_by,
@@ -240,7 +276,9 @@ impl AppContext {
         "replaced_packages": action.replaced_packages,
         "already_installed": action.already_installed.is_some(),
         "needs_change": decision.needs_change,
+        "activation_backend": activation_backend,
         "effective_flags": action.resolved.flag_state.effective_flags,
+        "progress": install_progress_for_plan(action, activation_backend),
         "dependencies": action
             .dependencies
             .iter()

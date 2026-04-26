@@ -1,4 +1,5 @@
 use super::*;
+use crate::model::DEFAULT_REMOTE_CHANNEL;
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -30,6 +31,10 @@ pub(super) struct RemotePackageInput {
     #[serde(default)]
     payload_sig: Option<String>,
     #[serde(default)]
+    sbom_url: Option<String>,
+    #[serde(default)]
+    attestation_url: Option<String>,
+    #[serde(default)]
     source_kind: Option<String>,
     #[serde(default)]
     source_ref: Option<String>,
@@ -55,10 +60,12 @@ pub(super) fn parse_remote_packages_from_content(
         }
     };
 
-    inputs
+    let packages = inputs
         .into_iter()
         .map(|input| normalize_remote_package(remote, input))
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+
+    filter_packages_for_channel(remote, packages)
 }
 
 fn normalize_remote_package(
@@ -106,6 +113,8 @@ fn normalize_remote_package(
         sha256: input.sha256,
         size: input.size,
         payload_sig: input.payload_sig,
+        sbom_url: input.sbom_url,
+        attestation_url: input.attestation_url,
         source_kind: input.source_kind,
         source_ref: input.source_ref,
         fallback_git_url: input.fallback_git_url,
@@ -113,6 +122,37 @@ fn normalize_remote_package(
         release_tag: input.release_tag,
         pkg_lua: input.pkg_lua,
     })
+}
+
+fn filter_packages_for_channel(
+    remote: &RemoteDocument,
+    packages: Vec<SyncedPackageRecord>,
+) -> Result<Vec<SyncedPackageRecord>, RepoError> {
+    if packages.is_empty() {
+        return Ok(packages);
+    }
+
+    let selected = remote.channel.as_str();
+    let filtered = packages
+        .into_iter()
+        .filter(|package| package_matches_channel(package, selected))
+        .collect::<Vec<_>>();
+
+    if filtered.is_empty() {
+        return Err(RepoError::Parse(format!(
+            "remote `{}` does not publish selected channel `{selected}`",
+            remote.name
+        )));
+    }
+
+    Ok(filtered)
+}
+
+fn package_matches_channel(package: &SyncedPackageRecord, selected: &str) -> bool {
+    match package.channel.as_deref() {
+        Some(channel) => channel == selected,
+        None => selected == DEFAULT_REMOTE_CHANNEL,
+    }
 }
 
 fn parse_index_document(content: &str) -> Result<RemoteIndexDocument, RepoError> {

@@ -41,6 +41,7 @@ impl Cli {
             )
             .with_system_mode(self.global.system)
             .with_offline(self.global.offline)
+            .with_log_level(self.global.log_level)
             .with_accepted_rotated_keys(self.global.accept_rotated_keys.clone())
         })
     }
@@ -54,6 +55,13 @@ struct GlobalArgs {
     dry_run: bool,
     #[arg(long, global = true)]
     offline: bool,
+    #[arg(
+        long = "log-level",
+        global = true,
+        value_name = "1|2|3",
+        help = "Write the per-run session log at level 1, 2, or 3"
+    )]
+    log_level: Option<u8>,
     #[arg(
         long = "accept-rotated-key",
         global = true,

@@ -27,12 +27,12 @@ Status source used for this tracker:
 |---|---|---|
 | [x] Workspace/crate baseline exists (`elda-cli`, `elda-core`, `elda-db`, etc.) | [~] Repo/trust/cache slice is real but not full spec-complete supply-chain model | [ ] Broader daemon/system-management lifecycle on top of the current backend |
 | [x] SQLite installed-state DB + ownership model + manifests | [~] Build/runtime source-kind surface still narrower than declared model (`nix_flake`, `gentoo_overlay` gap) | [ ] Executable support for declared interbuild source kinds (`nix_flake`, `gentoo_overlay`) |
-| [x] Recipe parse/check flow for `pkg.lua`, with legacy import path | [~] Some command namespaces still not fully backended (`ci`, `forge`, `mg`, `adopt`, `ext`, `qa`, `daemon run`) | [ ] Remove remaining `handle_stub()` surfaces and land real backend implementations |
+| [x] Recipe parse/check flow for `pkg.lua`, with legacy import path | [~] Some command namespaces still not fully backended (`mg`, `adopt`, `ext`) | [ ] Remove remaining `handle_stub()` surfaces and land real backend implementations |
 | [x] Source/binary lane model (`i`, `ig`, `ib`, `--prefer-*`) | [~] Prefix rollback is real and the current `/usr` backend now performs staged switch activation with archived-state rollback parity | [ ] Broader daemon/system-management layers on top of the current backend |
-| [x] Direct git installs + multi build-system execution (`cargo/cmake/meson/make/go/zig/python/nimble`) | [~] Profile/daemon area has current slice support but broader system-change/trigger integration remains | [ ] Full typed trigger engine + provider-family/system-change handlers on live backend |
-| [x] Vendor workflow (`vendor add/import/export`) | [~] CI/forge publication pipeline is not started | [ ] Native CI DAG/layer build + publish pipeline + `ci` namespace completion |
-| [x] Sync/search/info from verified merged snapshots | [~] Interepo/migration architecture is documented but implementation not landed | [ ] Interepo adapters + translation confidence flow + coexistence modes |
-| [x] Trust model baseline: signed index, TOFU/pinned, explicit rotated-key acceptance, offline verified snapshots | [~] Replacement claim is still blocked by remaining backend/system gaps | [ ] Reach "pkgit replacement ready" gate and then full spec-complete gate |
+| [x] Direct git installs + multi build-system execution (`cargo/cmake/meson/make/go/zig/python/nimble`) | [~] Profile/machine-shape slice is complete for the current target roots, but broader daemon/system-management integration remains | [ ] Full typed trigger engine + provider-family/system-change handlers on live backend |
+| [x] Vendor workflow (`vendor add/import/export`) | [~] Install/bootstrap UX now has real review-gate, grouped progress, logging, and better missing-remote guidance, but broader first-run/setup flow remains | [ ] Guided `setup` / `doctor` bootstrap flow and broader install/takeover UX |
+| [x] Sync/search/info from verified merged snapshots | [~] Interepo/migration architecture documented with full store-path normalization pipeline for nixpkgs | [ ] Interepo adapters + translation confidence flow + coexistence modes + full nixpkgs normalization (ELF + shebangs + wrappers + text + symlinks) |
+| [x] Trust model baseline: signed index, TOFU/pinned, explicit rotated-key acceptance, offline verified snapshots | [~] Replacement claim is still blocked by remaining pkgit-workflow coverage gaps from `stage.md` | [ ] Reach "pkgit replacement ready" gate and then full spec-complete gate |
 | [x] Policy + introspection (`pin`, `hold`, `why`, `rdeps`, `autoremove`, `diff`, `downgrade`) | [~] File-size/code-standards cleanup mostly done, a few files still over soft limit | [ ] Finish standards cleanup and keep large files split sustainably |
 | [x] Prefix-safe transaction + verify/recover + conffile behavior (`.eldanew`/`.eldasave`) | [~] The current `/usr` backend is real; broader system-management and later-phase Linux work remain | [ ] Finish broader daemon/system-management behavior on top of the backend |
 | [x] Full PubGrub-style dependency solver with provider-policy/config control | [~] The current `/usr` backend is real; broader system-management and later-phase Linux work remain | [ ] Finish broader daemon/system-management behavior on top of the backend |
@@ -46,15 +46,15 @@ Status source used for this tracker:
 | Phase 0: Fork baseline + skeleton | Done | [x] Workspace landed; [x] canonical CLI surface wired; [x] pkgit fixtures captured |
 | Phase 1: Core types/config/state | Done | [x] identity/version parsing; [x] config defaults; [x] SQLite bootstrap + layout + lock |
 | Phase 2: Recipe model + legacy import | Done | [x] `rc add`; [x] `rc check`; [x] parser/validation for declarative metadata families, including `provider_assets` |
-| Phase 3: Remotes/index/trust/cache | In Progress | [x] signed snapshot sync; [x] TOFU/pinned trust; [x] metadata rotation acceptance; [x] source-capable synced remotes can declare `packages_url` for pinned package-definition fetches; [~] broader trust/cache completeness still pending |
+| Phase 3: Remotes/index/trust/cache | Completed | [x] signed snapshot sync; [x] TOFU/pinned trust; [x] metadata rotation acceptance; [x] source-capable synced remotes can declare `packages_url` for pinned package-definition fetches; [x] cache priority + retention cleanup landed; [~] broader trust/cache completeness remains later hardening, not a Phase 3 blocker |
 | Phase 4: Resolver/flags/planning | Completed | [x] PubGrub-style install/upgrade solver; [x] conflicts/replaces/pin/hold checks; [x] config-backed provider preferences through `[resolver.provider_preferences]`; [x] synced source-lane resolution can require remote `packages_url` when the selected lane needs a real package tree |
-| Phase 5: Build/staging/payloads | In Progress | [x] stage + manifest + payload; [x] git/archive/github_release paths; [x] synced source builds materialize pinned `packages/<pkgname>/` trees from `packages_url` + `repo_commit`; [x] build metadata now captures typed `provider_assets`; [~] source-kind parity not complete |
-| Phase 6: Prefix transaction backend | In Progress | [x] install/remove/upgrade journals + verify/recover; [x] rollback + downgrade in prefix; [~] system backend parity pending |
+| Phase 5: Build/staging/payloads | Completed | [x] stage + manifest + payload; [x] git/archive/github_release paths; [x] synced source builds materialize pinned `packages/<pkgname>/` trees from `packages_url` + `repo_commit`; [x] build metadata now captures typed `provider_assets`; [~] source-kind parity is a later source-model/runtime gap, not a Phase 5 blocker |
+| Phase 6: Prefix transaction backend | Completed | [x] install/remove/upgrade journals + verify/recover; [x] rollback + downgrade in prefix; [x] prefix transaction parity for the documented slice landed |
 | Phase 7: Linux system backend + triggers | Completed | [x] staged `/usr` backend; [x] live file-switch activation; [x] internal trigger engine + `check`/`fix-triggers`; [x] archive/rollback parity on the current `/usr` backend; [x] provider-asset storage/materialization/reconciliation on the current backend; [x] applied init-provider backend state persists under `state/system-backend/` and drives current provider-asset materialization; [x] configured `snapshot_tool` requests now record pre/post activation attempts into journals, reports, and archived state metadata for system install/remove transactions; [x] activation-backend capability reporting plus persisted boot status landed |
-| Phase 8: Profiles/machine shape/ops | In Progress | [x] `pf show/apply/add/rm/set-init/clear-init/set-arch/add-foreign-arch/remove-foreign-arch`; [x] state export/import; [x] current `/usr` backend now applies supported init-provider asset changes through profile edits/import/fix-triggers instead of leaving them permanently pending; [~] broader daemon/system-management integration pending |
-| Phase 9: Native CI + binary publishing | Not Started | [ ] CI submission pipeline; [ ] DAG/layer generation; [ ] artifact/signature/index publish path |
+| Phase 8: Profiles/machine shape/ops | Completed | [x] `pf show/apply/add/rm/set-init/clear-init/set-arch/add-foreign-arch/remove-foreign-arch`; [x] state export/import; [x] profile recipes can declare `pkg.profile` machine-shape defaults; [x] imported desired state now really reapplies active profile anchors and round-trips machine shape; [~] broader daemon/system-management integration remains later work |
+| Phase 9: Native CI + binary publishing | Completed | [x] local CI submission pipeline; [x] local DAG/layer generation; [x] local artifact/signature/index publish path; [x] compressed `lock-v1.json.zst` output plus per-payload `.minisig` / `.spdx.json` / `.attestation.json` sidecars; [x] indexed `sbom_url` / `attestation_url` metadata; [x] `forge search/browse`, `qa *`, and `daemon run` current-slice handlers; [x] `ci pr` now derives compare/PR-style URLs from recognizable forge remotes with configured base-branch awareness; [x] git-remote submission publication landed for configurable submission remote/base-branch targets in PR and trusted push modes; [x] hosted review creation landed for token-auth GitHub/GitLab/Gitea-style `ci pr`; [x] per-remote submission override resolution now follows the submission's actual remote; [x] local scheduler/orchestration landed through bare `ci run`, retry-state tracking, and richer queue/log visibility |
 | Phase 10: Git-mode interbuilds | Not Started | [ ] `nix_flake` bounded execution; [ ] `gentoo_overlay` bounded execution |
-| Phase 11: Interepo translation/coexistence | Not Started | [ ] foreign adapters; [ ] translated snapshot install path; [ ] coexist/warn/lock modes |
+| Phase 11: Interepo translation/coexistence | Architectural Research Complete | [x] Architecture fully documented in `phase11.md`; [x] 16-step implementation order frozen; [x] nixpkgs full store-path normalization pipeline (ELF via `arwen-elf` + byte-level hash scanning for shebangs/wrappers/text + symlink rewriting + cleanup); [x] per-family edge cases documented (ALPM scriptlets, APK triggers, Portage USE/SLOT, Nix wrappers, takeover/migration state carry-over, user-scope generated state, and per-PM admin-state quirks); [x] PM replacement validation stories (CachyOS/Arch, Gentoo, NixOS, mixed-source); [x] all deep integration anomalies resolved in `idk.md`; [ ] foreign adapters; [ ] translated snapshot install path; [ ] coexist/warn/lock modes |
 | Phase 12: Migration/adoption/pkgit retirement | Not Started | [ ] `mg from` adapters; [ ] `adopt`; [ ] final pkgit cutover gates |
 
 ---
@@ -100,22 +100,25 @@ Status source used for this tracker:
 ### 5) Operator Commands + UX
 - [x] Core command set is materially useful (`i/rm/u/sync/search/info/files/verify/recover/rollback/pf/...`)
 - [x] Human-readable output paths improved
+- [~] Install/migration/takeover UX contract is now documented more fully, and the runtime now has structured human install rendering, persistent per-run session logs for mutating commands, activation-backend plus snapshot summaries in install output, a grouped per-package progress surface for source/binary/install steps, direct missing-remote bootstrap guidance, and the first interactive generated-metadata review gate for session-generated recipes (`eldainstallaztionuxandcliimprovements.md`), but the broader first-run/setup/takeover flow is still partial overall
 - [x] Branded help and command descriptions exist
-- [~] Several namespaces still mostly stubs (`ci/forge/mg/adopt/ext/qa`)
+- [~] Several namespaces still mostly stubs (`mg/adopt/ext`)
 - [ ] Complete all remaining stubbed namespaces
 
 ### 6) Profiles/Daemon/System Shape
 - [x] Profile read/apply/edit current slice exists (`pf show/apply/add/rm/set-init/clear-init/set-arch/add-foreign-arch/remove-foreign-arch`)
 - [x] Profile recipes can declare typed machine-shape defaults
 - [x] Desired state export/import exists
+- [x] Desired state export/import now really round-trips machine shape by replaying imported active profile anchors
 - [x] Disposable-root `/usr` mode now reconciles active provider assets and can reapply them through `fix-triggers`
 - [x] Disposable-root `/usr` mode now persists applied init-provider backend state and uses it for immediate supported `pf set-init` / `pf apply` / `state import` reconciliation
+- [x] `daemon run` now executes a real foreground refresh pass for the current slice instead of falling through to a stub
 - [~] Typed pending system-change reporting exists, but full daemon/system-change behavior is still pending
 - [ ] Full system change handler lifecycle and trigger repair flow on live backend
 
 ### 7) Replacement Readiness
 - [x] Many pkgit-equivalent workflows are already real in prefix mode
-- [~] "Replacement ready" still blocked by backend/solver/system completion
+- [~] "Replacement ready" still blocked by the remaining workflow-coverage gaps called out in `stage.md`
 - [ ] Satisfy all replacement gates from `stage.md`
 - [ ] After replacement gate, satisfy full spec-complete fork gates (Phases 9-12)
 
@@ -125,7 +128,7 @@ Status source used for this tracker:
 
 - [x] `D-01` Linux activation materialization strategy finalized as staged tree + explicit current-state metadata
 - [ ] `D-02` First isolated build backend implementation strategy `(!)`
-- [ ] `D-03` Interepo adapter order landing sequence (ALPM/APK/Portage)
+- [x] `D-03` Interepo adapter order landing sequence frozen: ALPM first (Arch/Artix), then APK (Chimera/Alpine), then AUR, then Portage, then nixpkgs (second-wave with `arwen-elf`)
 - [ ] `D-04` Native index publish layout decision (`yoka-ci/index` vs generated branch/artifact)
 - [x] `D-05` Canonical package-definition contract for provider-specific assets frozen in `SPEC.md` / `pkgitfork.md`
 
@@ -148,14 +151,15 @@ Use this as the immediate sprint board.
 
 - [x] Previous focus completed: persist applied init-provider backend state for disposable-root `/usr` mode and stop reporting it as permanently deferred after asset reconciliation succeeds
 - [x] Previous focus completed: land the full PubGrub-style solver and config-backed provider policy
-- [ ] Next active focus: broader daemon/system-management integration and remaining stub namespaces
+- [ ] Next active focus: finish one remaining stub namespace end-to-end and keep broadening daemon/system-management behavior on top of the current backend
 - [ ] Break next focus into 3-7 concrete PR-sized tasks
 - [ ] Mark exactly one next task as "currently being worked on"
 - [ ] Keep all other active tasks queued in this section
 
 Suggested immediate candidates (based on current blockers):
+- [ ] Replace one remaining stub namespace end-to-end (`mg`, `adopt`, or `ext`)
 - [ ] Push broader daemon/system-management behavior on top of the now-real `/usr` backend
-- [ ] Replace one stub namespace end-to-end (e.g., one `ci` command path)
+- [ ] Push broader daemon/system-management behavior on top of the now-real `/usr` backend
 - [ ] Implement first executable `nix_flake` bounded path
 - [ ] Implement first executable `gentoo_overlay` bounded path
 

@@ -35,6 +35,7 @@ fn install_selects_synced_provider_from_best_remote_priority() {
         RemoteDocument {
             name: "mesa".to_owned(),
             index_url: format!("file://{}", mesa_index.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -51,6 +52,7 @@ fn install_selects_synced_provider_from_best_remote_priority() {
         RemoteDocument {
             name: "zink".to_owned(),
             index_url: format!("file://{}", zink_index.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -125,6 +127,7 @@ fn install_selects_highest_version_provider_within_same_remote_priority() {
             RemoteDocument {
                 name: name.to_owned(),
                 index_url: format!("file://{}", index_path.display()),
+                channel: "stable".to_owned(),
                 packages_url: None,
                 metadata_url: None,
                 signature_url: None,
@@ -205,6 +208,7 @@ fn install_allows_configured_provider_preference_to_override_remote_priority() {
         RemoteDocument {
             name: "mesa".to_owned(),
             index_url: format!("file://{}", mesa_index.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -221,6 +225,7 @@ fn install_allows_configured_provider_preference_to_override_remote_priority() {
         RemoteDocument {
             name: "zink".to_owned(),
             index_url: format!("file://{}", zink_index.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,

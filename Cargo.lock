@@ -289,12 +289,14 @@ dependencies = [
  "elda-recipe",
  "elda-types",
  "flate2",
+ "goblin",
  "serde",
  "serde_json",
  "sha2",
  "tar",
  "tempfile",
  "thiserror",
+ "toml",
  "ureq",
  "xz2",
  "zstd",
@@ -332,6 +334,8 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+ "ureq",
+ "zstd",
 ]
 
 [[package]]
@@ -390,6 +394,23 @@ version = "0.1.0"
 dependencies = [
  "elda-types",
  "serde",
+]
+
+[[package]]
+name = "elda-populate"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "elda-core",
+ "elda-db",
+ "elda-repo",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "toml",
+ "ureq",
 ]
 
 [[package]]
@@ -577,6 +598,17 @@ dependencies = [
  "r-efi 6.0.0",
  "wasip2",
  "wasip3",
+]
+
+[[package]]
+name = "goblin"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "983a6aafb3b12d4c41ea78d39e189af4298ce747353945ff5105b54a056e5cd9"
+dependencies = [
+ "log",
+ "plain",
+ "scroll",
 ]
 
 [[package]]
@@ -1082,6 +1114,26 @@ dependencies = [
  "ring",
  "rustls-pki-types",
  "untrusted",
+]
+
+[[package]]
+name = "scroll"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1257cd4248b4132760d6524d6dda4e053bc648c9070b960929bf50cfb1e7add"
+dependencies = [
+ "scroll_derive",
+]
+
+[[package]]
+name = "scroll_derive"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed76efe62313ab6610570951494bdaa81568026e0318eaa55f167de70eeea67d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

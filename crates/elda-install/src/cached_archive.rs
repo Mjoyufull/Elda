@@ -2,7 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use elda_build::{
-    BuiltPackage, CacheEntryKind, PackageDependency, PackageManifest, record_cache_access,
+    BuiltPackage, CacheEntryKind, ObjectMetadata, PackageDependency, PackageManifest,
+    record_cache_access,
 };
 use elda_db::{Database, StateLayout};
 
@@ -39,6 +40,7 @@ pub(crate) fn built_package_from_archive(
         dependencies: archived_dependencies(&archived.dependencies),
         conffiles: archived.conffiles.clone(),
         system_metadata: archived.system_metadata.clone(),
+        object_metadata: ObjectMetadata::default(),
         payload_path,
         payload_sha256: required_archive_field(
             archived.payload_sha256.clone(),
@@ -117,6 +119,7 @@ pub(crate) fn built_package_from_installed(
         dependencies,
         conffiles,
         system_metadata,
+        object_metadata: ObjectMetadata::default(),
         payload_path,
         payload_sha256: required_archive_field(
             installed.payload_sha256,

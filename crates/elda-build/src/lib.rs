@@ -13,6 +13,7 @@ mod make_build;
 mod manifest;
 mod meson_build;
 mod nimble_build;
+mod object_analysis;
 mod payload_verify;
 mod process;
 mod python_build;
@@ -34,6 +35,7 @@ pub use cache_meta::{
 };
 pub use error::BuildError;
 pub use manifest::{ManifestEntry, ManifestEntryKind, PackageManifest};
+pub use object_analysis::{ObjectMetadata, SharedLibraryProvide, SharedLibraryRequirement};
 pub use system_metadata::{
     AlternativeAsset, DeclarativeAsset, LifecycleHookAsset, ProviderAsset, ProviderTreeEntry,
     SystemPackageMetadata,
@@ -67,7 +69,7 @@ pub struct BinaryCache {
     pub priority: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BinarySourceVerification {
     pub remote_name: String,
     pub payload_signature: Option<String>,
@@ -90,6 +92,7 @@ pub struct BuiltPackage {
     pub dependencies: Vec<PackageDependency>,
     pub conffiles: Vec<String>,
     pub system_metadata: SystemPackageMetadata,
+    pub object_metadata: ObjectMetadata,
     pub payload_path: PathBuf,
     pub payload_sha256: String,
     pub manifest_path: PathBuf,
@@ -212,6 +215,7 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
     let manifest = manifest::collect_manifest(&stage_root)?;
     let (manifest_hash, manifest_bytes) = manifest::manifest_hash(&manifest)?;
     let system_metadata = system_metadata::collect_system_metadata(request.recipe)?;
+    let object_metadata = object_analysis::analyze_stage_objects(&stage_root, &manifest)?;
     let arch = request
         .recipe
         .package
@@ -250,6 +254,7 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
         dependencies: collect_package_dependencies(&request.recipe.package),
         conffiles: request.recipe.package.conffiles.clone(),
         system_metadata,
+        object_metadata,
         payload_path,
         payload_sha256,
         manifest_path,

@@ -47,6 +47,7 @@ pub const BOUNDARY: CrateBoundary = CrateBoundary::new(
 pub struct InstallReport {
     pub package_name: String,
     pub state_id: String,
+    pub activation_backend: String,
     pub installed_paths: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub snapshots: Vec<SnapshotRecord>,

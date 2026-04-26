@@ -9,7 +9,7 @@ use elda_recipe::{
     SOURCE_LANE_BINARY, SOURCE_LANE_SOURCE, SourceDefinition, add_recipe, is_git_like_target,
     load_recipe,
 };
-use elda_repo::{RepoError, load_remote_payload_trust, resolve_package};
+use elda_repo::{RepoError, list_remotes, load_remote_payload_trust, resolve_package};
 
 impl AppContext {
     pub(crate) fn build_resolved_target(
@@ -71,12 +71,14 @@ impl AppContext {
         if path.exists() {
             let report = add_recipe(recipes_dir, target, None)?;
             let recipe = load_recipe(recipes_dir, &report.recipe_name)?;
-            return self.select_install_lane(
+            let mut resolved = self.select_install_lane(
                 target,
                 recipe,
                 request,
                 Some(path.display().to_string()),
-            );
+            )?;
+            apply_generated_recipe_report(&mut resolved, &report);
+            return Ok(resolved);
         }
 
         if is_git_like_target(target) {
@@ -86,6 +88,7 @@ impl AppContext {
                 self.select_install_lane(target, recipe, request, Some(target.to_owned()))?;
             resolved.ad_hoc_git = true;
             resolved.persisted_source_kind = "git".to_owned();
+            apply_generated_recipe_report(&mut resolved, &report);
             return Ok(resolved);
         }
 
@@ -121,11 +124,21 @@ impl AppContext {
 
                 Ok(resolved)
             }
-            Ok(None) | Err(RepoError::SnapshotMissing) => Err(CoreError::Recipe(
-                elda_recipe::RecipeError::InvalidInput(format!(
-                    "no local recipe or synced package named `{target}` exists; run `elda sync` to refresh remote packages"
-                )),
-            )),
+            Ok(None) | Err(RepoError::SnapshotMissing) => {
+                let remotes = list_remotes(&self.database.layout().remotes_dir)?;
+                let message = if remotes.is_empty() {
+                    format!(
+                        "no local recipe or synced package named `{target}` exists, and no remotes are configured; add one with `elda rmt add <name>=<index-url>` and then run `elda sync`"
+                    )
+                } else {
+                    format!(
+                        "no local recipe or synced package named `{target}` exists; run `elda sync` to refresh remote packages"
+                    )
+                };
+                Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
+                    message,
+                )))
+            }
             Err(error) => Err(CoreError::Repo(error)),
         }
     }
@@ -325,6 +338,8 @@ impl AppContext {
             remote_recipe_source: None,
             binary_source_verification: None,
             ad_hoc_git: false,
+            generated_recipe_name: None,
+            generated_recipe_dir: None,
         })
     }
 
@@ -359,4 +374,16 @@ impl AppContext {
 
         Ok(Self::project_recipe_lane(recipe.clone(), selected.clone()))
     }
+}
+
+fn apply_generated_recipe_report(
+    resolved: &mut ResolvedInstallTarget,
+    report: &elda_recipe::ImportReport,
+) {
+    if !report.generated_pkg_lua && !report.generated_build_lua {
+        return;
+    }
+
+    resolved.generated_recipe_name = Some(report.recipe_name.clone());
+    resolved.generated_recipe_dir = Some(report.recipe_dir.clone());
 }

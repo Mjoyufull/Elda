@@ -252,6 +252,7 @@ Ad hoc git upgrade rules:
 - if `source_ref` names a tag or exact revision, plain `elda u` treats that install as pinned to the requested ref and does not auto-advance it
 - changing a pinned ad hoc git target requires an explicit new install request or conversion into a maintained recipe
 - when an ad hoc git upgrade does occur, the new installed version is re-normalized from the new resolved commit and `repo_commit` is updated accordingly
+- when Elda scaffolded package metadata for an ad hoc git install during the current session, interactive human install mode writes that metadata into `/etc/elda/recipes/<pkgname>/`, prints the path, and stops for explicit review before build and activation continue
 
 Lane-selection rules:
 - `elda i` selection precedence is: explicit command (`ig` / `ib`), explicit preference flag (`--prefer-source` / `--prefer-binary`), `source.default_lane`, then config `defaults.install_preference`
@@ -817,6 +818,42 @@ Cache rules:
 - default source/archive retention is 30 days since last access
 - default cleanup starts when cache usage exceeds 20 GiB or 10% of the backing filesystem, whichever threshold is hit first
 
+Cache server contract:
+- the canonical read contract is content-addressed `GET <cache base>/<sha256>` where `<sha256>` is the
+  exact payload digest recorded in the signed native index or translated interepo snapshot
+- `HEAD <cache base>/<sha256>` is the preferred existence probe when the transport supports it, but
+  install semantics depend only on the read path being stable
+- caches may optionally store provenance, attestation, or operator sidecars next to the blob, but
+  those sidecars are never solver truth and are not required for install when the signed
+  remote/interepo metadata already carries the authoritative package record and payload signature
+- caches never publish package identity, search data, dependency data, or provider policy; they are
+  blob stores, not alternate metadata remotes
+
+Cache population rules:
+- `elda sync` never fills shared caches implicitly; metadata sync and payload mirroring are separate
+  operations
+- cache fill is performed by CI publication, explicit operator mirroring, or companion populate
+  tooling that reads the same remote/cache configuration and verified snapshots
+- canonical fill modes are:
+  - push an already-existing local payload artifact with a known digest into one or more configured
+    caches
+  - mirror binary-capable records from maintained remotes into one or more configured caches
+  - mirror foreign payloads referenced by translated interepo snapshots into one or more configured
+    caches
+- cache fill must verify the expected digest before upload and must not rewrite metadata, invent new
+  package identities, or alter solver precedence
+- pushing a payload to cache never by itself makes that package installable on other machines;
+  installability still requires matching remote or translated metadata that references the same
+  digest
+- populate or mirror tooling must not reconstruct payloads from the live filesystem; it pushes only
+  existing payload artifacts with known digests from local cache/build outputs or from verified
+  remote/interepo origin fetches
+- mirroring an interepo payload into cache stores the original foreign blob as-is under the Elda
+  cache key and does not upgrade `source_kind`, `confidence_level`, or foreign provenance
+- pushing a locally built payload that is not referenced by a signed shared remote index is valid
+  for private caches, rollback/disaster-recovery, or paired local-metadata workflows, but it is not
+  public publication by itself
+
 ### 11.6 Multiarch Policy
 Multiarch rules:
 - Elda follows the Debian-style multiarch model
@@ -910,7 +947,7 @@ Rules:
 | Alpine | musl | OpenRC (usually) | `.apk` | `APKINDEX` | clean repos, different libc |
 | Chimera | musl | dinit | `.apk` (APKv3) | `APKINDEX` | dinit-first, musl+clang, closest to Yoka |
 | Gentoo | glibc/musl | OpenRC/systemd | `.gpkg` (GLEP-78) | ebuild metadata + `Packages` index | USE flags, SLOTs, source-first with binhost |
-| nixpkgs | either | either | NAR/closure | Nix expressions | reserved for post-v1; not part of the required adapter set |
+| nixpkgs | either | either | NAR/closure | `.narinfo` + `programs.sqlite` (binary cache) | second-wave; binary-cache-only, no evaluator; ELF normalization via `arwen-elf` |
 
 ### 13.3 Adapter Crate Architecture
 Recommended crate split:
@@ -920,6 +957,7 @@ Recommended crate split:
 - `elda-interepo-chimera` for Chimera-specific policy on top of APK
 - `elda-interepo-alpine` for Alpine-specific policy on top of APK
 - `elda-interepo-portage` for Gentoo metadata, GPKG extraction, USE tracking, and SLOT handling
+- `elda-interepo-nixpkgs` for Nix binary cache consumption, NAR extraction, `programs.sqlite` enumeration, closure-to-dep translation, and full store-path normalization: `arwen-elf` for ELF RPATH/PT_INTERP, byte-level hash scanning for shebangs/wrappers/pkg-config/cmake/python/desktop/systemd, symlink rewriting, `nix-support/` + `.la` cleanup
 
 ### 13.4 Metadata Translation Contract
 | Foreign field (ALPM example) | Elda equivalent | Translation |
@@ -945,6 +983,21 @@ Persisted translated provenance:
 | `mapping_table` / `mapping_version` | translation ruleset and version used for dependency and provider mapping |
 | `build_id` / `payload_sig` / `attestation_ref` | foreign build or signature provenance when available |
 | `confidence_level` | translated, verified, or override verification state from §13.6 |
+
+Identity and alias policy:
+- resolver identity matching uses exact canonical package names plus explicit `provides`; there is no
+  fuzzy matching, punctuation folding, suffix stripping, or search-driven name guessing in solver
+  logic
+- adapters preserve foreign package names as exact install targets unless an adapter mapping table
+  or authoritative upstream metadata declares a canonical Elda identity or rename
+- when an adapter canonicalizes a foreign package into an Elda identity, it must still preserve
+  `foreign_pkgname` provenance and emit explicit alias or `provides` records for compatibility names
+  when the foreign ecosystem supports that equivalence
+- distinct foreign names such as `foo`, `foo-bin`, `foo-git`, `foo-openrc`, or `foo-dinit` remain
+  distinct exact-name choices unless the adapter has an explicit authoritative mapping that says
+  otherwise
+- human search and browse may surface aliases, old names, and foreign names for discovery, but
+  those search hits never authorize the solver to invent package equivalence
 
 ### 13.5 Sync Model
 Sync rules:
@@ -1076,6 +1129,7 @@ provider_assets = {
 | `icon_cache` | icons |
 | `font_cache` | fonts |
 | `depmod` | kernel modules |
+| `dkms` | out-of-tree kernel module compilation |
 | `initramfs` / `uki` | kernel and boot artifacts |
 
 Trigger execution contract:
@@ -1176,16 +1230,24 @@ Command distinctions:
 Rules:
 - all read-only commands should support `--json`
 - mutating commands should support `--dry-run`; when combined with `--json`, they emit the planned transaction instead of human text
+- mutating commands should write one persistent per-run session log under the configured logging directory; `--log-level 1|2|3` overrides the config default for that invocation
 - ambiguous provider or source selection in non-interactive mode is a hard error
 - exit codes are stable enough for scripting: `0` success, `1` operator/runtime failure, `2` resolution or validation failure, `3` trust/auth failure
 
+Human-mode install output contract:
+- the main install dry-run and success path should render sections in this order: `Target`, `Resolution`, `Plan`, `Progress`, and then `Result` for non-dry-run installs
+- the rendered `Target` section should surface the selected activation backend for the current root, and the `Progress` / `Result` sections should report backend-aware activation plus any recorded snapshot summary when present
+- the rendered install view should also surface the attached session-log path
+- the same structured `progress` data should remain available in JSON output for install plan and install result reports
+
 ### 16.2 Core Command Contracts
 - `elda i <target...>` installs package names, explicit interepo targets, or git URLs; for maintained packages with both acquisition lanes it follows the lane-selection rules from §5.2, and it installs hard deps plus default `recommends` unless disabled
+- when `elda i` or `elda ig` causes Elda to generate or scaffold package metadata during the current session, human interactive mode must stop before build for a review gate with `Y`/empty = continue, `n` = abort without deleting generated metadata, and `e` = open the generated recipe tree in the selected editor and then re-prompt
 - `elda ig <target...>` forces the source lane for maintained packages and remains valid for direct git-URL installs
 - `elda ib <pkg...>` forces the binary lane for maintained packages and fails if the selected target has no binary lane
 - `--prefer-source` and `--prefer-binary` are mutually exclusive `elda i` overrides; they are the flag form of the `ig` / `ib` choice
 - `elda rm <pkg...>` removes packages; `--cascade` removes reverse dependencies that become invalid, and `--purge-conffiles` drops preserved `*.eldasave` state
-- `elda u [<pkg...>]` upgrades the whole machine or the named package plus required closure from one synced snapshot; it does not permit resolver-broken partial upgrades
+- `elda u [<pkg...>]` upgrades the whole machine or the named package plus required closure from one synced snapshot; it does not permit resolver-broken partial upgrades. VCS packages (e.g., `-git`) are pinned to their install-time commit and do not auto-poll remote URLs during sync; operators must explicitly request VCS updates via `elda u --check-vcs`.
 - `elda search <query>` is substring match by default, `--regex` opts into regex, and results sort exact-name first, then prefix matches, then other substring matches
 - `elda ls` shows installed package name, version, reason, origin, source/remote, and current state membership
 - `elda info <pkg>` shows identity, version, deps, weak deps, provides/conflicts/replaces, origin, confidence, size, URLs, license, installed files summary, and provider-asset visibility
@@ -1199,7 +1261,7 @@ Rules:
 
 ### 16.3 Operator Visibility
 - `elda pf show` outputs active profiles, provider families, enabled foreign architectures, pending system-change handlers, and required activation class
-- `elda check` is the aggregated health command for orphaned packages, stale trust, pending trigger repair, risky adopted packages, and backend-specific warnings
+- `elda check` is the aggregated health command for orphaned packages, stale trust, pending trigger repair, risky adopted packages (including `WARN: Zombie Adoption` for adoptions with no upgrade path), and backend-specific warnings
 - `elda daemon status` reports whether the optional background refresh service is configured and running; `elda daemon refresh` triggers an immediate sync/notification pass
 
 ## 17. CI/CD Architecture
@@ -1220,9 +1282,13 @@ Reference org layout:
 
 Forge auth contract:
 - read-only `ci status` / `ci logs` may use anonymous access when the forge allows it
-- mutating `ci sub`, `ci run`, `ci retry`, and `ci batch ...` require configured forge credentials
+- local-only `ci sub`, `ci run`, `ci retry`, and `ci batch ...` may operate without hosted-forge credentials when the current CI workspace is not publishing to a configured remote
+- once a submission publishes to a configured remote or opens a hosted review, mutating forge-facing operations use the resolved auth profile for that remote
 - supported auth kinds are `token`, `ssh`, and `none`
 - `token_env` is the canonical token configuration field for token-based forges
+- `submission.remote_name` selects which git remote the current CI workspace publishes to; the default is `origin`
+- `submission.base_branch` selects the PR/MR target branch and direct-push target branch; the default is `main`
+- `submission.remotes.<name>` may override `auth`, `token_env`, `api_base`, `base_branch`, `auto_open`, and `auto_assign` for one named remote target
 
 ### 17.2 Submission Workflow
 PR/MR-first is the default submission model.
@@ -1248,13 +1314,49 @@ Post-merge flow:
 
 Source-only maintained remotes still republish a signed repo index after merge. Their index entries pin `pkg_lua` plus `repo_commit`, omit binary-fetch fields such as `asset_url` and `payload_sig`, and let clients build from the authoritative package-definition repo instead of publishing payload assets.
 
-### 17.4 Batch and Channel Model
+### 17.4 Forge Population Tooling
+Forge population from foreign repositories is maintainer-side companion tooling, not part of the
+canonical end-user `elda` CLI surface.
+
+Population rules:
+- the population tool consumes translated interepo snapshots and/or adapter metadata, then writes
+  Elda-native package definitions into the authoritative package-definition repo
+- translated interepo records remain valid install sources, but they are not the forge's canonical
+  long-term package-definition format
+- the required capabilities are one-shot seeding plus resumable incremental refresh or sync; the
+  exact binary name or subcommand spelling is implementation detail, not core `elda` contract
+- the same companion tooling also owns cache-promotion workflows for payloads that already have
+  matching metadata: local payload push, maintained-remote mirroring, and interepo payload mirroring
+- default behavior is metadata-first: record upstream source, payload, and provenance in native
+  definitions; optional cache-seed or mirror-job output may be emitted separately, but foreign
+  payload mirroring is not implicit mandatory behavior
+- once a populated package becomes fully maintained, normal CI publication and signed-index release
+  replace direct foreign-origin payload use without changing the canonical package identity
+
+Required populate capabilities:
+- package-definition seeding and refresh from translated foreign metadata
+- cache push from on-device/local payload artifacts that already have known digests
+- cache mirroring from binary-capable maintained remote indexes
+- cache mirroring from translated interepo snapshots while preserving foreign payload format and
+  provenance
+- optional cache-seed manifest emission for bulk copy or offline mirror jobs
+
+Populate safety rules:
+- cache promotion never changes package identity or turns a foreign payload into a native
+  `repo_binary` record by itself
+- populate tooling may run on a workstation, builder, CI runner, or dedicated mirror host, but it
+  must always read the same explicit remote/cache documents and verified snapshot state instead of
+  inventing package metadata ad hoc
+- a payload pushed from one device into cache is reusable only when another machine already has
+  matching metadata from a configured remote or interepo source
+
+### 17.5 Batch and Channel Model
 Rules:
 - batch and stack submission support closure-oriented review and build flows
 - users install packages and profile packages, not CI batches
 - testing and staging channels exist before stable promotion
 
-### 17.5 DAG and Lock Record Shape
+### 17.6 DAG and Lock Record Shape
 The scheduler DAG and lock record carries:
 | Field | Meaning |
 | --- | --- |
@@ -1333,6 +1435,15 @@ wayland = true
 [submission]
 mode = "pr"
 auto_open = true
+auth = "token"
+token_env = "ELDA_GITHUB_TOKEN"
+api_base = "https://api.github.com"
+remote_name = "origin"
+base_branch = "main"
+
+[logging]
+dir = "~/.config/elda/logs"
+level = 1
 
 [daemon]
 refresh = "30m"

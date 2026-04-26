@@ -197,7 +197,6 @@ impl AppContext {
         }
 
         self.persist_imported_remotes(&document)?;
-        self.write_profile_state(&document.profile)?;
         if !document.remotes.is_empty() {
             elda_repo::sync_remotes(
                 &self.database.layout().remotes_dir,
@@ -205,6 +204,7 @@ impl AppContext {
                 self.sync_options(&request),
             )?;
         }
+        let imported_profile = self.import_profile_state(&document.profile, request.offline)?;
         if !document.world.is_empty() {
             let install_request = ParsedInstallRequest {
                 targets: document.world.clone(),
@@ -216,7 +216,6 @@ impl AppContext {
             self.validate_install_conflicts(&plan)?;
             self.apply_install_plan(&plan, request.offline)?;
         }
-        let profile_backend_reconciliation = self.apply_profile_backend_state(&document.profile)?;
 
         Ok(CommandReport {
             area: "state",
@@ -235,7 +234,7 @@ impl AppContext {
                     "remotes": document.remotes,
                     "world": document.world,
                     "profile": document.profile,
-                    "profile_backend_reconciliation": profile_backend_reconciliation,
+                    "profile_backend_reconciliation": imported_profile,
                 },
             })),
         })

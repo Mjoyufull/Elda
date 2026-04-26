@@ -159,6 +159,7 @@ pub(crate) fn install_built_package_internal(
     Ok(InstallReport {
         package_name: package.package_name.clone(),
         state_id,
+        activation_backend: activation_backend_name(database.layout()).to_owned(),
         installed_paths: files.len(),
         snapshots,
     })

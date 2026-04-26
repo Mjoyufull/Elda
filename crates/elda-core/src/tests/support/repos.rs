@@ -22,6 +22,22 @@ pub(in crate::tests) fn create_git_cargo_repo(root: &Path, name: &str) -> PathBu
     repo_dir
 }
 
+pub(in crate::tests) fn create_bare_git_remote(root: &Path, name: &str) -> PathBuf {
+    let repo_dir = root.join(format!("{name}.git"));
+    let status = Command::new("git")
+        .arg("init")
+        .arg("--bare")
+        .arg(&repo_dir)
+        .status()
+        .expect("git bare init should launch");
+    assert!(
+        status.success(),
+        "git bare init failed for {}",
+        repo_dir.display()
+    );
+    repo_dir
+}
+
 pub(in crate::tests) fn create_git_make_repo(root: &Path, name: &str) -> PathBuf {
     let repo_dir = root.join(name);
     fs::create_dir_all(&repo_dir).expect("repo dir should exist");

@@ -5,6 +5,7 @@ use crate::config::{Config, InstallPreference};
 use crate::error::CoreError;
 use crate::flags::ResolvedFlagState;
 use crate::privilege::{PrivilegeRequest, PrivilegeStatus};
+use crate::run_log::CommandLogSession;
 use crate::{CommandReport, CommandRequest};
 use elda_build::{BinarySourceVerification, BuiltPackage};
 use elda_db::{Database, InstalledPackageDetails, StateLayout};
@@ -87,6 +88,8 @@ pub(crate) struct ResolvedInstallTarget {
     pub(crate) remote_recipe_source: Option<RemoteRecipeSource>,
     pub(crate) binary_source_verification: Option<BinarySourceVerification>,
     pub(crate) ad_hoc_git: bool,
+    pub(crate) generated_recipe_name: Option<String>,
+    pub(crate) generated_recipe_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -242,6 +245,9 @@ impl AppContext {
             [namespace, command] if namespace == "rc" && command == "add" => {
                 self.handle_recipe_add(request)
             }
+            [namespace, command] if namespace == "rc" && command == "edit" => {
+                self.handle_recipe_edit(request)
+            }
             [namespace, command] if namespace == "rc" && command == "check" => {
                 self.handle_recipe_check(request)
             }
@@ -296,9 +302,15 @@ impl AppContext {
             [namespace, command] if namespace == "daemon" && command == "status" => {
                 self.handle_daemon_status(request)
             }
+            [namespace, command] if namespace == "daemon" && command == "run" => {
+                self.handle_daemon_run(request)
+            }
             [namespace, command] if namespace == "daemon" && command == "refresh" => {
                 self.handle_daemon_refresh(request)
             }
+            [namespace, ..] if namespace == "ci" => self.handle_ci_namespace(request),
+            [namespace, ..] if namespace == "forge" => self.handle_forge_namespace(request),
+            [namespace, ..] if namespace == "qa" => self.handle_qa_namespace(request),
             [namespace, command] if namespace == "state" && command == "show" => {
                 self.handle_state_show(request)
             }
@@ -337,6 +349,30 @@ pub fn run_from_root(
     root_dir: impl AsRef<Path>,
     request: CommandRequest,
 ) -> Result<CommandReport, CoreError> {
+    let root_dir = root_dir.as_ref();
     let context = AppContext::from_root(root_dir, request.system_mode)?;
-    context.handle(request)
+    let log_session = CommandLogSession::start(root_dir, &context.config, &request)?;
+    let request_for_logging = request.clone();
+    let result = context.handle(request);
+
+    match result {
+        Ok(mut report) => {
+            if let Some(log_session) = &log_session {
+                log_session.write_success(
+                    root_dir,
+                    &context.config,
+                    &request_for_logging,
+                    &report,
+                )?;
+                log_session.attach_to_report(&mut report);
+            }
+            Ok(report)
+        }
+        Err(error) => {
+            if let Some(log_session) = &log_session {
+                log_session.write_error(root_dir, &context.config, &request_for_logging, &error)?;
+            }
+            Err(error)
+        }
+    }
 }

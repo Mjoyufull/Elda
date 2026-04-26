@@ -1,6 +1,7 @@
 mod mutate;
 mod policy;
 mod selection;
+mod selection_plan;
 mod selection_request;
 mod state;
 mod system_changes;

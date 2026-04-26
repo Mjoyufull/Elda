@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::RepoError;
-use crate::model::{CacheDocument, RemoteDocument, TrustMode};
+use crate::model::{CacheDocument, DEFAULT_REMOTE_CHANNEL, RemoteDocument, TrustMode};
 
 pub fn add_remote(remotes_dir: &Path, input: &str) -> Result<RemoteDocument, RepoError> {
     fs::create_dir_all(remotes_dir)?;
@@ -12,6 +12,7 @@ pub fn add_remote(remotes_dir: &Path, input: &str) -> Result<RemoteDocument, Rep
         RemoteDocument {
             name,
             index_url,
+            channel: DEFAULT_REMOTE_CHANNEL.to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,

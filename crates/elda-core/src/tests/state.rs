@@ -142,9 +142,13 @@ fn state_export_uses_persisted_profile_base_after_profile_apply() {
 fn state_import_writes_remotes_and_installs_world_targets() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/opt/elda");
+    let import_base_repo = create_git_make_repo(tempdir.path(), "import-base-source");
+    let import_desktop_repo = create_git_make_repo(tempdir.path(), "import-desktop-source");
     let binary = create_script_binary(tempdir.path(), "import-tool-v1", "import tool");
     let index_path = write_remote_index(tempdir.path(), "import-tool", &binary);
     let state_path = tempdir.path().join("import.eldastate");
+    write_local_profile_recipe(tempdir.path(), "import-base", &import_base_repo, &[]);
+    write_local_profile_recipe(tempdir.path(), "import-desktop", &import_desktop_repo, &[]);
     fs::write(
         &state_path,
         format!(

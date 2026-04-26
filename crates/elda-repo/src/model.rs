@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RepoError;
 
+pub const DEFAULT_REMOTE_CHANNEL: &str = "stable";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum TrustMode {
@@ -18,6 +20,8 @@ pub enum TrustMode {
 pub struct RemoteDocument {
     pub name: String,
     pub index_url: String,
+    #[serde(default = "default_remote_channel")]
+    pub channel: String,
     #[serde(default)]
     pub packages_url: Option<String>,
     #[serde(default)]
@@ -74,6 +78,8 @@ pub struct SyncedIndexSnapshot {
 pub struct SyncedRemoteRecord {
     pub name: String,
     pub index_url: String,
+    #[serde(default = "default_remote_channel")]
+    pub channel: String,
     pub priority: u32,
     pub package_count: usize,
     pub trust: TrustMode,
@@ -106,6 +112,10 @@ pub struct SyncedPackageRecord {
     pub sha256: Option<String>,
     pub size: Option<u64>,
     pub payload_sig: Option<String>,
+    #[serde(default)]
+    pub sbom_url: Option<String>,
+    #[serde(default)]
+    pub attestation_url: Option<String>,
     pub source_kind: Option<String>,
     pub source_ref: Option<String>,
     pub fallback_git_url: Option<String>,
@@ -145,6 +155,10 @@ impl SyncedPackageRecord {
 
 const fn default_enabled() -> bool {
     true
+}
+
+fn default_remote_channel() -> String {
+    DEFAULT_REMOTE_CHANNEL.to_owned()
 }
 
 const fn default_priority() -> u32 {

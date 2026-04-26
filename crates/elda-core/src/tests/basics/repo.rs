@@ -1,6 +1,30 @@
 use super::*;
 
 #[test]
+fn named_install_without_configured_remotes_points_to_remote_bootstrap() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+
+    let error = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["missing-tool".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect_err("install without configured remotes should fail");
+
+    assert!(error.to_string().contains("no remotes are configured"));
+    assert!(
+        error
+            .to_string()
+            .contains("elda rmt add <name>=<index-url>` and then run `elda sync`")
+    );
+}
+
+#[test]
 fn sync_search_info_and_named_install_work_from_repo_snapshot() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/opt/elda");

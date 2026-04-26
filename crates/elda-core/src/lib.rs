@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod app_ci;
 mod app_flags;
 mod app_fs;
 mod app_install;
@@ -10,15 +11,18 @@ mod app_policy;
 mod app_profile;
 mod app_recipe;
 mod app_render;
+mod app_render_ci;
 mod app_render_support;
 mod app_repo;
 mod app_state;
 mod app_upgrade;
 mod cache_policy;
 mod config;
+mod editor;
 mod error;
 mod flags;
 mod privilege;
+mod run_log;
 
 pub use app::run_from_root;
 pub use app_render::render_human;
@@ -143,6 +147,7 @@ pub struct CommandRequest {
     pub dry_run: bool,
     pub system_mode: bool,
     pub offline: bool,
+    pub log_level: Option<u8>,
     pub accept_rotated_keys: Vec<String>,
 }
 
@@ -161,6 +166,7 @@ impl CommandRequest {
             dry_run,
             system_mode: false,
             offline: false,
+            log_level: None,
             accept_rotated_keys: Vec::new(),
         }
     }
@@ -174,6 +180,12 @@ impl CommandRequest {
     #[must_use]
     pub fn with_offline(mut self, offline: bool) -> Self {
         self.offline = offline;
+        self
+    }
+
+    #[must_use]
+    pub fn with_log_level(mut self, log_level: Option<u8>) -> Self {
+        self.log_level = log_level;
         self
     }
 

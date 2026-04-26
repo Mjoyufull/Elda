@@ -13,8 +13,8 @@ pub use index::{
     sync_remotes,
 };
 pub use model::{
-    CacheDocument, RemoteDocument, RemotePayloadTrust, SyncReport, SyncedIndexSnapshot,
-    SyncedPackageRecord, SyncedRemoteRecord, TrustMode, TrustedPublicKey,
+    CacheDocument, DEFAULT_REMOTE_CHANNEL, RemoteDocument, RemotePayloadTrust, SyncReport,
+    SyncedIndexSnapshot, SyncedPackageRecord, SyncedRemoteRecord, TrustMode, TrustedPublicKey,
 };
 pub use store::{
     add_cache, add_remote, list_caches, list_remotes, load_remote, save_cache, save_remote,

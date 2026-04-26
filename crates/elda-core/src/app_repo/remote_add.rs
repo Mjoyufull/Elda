@@ -3,7 +3,7 @@ use std::fs;
 use crate::CommandRequest;
 use crate::app::AppContext;
 use crate::error::CoreError;
-use elda_repo::{RemoteDocument, TrustMode};
+use elda_repo::{DEFAULT_REMOTE_CHANNEL, RemoteDocument, TrustMode};
 
 impl AppContext {
     pub(super) fn parse_remote_add_request(
@@ -18,6 +18,7 @@ impl AppContext {
         let mut signature_url = None::<String>;
         let mut metadata_url = None::<String>;
         let mut packages_url = None::<String>;
+        let mut channel = DEFAULT_REMOTE_CHANNEL.to_owned();
         let mut allow_stale = false;
         let mut priority = 100_u32;
         let mut operands = request.operands.iter().skip(1);
@@ -76,6 +77,18 @@ impl AppContext {
                     })?;
                     packages_url = Some(value.clone());
                 }
+                "--channel" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--channel` requires a channel name".to_owned())
+                    })?;
+                    let parsed = value.trim();
+                    if parsed.is_empty() {
+                        return Err(CoreError::Operator(
+                            "`--channel` requires a non-empty channel name".to_owned(),
+                        ));
+                    }
+                    channel = parsed.to_owned();
+                }
                 "--allow-stale" => allow_stale = true,
                 other => {
                     return Err(CoreError::Operator(format!(
@@ -103,6 +116,7 @@ impl AppContext {
         Ok(RemoteDocument {
             name,
             index_url,
+            channel,
             packages_url,
             metadata_url,
             signature_url,

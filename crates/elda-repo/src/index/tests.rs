@@ -11,6 +11,8 @@ use crate::model::{RemoteDocument, TrustMode};
 
 use super::{SyncOptions, load_remote_payload_trust, load_snapshot, sync_remotes};
 
+mod channel;
+
 #[test]
 fn sync_verifies_pinned_remote_and_writes_snapshot_metadata() {
     let tempdir = TempDir::new().expect("tempdir should exist");
@@ -22,6 +24,7 @@ fn sync_verifies_pinned_remote_and_writes_snapshot_metadata() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -54,9 +57,10 @@ fn sync_verifies_pinned_remote_and_writes_snapshot_metadata() {
     );
 
     let snapshot = load_snapshot(&report.snapshot_path).expect("snapshot should load");
-    assert_eq!(snapshot.schema_version, 2);
+    assert_eq!(snapshot.schema_version, 3);
     assert!(!snapshot.offline);
     assert_eq!(snapshot.packages.len(), 1);
+    assert_eq!(snapshot.remotes[0].channel, "stable");
 }
 
 #[test]
@@ -70,6 +74,7 @@ fn sync_uses_stale_verified_snapshot_when_remote_is_unreachable_and_policy_allow
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -125,6 +130,7 @@ fn sync_persists_trusted_public_keys_for_payload_verification() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -169,6 +175,7 @@ fn offline_sync_uses_cached_verified_snapshots_only() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -223,6 +230,7 @@ fn tofu_sync_allows_first_use_enrollment_when_enabled() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
@@ -260,6 +268,7 @@ fn tofu_sync_rejects_first_use_enrollment_when_disabled() {
         RemoteDocument {
             name: "main".to_owned(),
             index_url: format!("file://{}", index_path.display()),
+            channel: "stable".to_owned(),
             packages_url: None,
             metadata_url: None,
             signature_url: None,
