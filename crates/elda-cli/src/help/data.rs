@@ -94,7 +94,11 @@ pub(super) const STATE_ROWS: &[HelpRow] = &[
 
 pub(super) const NAMESPACE_ROWS: &[HelpRow] = &[
     HelpRow::new("rmt add", "<name=url>", "register a remote index"),
-    HelpRow::new("rc add/edit/check", "...", "manage local recipes"),
+    HelpRow::new(
+        "rc add/edit/check/ls/rm",
+        "...",
+        "manage local recipes and on-disk install catalog",
+    ),
     HelpRow::new(
         "vendor add/import/export",
         "...",

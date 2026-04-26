@@ -100,6 +100,7 @@ Status source used for this tracker:
 ### 5) Operator Commands + UX
 - [x] Core command set is materially useful (`i/rm/u/sync/search/info/files/verify/recover/rollback/pf/...`)
 - [x] Human-readable output paths improved
+- [x] Native forge hosting documentation now covers source-only and full binary remote setups, cache population, and GitHub/GitLab/Gitea operator patterns
 - [~] Install/migration/takeover UX contract is now documented more fully, and the runtime now has structured human install rendering, persistent per-run session logs for mutating commands, activation-backend plus snapshot summaries in install output, a grouped per-package progress surface for source/binary/install steps, direct missing-remote bootstrap guidance, and the first interactive generated-metadata review gate for session-generated recipes (`eldainstallaztionuxandcliimprovements.md`), but the broader first-run/setup/takeover flow is still partial overall
 - [x] Branded help and command descriptions exist
 - [~] Several namespaces still mostly stubs (`mg/adopt/ext`)

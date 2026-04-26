@@ -352,6 +352,39 @@ fn rc_edit_dry_run_reports_recipe_path_without_launching_editor() {
 }
 
 #[test]
+fn rc_ls_reports_local_recipe_name() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+
+    let binary = create_vendor_binary(tempdir.path(), "rc-ls-tool");
+    write_local_binary_recipe(tempdir.path(), "rc-ls-tool", &binary, &[]);
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["rc".to_owned(), "ls".to_owned()],
+            Vec::new(),
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("rc ls should succeed");
+
+    assert_eq!(report.area, "recipe");
+    let local = report
+        .details
+        .as_ref()
+        .and_then(|details| details.get("catalog"))
+        .and_then(|catalog| catalog.get("local_recipes"))
+        .and_then(|value| value.as_array())
+        .expect("local_recipes array");
+    assert!(
+        local.iter().filter_map(|v| v.as_str()).any(|n| n == "rc-ls-tool"),
+        "expected rc-ls-tool in local_recipes: {local:?}"
+    );
+}
+
+#[test]
 fn cache_add_writes_session_log_for_mutating_command() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/opt/elda");

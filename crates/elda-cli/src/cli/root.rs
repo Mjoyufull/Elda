@@ -58,8 +58,9 @@ struct GlobalArgs {
     #[arg(
         long = "log-level",
         global = true,
-        value_name = "1|2|3",
-        help = "Write the per-run session log at level 1, 2, or 3"
+        value_name = "0|1|2|3",
+        value_parser = clap::value_parser!(u8).range(0..=3),
+        help = "Per-run session log: 0 off, 1–3 more detail (overrides [logging].level for this run)"
     )]
     log_level: Option<u8>,
     #[arg(

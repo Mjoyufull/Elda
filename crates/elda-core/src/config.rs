@@ -121,7 +121,7 @@ impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             dir: "~/.config/elda/logs".to_owned(),
-            level: 1,
+            level: 0,
         }
     }
 }

@@ -44,6 +44,65 @@ pub(crate) fn render_session_log_section(details: &Value) -> Option<String> {
     Some(render_section("Log", &[format!("path: {path}")]))
 }
 
+pub(crate) fn render_recipe_catalog_report(report: &CommandReport) -> Option<String> {
+    let details = report.details.as_ref()?;
+    let catalog = details.get("catalog")?;
+    let recipes_dir = catalog.get("recipes_dir")?.as_str()?;
+    let local = catalog.get("local_recipes")?.as_array()?;
+    let synced = catalog.get("synced_packages")?.as_array()?;
+
+    let mut blocks = vec![
+        render_header(report.area, report.status),
+        report.summary.clone(),
+        render_section("Local recipes", &[format!("directory: {recipes_dir}")]),
+    ];
+
+    let local_lines: Vec<String> = local
+        .iter()
+        .filter_map(|value| value.as_str().map(|name| format!("- {name}")))
+        .collect();
+    if local_lines.is_empty() {
+        blocks.push(render_section("Local recipe names", &["(none)".to_owned()]));
+    } else {
+        blocks.push(render_section("Local recipe names", &local_lines));
+    }
+
+    let synced_lines: Vec<String> = synced
+        .iter()
+        .filter_map(|value| value.as_str().map(|name| format!("- {name}")))
+        .collect();
+    if synced_lines.is_empty() {
+        blocks.push(render_section(
+            "Synced packages",
+            &["(none — run `elda sync` after `rmt add`)".to_owned()],
+        ));
+    } else {
+        blocks.push(render_section(
+            "Synced packages (`elda i <name>`)",
+            &synced_lines,
+        ));
+    }
+
+    Some(blocks.join("\n\n"))
+}
+
+pub(crate) fn render_recipe_removed_report(report: &CommandReport) -> Option<String> {
+    let details = report.details.as_ref()?;
+    let removed = details.get("removed")?;
+    let pkgname = removed.get("pkgname")?.as_str()?;
+    let path = removed.get("path")?.as_str()?;
+
+    Some(format!(
+        "{}\n{}\n\n{}",
+        render_header(report.area, report.status),
+        report.summary,
+        render_section(
+            "Removed",
+            &[format!("pkgname: {pkgname}"), format!("path: {path}")],
+        ),
+    ))
+}
+
 fn render_install_report_sections(
     report: &CommandReport,
     details: &Value,

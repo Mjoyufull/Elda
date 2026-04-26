@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rustix::process::geteuid;
 use serde_json::{Value, json};
 
 use crate::config::Config;
@@ -30,9 +31,12 @@ impl CommandLogSession {
         }
 
         let level = request.log_level.unwrap_or(config.logging.level);
+        if level == 0 {
+            return Ok(None);
+        }
         if !(1..=3).contains(&level) {
             return Err(CoreError::Operator(format!(
-                "invalid log level `{level}`; expected 1, 2, or 3"
+                "invalid log level `{level}`; expected 0, 1, 2, or 3"
             )));
         }
 
@@ -211,7 +215,9 @@ fn is_mutating_command(command_path: &[String]) -> bool {
                 | "autoremove"
         ),
         [namespace, command] if namespace == "rmt" => command == "add",
-        [namespace, command] if namespace == "rc" => matches!(command.as_str(), "add" | "edit"),
+        [namespace, command] if namespace == "rc" => {
+            matches!(command.as_str(), "add" | "edit" | "rm")
+        }
         [namespace, command] if namespace == "vendor" => {
             matches!(command.as_str(), "add" | "import" | "export")
         }
@@ -272,9 +278,67 @@ fn root_relative_path(root_dir: &Path, configured_dir: &str) -> PathBuf {
 }
 
 fn user_config_home() -> Option<PathBuf> {
+    if geteuid().is_root() {
+        if let Some(uid) = env::var_os("SUDO_UID").and_then(|value| {
+            value
+                .to_str()
+                .and_then(|text| text.parse::<u32>().ok())
+        }) && let Some(home) = home_dir_for_uid(uid)
+        {
+            return Some(home.join(".config"));
+        }
+        if let Ok(user) = env::var("SUDO_USER")
+            && user != "root"
+            && let Some(home) = home_dir_for_username(&user)
+        {
+            return Some(home.join(".config"));
+        }
+        if let Ok(user) = env::var("DOAS_USER")
+            && user != "root"
+            && let Some(home) = home_dir_for_username(&user)
+        {
+            return Some(home.join(".config"));
+        }
+    }
+
     env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+}
+
+fn home_dir_for_uid(uid: u32) -> Option<PathBuf> {
+    let passwd = fs::read_to_string("/etc/passwd").ok()?;
+    passwd.lines().find_map(|line| {
+        let mut parts = line.split(':');
+        let _name = parts.next()?;
+        let _password = parts.next()?;
+        let uid_field = parts.next()?;
+        if uid_field.parse::<u32>().ok()? != uid {
+            return None;
+        }
+        for _ in 0..2 {
+            parts.next()?;
+        }
+        let home = parts.next()?;
+        Some(PathBuf::from(home))
+    })
+}
+
+fn home_dir_for_username(name: &str) -> Option<PathBuf> {
+    let passwd = fs::read_to_string("/etc/passwd").ok()?;
+    passwd.lines().find_map(|line| {
+        let mut parts = line.split(':');
+        let user = parts.next()?;
+        if user != name {
+            return None;
+        }
+        let _password = parts.next()?;
+        let _uid = parts.next()?;
+        let _gid = parts.next()?;
+        let _gecos = parts.next()?;
+        let home = parts.next()?;
+        Some(PathBuf::from(home))
+    })
 }
 
 fn command_slug(command_path: &[String]) -> String {
@@ -292,13 +356,31 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{command_slug, resolve_log_dir, session_log_path};
+    use crate::config::Config;
+    use crate::{CommandRequest, OutputMode};
+
+    use super::{command_slug, resolve_log_dir, session_log_path, CommandLogSession};
 
     #[test]
     fn resolve_log_dir_uses_root_relative_path_for_isolated_roots() {
         let directory = resolve_log_dir(Path::new("/tmp/elda-root"), "~/.config/elda/logs");
 
         assert_eq!(directory, Path::new("/tmp/elda-root/.config/elda/logs"));
+    }
+
+    #[test]
+    fn command_log_session_skips_file_when_level_zero() {
+        let config = Config::default();
+        assert_eq!(config.logging.level, 0);
+        let request = CommandRequest::new(
+            vec!["sync".to_owned()],
+            Vec::new(),
+            OutputMode::Human,
+            false,
+        );
+        let session =
+            CommandLogSession::start(Path::new("/"), &config, &request).expect("session start");
+        assert!(session.is_none());
     }
 
     #[test]

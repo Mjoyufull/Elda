@@ -211,3 +211,4 @@ notify_upgrades = true
 ## Docs
 
 - `USAGE.md` covers the command-line flows.
+- `eldaforgehosting.md` covers operator-side native forge, index, and cache hosting.

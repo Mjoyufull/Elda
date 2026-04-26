@@ -86,6 +86,12 @@ pub(super) enum RecipeCommand {
     Edit(PackageArg),
     #[command(about = "Validate local recipes")]
     Check(OptionalPackageArg),
+    #[command(
+        about = "List local recipe trees and synced index names you can install with `elda i`"
+    )]
+    Ls,
+    #[command(about = "Remove local recipe metadata under the recipes directory")]
+    Rm(PackageArg),
 }
 
 impl RecipeCommand {
@@ -103,6 +109,11 @@ impl RecipeCommand {
             Self::Check(args) => (
                 vec!["rc".to_owned(), "check".to_owned()],
                 args.package.clone().into_iter().collect(),
+            ),
+            Self::Ls => (vec!["rc".to_owned(), "ls".to_owned()], Vec::new()),
+            Self::Rm(args) => (
+                vec!["rc".to_owned(), "rm".to_owned()],
+                vec![args.package.clone()],
             ),
         }
     }

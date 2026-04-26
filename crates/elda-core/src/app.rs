@@ -251,6 +251,12 @@ impl AppContext {
             [namespace, command] if namespace == "rc" && command == "check" => {
                 self.handle_recipe_check(request)
             }
+            [namespace, command] if namespace == "rc" && command == "ls" => {
+                self.handle_recipe_ls(request)
+            }
+            [namespace, command] if namespace == "rc" && command == "rm" => {
+                self.handle_recipe_rm(request)
+            }
             [namespace, command] if namespace == "vendor" && command == "add" => {
                 self.handle_vendor_add(request)
             }

@@ -11,6 +11,7 @@ mod app_policy;
 mod app_profile;
 mod app_recipe;
 mod app_render;
+mod recipe_catalog;
 mod app_render_ci;
 mod app_render_support;
 mod app_repo;
@@ -63,7 +64,7 @@ const ROOT_COMMANDS: &[&str] = &[
 const CLI_NAMESPACES: &[NamespaceSpec] = &[
     NamespaceSpec::new("(root)", ROOT_COMMANDS),
     NamespaceSpec::new("rmt", &["add"]),
-    NamespaceSpec::new("rc", &["add", "edit", "check"]),
+    NamespaceSpec::new("rc", &["add", "edit", "check", "ls", "rm"]),
     NamespaceSpec::new(
         "ci",
         &["sub", "run", "status", "pr", "retry", "logs", "batch"],

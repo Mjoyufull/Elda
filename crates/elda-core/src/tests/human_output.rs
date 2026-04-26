@@ -49,7 +49,8 @@ fn human_install_success_renders_result_block() {
             vec!["render-result-tool".to_owned()],
             OutputMode::Human,
             false,
-        ),
+        )
+        .with_log_level(Some(1)),
     )
     .expect("install should succeed");
 

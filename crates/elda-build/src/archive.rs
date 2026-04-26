@@ -52,8 +52,8 @@ pub fn stage_binary_source(
     let bin_dir = stage_root.join("usr/bin");
     fs::create_dir_all(&bin_dir)?;
 
-    if is_tar_archive(&download_path) {
-        stage_binary_from_tar(&source, &download_path, &bin_dir)?;
+    if let Some(kind) = infer_archive_kind(&download_path, &source_url, &source) {
+        stage_binary_from_tar(&source, &download_path, &bin_dir, kind)?;
     } else {
         stage_plain_binary(&source, &download_path, &bin_dir)?;
     }
@@ -116,6 +116,7 @@ fn stage_binary_from_tar(
     source: &elda_recipe::SourceDefinition,
     downloaded_path: &Path,
     bin_dir: &Path,
+    kind: ArchiveKind,
 ) -> Result<(), BuildError> {
     let requested_binary = string_field(source, "binary")?;
     let install_name = string_field_optional(source, "rename")
@@ -136,8 +137,8 @@ fn stage_binary_from_tar(
     let basename_only = !requested_binary.contains('/');
     let mut matched = false;
 
-    match archive_kind(downloaded_path) {
-        Some(ArchiveKind::Tar) => {
+    match kind {
+        ArchiveKind::Tar => {
             let file = fs::File::open(downloaded_path)?;
             extract_tar_binary(
                 Archive::new(BufReader::new(file)),
@@ -147,7 +148,7 @@ fn stage_binary_from_tar(
                 &mut matched,
             )?;
         }
-        Some(ArchiveKind::TarGz) => {
+        ArchiveKind::TarGz => {
             let file = fs::File::open(downloaded_path)?;
             extract_tar_binary(
                 Archive::new(GzDecoder::new(BufReader::new(file))),
@@ -157,7 +158,7 @@ fn stage_binary_from_tar(
                 &mut matched,
             )?;
         }
-        Some(ArchiveKind::TarZst) => {
+        ArchiveKind::TarZst => {
             let file = fs::File::open(downloaded_path)?;
             let decoder = ZstdDecoder::new(BufReader::new(file))?;
             extract_tar_binary(
@@ -168,7 +169,7 @@ fn stage_binary_from_tar(
                 &mut matched,
             )?;
         }
-        Some(ArchiveKind::TarXz) => {
+        ArchiveKind::TarXz => {
             let file = fs::File::open(downloaded_path)?;
             extract_tar_binary(
                 Archive::new(XzDecoder::new(BufReader::new(file))),
@@ -177,12 +178,6 @@ fn stage_binary_from_tar(
                 &destination,
                 &mut matched,
             )?;
-        }
-        None => {
-            return Err(BuildError::Invalid(format!(
-                "binary source `{}` is not a supported tar archive",
-                downloaded_path.display()
-            )));
         }
     }
 
@@ -237,12 +232,11 @@ fn extract_tar_binary<R: std::io::Read>(
     Ok(())
 }
 
-fn is_tar_archive(path: &Path) -> bool {
-    archive_kind(path).is_some()
-}
-
-fn archive_kind(path: &Path) -> Option<ArchiveKind> {
-    let name = path.file_name()?.to_string_lossy();
+/// Classify tarball compression from a filename or URL last segment.
+///
+/// Payloads in the content-addressed cache are stored as `<sha256>` with no
+/// extension, so callers must fall back to the download URL or recipe `asset`.
+fn archive_kind_from_name(name: &str) -> Option<ArchiveKind> {
     if name.ends_with(".tar") {
         Some(ArchiveKind::Tar)
     } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
@@ -254,6 +248,33 @@ fn archive_kind(path: &Path) -> Option<ArchiveKind> {
     } else {
         None
     }
+}
+
+fn infer_archive_kind(
+    downloaded_path: &Path,
+    source_url: &str,
+    source: &elda_recipe::SourceDefinition,
+) -> Option<ArchiveKind> {
+    if let Some(name) = downloaded_path.file_name().and_then(|n| n.to_str()) {
+        if let Some(kind) = archive_kind_from_name(name) {
+            return Some(kind);
+        }
+    }
+
+    if let Some(segment) = source_url.rsplit('/').next() {
+        let base = segment.split('?').next().unwrap_or(segment);
+        if let Some(kind) = archive_kind_from_name(base) {
+            return Some(kind);
+        }
+    }
+
+    if let Some(asset) = string_field_optional(source, "asset")
+        && let Some(kind) = archive_kind_from_name(asset)
+    {
+        return Some(kind);
+    }
+
+    None
 }
 
 fn string_field<'a>(
@@ -281,4 +302,48 @@ enum ArchiveKind {
     TarGz,
     TarZst,
     TarXz,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    use elda_recipe::{ScalarValue, SourceDefinition};
+
+    use super::{ArchiveKind, infer_archive_kind};
+
+    fn source_with_asset(asset: &str) -> SourceDefinition {
+        SourceDefinition {
+            kind: "github_release".to_owned(),
+            fields: BTreeMap::from([
+                ("asset".to_owned(), ScalarValue::String(asset.to_owned())),
+                ("sha256".to_owned(), ScalarValue::String("x".to_owned())),
+            ]),
+            github_release_assets: BTreeMap::new(),
+            default_lane: None,
+            lanes: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn infer_archive_kind_falls_back_to_url_when_cache_file_is_sha256_named() {
+        let url = "https://github.com/example/p/releases/download/v1/p-1.0-x86_64-unknown-linux-gnu.tar.xz";
+        let source = source_with_asset("ignored-if-url-matches.tar.gz");
+        let path = Path::new("/var/cache/elda/src/62ede54ea3e30ae00b378bf7337f0e6ec1cbbb32f328d06cbd9084622e31e2d4");
+        assert_eq!(
+            infer_archive_kind(path, url, &source),
+            Some(ArchiveKind::TarXz)
+        );
+    }
+
+    #[test]
+    fn infer_archive_kind_uses_asset_when_url_has_no_suffix() {
+        let source = source_with_asset("bundle.tar.gz");
+        let path = Path::new("/tmp/abc123def456");
+        assert_eq!(
+            infer_archive_kind(path, "https://example.invalid/dl/abc", &source),
+            Some(ArchiveKind::TarGz)
+        );
+    }
 }

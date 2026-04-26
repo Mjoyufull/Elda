@@ -1205,7 +1205,7 @@ The CLI surface is the public operator interface for Elda. Names below are canon
 | --- | --- | --- |
 | `(root)` | `i`, `ig`, `ib`, `rm`, `u`, `sync`, `ls`, `search`, `info`, `files`, `verify`, `reverify`, `why`, `rdeps`, `pin`, `unpin`, `hold`, `unhold`, `adopt`, `downgrade`, `diff`, `check`, `recover`, `rollback`, `fix-triggers`, `autoremove` | Core package-manager operations |
 | `rmt` | `add` | Remote registration and trust bootstrap |
-| `rc` | `add`, `edit`, `check` | Local recipe management |
+| `rc` | `add`, `edit`, `check`, `ls`, `rm` | Local recipe management and on-disk catalog |
 | `ci` | `sub`, `run`, `status`, `pr`, `retry`, `logs`, `batch new/add/push` | CI and forge submission |
 | `vendor` | `add`, `import`, `export` | Vendor binary management |
 | `forge` | `search`, `browse` | Forge discovery |
@@ -1224,20 +1224,23 @@ Command distinctions:
 - `pin` / `unpin` manage exact-version constraints; `hold` / `unhold` manage upgrade suppression policy
 - `rmt add` is the canonical remote bootstrap command, and `cache add` is the canonical cache-registration command
 - there is no root-level `add`; ad hoc git installs use `elda i <git-url>` or `elda ig <git-url>`, maintained local recipes use `elda rc add`, and CI submission uses `elda ci sub` or `elda ci run`
+- `rc ls` lists local recipe trees under the configured recipes directory plus `pkgname` values from the current synced index snapshot (names you can try with `elda i <name>` when resolution allows)
+- `rc rm <pkgname>` deletes the local recipe directory for `<pkgname>` when it contains `pkg.lua` and the package is **not** installed; operators must `elda rm` first when state still references the package
 - there is no hidden `lsc` alias in the canonical CLI; `elda cache ls` is the contract
 
 ### 16.1 Global CLI Conventions
 Rules:
 - all read-only commands should support `--json`
 - mutating commands should support `--dry-run`; when combined with `--json`, they emit the planned transaction instead of human text
-- mutating commands should write one persistent per-run session log under the configured logging directory; `--log-level 1|2|3` overrides the config default for that invocation
+- mutating commands may write one persistent per-run session log when `[logging].level` is `1`–`3` (default `0` disables session log files); `--log-level 0|1|2|3` overrides the config default for that invocation
+- when session logging uses a `~/…` directory and Elda runs as root via `sudo`/`doas`, that path resolves from the invoking user (`SUDO_UID` / `SUDO_USER` / `DOAS_USER` and `/etc/passwd`) so logs land under the operator's config home instead of `/root/.config` when resolution succeeds
 - ambiguous provider or source selection in non-interactive mode is a hard error
 - exit codes are stable enough for scripting: `0` success, `1` operator/runtime failure, `2` resolution or validation failure, `3` trust/auth failure
 
 Human-mode install output contract:
 - the main install dry-run and success path should render sections in this order: `Target`, `Resolution`, `Plan`, `Progress`, and then `Result` for non-dry-run installs
 - the rendered `Target` section should surface the selected activation backend for the current root, and the `Progress` / `Result` sections should report backend-aware activation plus any recorded snapshot summary when present
-- the rendered install view should also surface the attached session-log path
+- the rendered install view should also surface the attached session-log path when a session log is emitted for that invocation
 - the same structured `progress` data should remain available in JSON output for install plan and install result reports
 
 ### 16.2 Core Command Contracts
@@ -1249,6 +1252,8 @@ Human-mode install output contract:
 - `elda rm <pkg...>` removes packages; `--cascade` removes reverse dependencies that become invalid, and `--purge-conffiles` drops preserved `*.eldasave` state
 - `elda u [<pkg...>]` upgrades the whole machine or the named package plus required closure from one synced snapshot; it does not permit resolver-broken partial upgrades. VCS packages (e.g., `-git`) are pinned to their install-time commit and do not auto-poll remote URLs during sync; operators must explicitly request VCS updates via `elda u --check-vcs`.
 - `elda search <query>` is substring match by default, `--regex` opts into regex, and results sort exact-name first, then prefix matches, then other substring matches
+- `elda rc ls` lists local recipe directories (each with `pkg.lua`) and distinct `pkgname` values from the current synced snapshot; it is a catalog aid, not a full resolver dry-run
+- `elda rc rm <pkgname>` removes only the on-disk recipe tree under the recipes directory when the package is not installed; it does not remove cached payloads or journal history
 - `elda ls` shows installed package name, version, reason, origin, source/remote, and current state membership
 - `elda info <pkg>` shows identity, version, deps, weak deps, provides/conflicts/replaces, origin, confidence, size, URLs, license, installed files summary, and provider-asset visibility
 - `elda files <pkg>` lists owned paths; `elda files owner <path>` answers the pacman-style "who owns this path?" workflow
@@ -1443,7 +1448,7 @@ base_branch = "main"
 
 [logging]
 dir = "~/.config/elda/logs"
-level = 1
+level = 0
 
 [daemon]
 refresh = "30m"

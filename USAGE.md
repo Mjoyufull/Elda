@@ -2,6 +2,8 @@
 
 Quick reference for common Elda workflows.
 
+Operator-side native forge, index, and cache hosting is documented in `eldaforgehosting.md`.
+
 ## Global Conventions
 
 ```sh
@@ -37,8 +39,12 @@ This installs the base machine shape, records the selected init-provider, and ma
 ### Register remotes and caches
 
 ```sh
-elda rmt add yoka-main --forge github --owner yoka-ci --index index
-elda cache add kyokai-cache https://cache.kyokai.lan/elda --priority 20
+elda rmt add yoka-main=https://packages.example.com/elda/index-v1.json.zst \
+  --trust pinned \
+  --trusted-key yoka-main-1:ABCD1234 \
+  --metadata-url https://packages.example.com/elda/remote-metadata-v1.toml \
+  --packages-url https://github.com/yoka-ci/pkgs.git
+elda cache add kyokai-cache=https://cache.kyokai.lan/elda --priority 20
 elda sync
 ```
 

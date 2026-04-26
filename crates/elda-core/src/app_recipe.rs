@@ -115,6 +115,121 @@ impl AppContext {
         })
     }
 
+    pub(crate) fn handle_recipe_ls(
+        &self,
+        request: CommandRequest,
+    ) -> Result<CommandReport, CoreError> {
+        if !request.operands.is_empty() {
+            return Err(CoreError::Operator(
+                "rc ls does not take operands".to_owned(),
+            ));
+        }
+
+        self.database.bootstrap()?;
+        let recipes_dir = self.database.layout().recipes_dir.clone();
+        let local = crate::recipe_catalog::list_local_recipe_names(&recipes_dir)?;
+        let synced = crate::recipe_catalog::list_synced_pkg_names(&self.repo_snapshot_path())?;
+
+        Ok(CommandReport {
+            area: "recipe",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: request.dry_run,
+            summary: format!(
+                "{} local recipe(s); {} synced install name(s).",
+                local.len(),
+                synced.len(),
+            ),
+            details: Some(json!({
+                "catalog": {
+                    "recipes_dir": recipes_dir.display().to_string(),
+                    "local_recipes": local,
+                    "synced_packages": synced,
+                }
+            })),
+        })
+    }
+
+    pub(crate) fn handle_recipe_rm(
+        &self,
+        request: CommandRequest,
+    ) -> Result<CommandReport, CoreError> {
+        let operands = request.operands.clone();
+        let pkgname = operands
+            .first()
+            .map(String::as_str)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| CoreError::Operator("rc rm requires one package name".to_owned()))?;
+        if operands.len() > 1 {
+            return Err(CoreError::Operator(
+                "rc rm accepts exactly one package name".to_owned(),
+            ));
+        }
+
+        self.database.bootstrap()?;
+        if self
+            .database
+            .installed_package(pkgname)
+            .map_err(CoreError::Db)?
+            .is_some()
+        {
+            return Err(CoreError::Operator(format!(
+                "`{pkgname}` is still installed; run `elda rm {pkgname}` before removing local recipe metadata"
+            )));
+        }
+
+        let recipes_dir = self.database.layout().recipes_dir.clone();
+        if request.dry_run {
+            crate::recipe_catalog::validate_recipe_pkgname(pkgname)?;
+            let path = recipes_dir.join(pkgname);
+            if !path.join("pkg.lua").is_file() {
+                return Err(CoreError::Operator(format!(
+                    "no local recipe tree at `{}` (missing pkg.lua)",
+                    path.display()
+                )));
+            }
+            return Ok(CommandReport {
+                area: "recipe",
+                status: "planned",
+                exit_status: ExitStatus::Success,
+                command_path: request.command_path,
+                operands: request.operands,
+                output_mode: request.output_mode,
+                dry_run: true,
+                summary: format!("would remove local recipe metadata for `{pkgname}`."),
+                details: Some(json!({
+                    "removed": {
+                        "pkgname": pkgname,
+                        "path": path.display().to_string(),
+                    }
+                })),
+            });
+        }
+
+        let removed_path =
+            crate::recipe_catalog::remove_local_recipe_directory(&recipes_dir, pkgname)?;
+
+        Ok(CommandReport {
+            area: "recipe",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: false,
+            summary: format!("removed local recipe metadata for `{pkgname}`."),
+            details: Some(json!({
+                "removed": {
+                    "pkgname": pkgname,
+                    "path": removed_path.display().to_string(),
+                }
+            })),
+        })
+    }
+
     pub(crate) fn handle_vendor_add(
         &self,
         request: CommandRequest,
