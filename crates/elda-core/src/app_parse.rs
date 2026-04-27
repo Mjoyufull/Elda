@@ -18,11 +18,16 @@ impl AppContext {
         request: &CommandRequest,
     ) -> Result<ParsedSearchRequest, CoreError> {
         let mut regex = false;
+        let mut interactive = false;
         let mut query = None;
 
         for operand in &request.operands {
             if operand == "--regex" {
                 regex = true;
+                continue;
+            }
+            if operand == "--interactive" {
+                interactive = true;
                 continue;
             }
             if query.is_some() {
@@ -37,7 +42,11 @@ impl AppContext {
             CoreError::Operator("search requires a substring or regex query".to_owned())
         })?;
 
-        Ok(ParsedSearchRequest { query, regex })
+        Ok(ParsedSearchRequest {
+            query,
+            regex,
+            interactive,
+        })
     }
 
     pub(crate) fn parse_remove_request(

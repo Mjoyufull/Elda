@@ -200,7 +200,7 @@ impl AppContext {
             });
         }
 
-        let installs = self.apply_install_plan(&install_plan, request.offline)?;
+        let installs = self.apply_install_plan(&install_plan, request.offline, request.output_mode)?;
         for action in install_plan
             .iter()
             .filter(|action| action.install_reason == "explicit")

@@ -251,6 +251,15 @@ fn cache_add_priority_round_trips_into_command_request() {
 }
 
 #[test]
+fn search_interactive_flag_round_trips_into_command_request() {
+    let cli = Cli::parse_from(["elda", "search", "fsel", "--interactive"]);
+    let request = cli.command_request().expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["search"]);
+    assert_eq!(request.operands, vec!["fsel", "--interactive"]);
+}
+
+#[test]
 fn root_help_contains_canonical_namespaces() {
     let command = Cli::command();
     let names = command

@@ -127,8 +127,16 @@ impl AppContext {
 
         self.database.bootstrap()?;
         let recipes_dir = self.database.layout().recipes_dir.clone();
-        let local = crate::recipe_catalog::list_local_recipe_names(&recipes_dir)?;
-        let synced = crate::recipe_catalog::list_synced_pkg_names(&self.repo_snapshot_path())?;
+        let local_entries = crate::recipe_catalog::list_local_recipe_entries(&recipes_dir)?;
+        let synced_entries = crate::recipe_catalog::list_synced_pkg_entries(&self.repo_snapshot_path())?;
+        let local = local_entries
+            .iter()
+            .map(|entry| entry.pkgname.clone())
+            .collect::<Vec<_>>();
+        let synced = synced_entries
+            .iter()
+            .map(|entry| entry.pkgname.clone())
+            .collect::<Vec<_>>();
 
         Ok(CommandReport {
             area: "recipe",
@@ -148,6 +156,8 @@ impl AppContext {
                     "recipes_dir": recipes_dir.display().to_string(),
                     "local_recipes": local,
                     "synced_packages": synced,
+                    "local_entries": local_entries,
+                    "synced_entries": synced_entries,
                 }
             })),
         })

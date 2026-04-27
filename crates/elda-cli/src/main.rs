@@ -6,19 +6,26 @@ mod privilege;
 
 use clap::{CommandFactory, Parser};
 use cli::Cli;
-use elda_core::{CoreError, render_human, run};
+use elda_core::{CommandRequest, CoreError, render_human, run};
 use elda_types::OutputMode;
 use privilege::reexec_with_provider;
 
 fn main() {
     if let Err(error) = try_main() {
         eprintln!("Error: {error}");
-        for (index, cause) in error.chain().skip(1).enumerate() {
-            if index == 0 {
-                eprintln!();
-                eprintln!("Caused by:");
+        let root_message = error.to_string();
+        let causes = error
+            .chain()
+            .skip(1)
+            .map(ToString::to_string)
+            .filter(|cause| cause != &root_message)
+            .collect::<Vec<_>>();
+        if !causes.is_empty() {
+            eprintln!();
+            eprintln!("Caused by:");
+            for (index, cause) in causes.iter().enumerate() {
+                eprintln!("    {}: {cause}", index);
             }
-            eprintln!("    {}: {cause}", index);
         }
         std::process::exit(1);
     }
@@ -31,7 +38,15 @@ fn try_main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            if let Some(request) = fallback_bare_query_request(&raw_args) {
+                return execute_request(request);
+            }
+            return Err(error.into());
+        }
+    };
 
     let Some(request) = cli.command_request() else {
         let mut command = Cli::command();
@@ -40,6 +55,10 @@ fn try_main() -> anyhow::Result<()> {
         return Ok(());
     };
 
+    execute_request(request)
+}
+
+fn execute_request(request: CommandRequest) -> anyhow::Result<()> {
     let report = match run(request) {
         Ok(report) => report,
         Err(CoreError::PrivilegeRequired(request)) => return reexec_with_provider(&request),
@@ -51,4 +70,21 @@ fn try_main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn fallback_bare_query_request(raw_args: &[std::ffi::OsString]) -> Option<CommandRequest> {
+    if raw_args.len() != 2 {
+        return None;
+    }
+    let query = raw_args[1].to_string_lossy().to_string();
+    if query.trim().is_empty() || query.starts_with('-') {
+        return None;
+    }
+
+    Some(CommandRequest::new(
+        vec!["search".to_owned()],
+        vec![query, "--interactive".to_owned()],
+        OutputMode::Human,
+        false,
+    ))
 }

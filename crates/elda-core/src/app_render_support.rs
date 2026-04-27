@@ -50,6 +50,8 @@ pub(crate) fn render_recipe_catalog_report(report: &CommandReport) -> Option<Str
     let recipes_dir = catalog.get("recipes_dir")?.as_str()?;
     let local = catalog.get("local_recipes")?.as_array()?;
     let synced = catalog.get("synced_packages")?.as_array()?;
+    let local_entries = catalog.get("local_entries").and_then(|value| value.as_array());
+    let synced_entries = catalog.get("synced_entries").and_then(|value| value.as_array());
 
     let mut blocks = vec![
         render_header(report.area, report.status),
@@ -57,20 +59,28 @@ pub(crate) fn render_recipe_catalog_report(report: &CommandReport) -> Option<Str
         render_section("Local recipes", &[format!("directory: {recipes_dir}")]),
     ];
 
-    let local_lines: Vec<String> = local
-        .iter()
-        .filter_map(|value| value.as_str().map(|name| format!("- {name}")))
-        .collect();
+    let local_lines: Vec<String> = local_entries
+        .map(|entries| render_catalog_entry_lines(entries.as_slice()))
+        .unwrap_or_else(|| {
+            local
+                .iter()
+                .filter_map(|value| value.as_str().map(|name| format!("- {name}")))
+                .collect()
+        });
     if local_lines.is_empty() {
         blocks.push(render_section("Local recipe names", &["(none)".to_owned()]));
     } else {
         blocks.push(render_section("Local recipe names", &local_lines));
     }
 
-    let synced_lines: Vec<String> = synced
-        .iter()
-        .filter_map(|value| value.as_str().map(|name| format!("- {name}")))
-        .collect();
+    let synced_lines: Vec<String> = synced_entries
+        .map(|entries| render_catalog_entry_lines(entries.as_slice()))
+        .unwrap_or_else(|| {
+            synced
+                .iter()
+                .filter_map(|value| value.as_str().map(|name| format!("- {name}")))
+                .collect()
+        });
     if synced_lines.is_empty() {
         blocks.push(render_section(
             "Synced packages",
@@ -84,6 +94,36 @@ pub(crate) fn render_recipe_catalog_report(report: &CommandReport) -> Option<Str
     }
 
     Some(blocks.join("\n\n"))
+}
+
+fn render_catalog_entry_lines(entries: &[Value]) -> Vec<String> {
+    let mut lines = Vec::new();
+    for entry in entries {
+        let name = entry
+            .get("pkgname")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown");
+        let version = entry.get("version").and_then(|value| value.as_str());
+        let source = entry
+            .get("source")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown");
+        lines.push(format!(
+            "- {source}/{name} {}",
+            version.unwrap_or("unknown-version")
+        ));
+        if let Some(description) = entry.get("description").and_then(|value| value.as_str())
+            && !description.is_empty()
+        {
+            lines.push(format!("  {description}"));
+        }
+        if let Some(upstream) = entry.get("upstream").and_then(|value| value.as_str())
+            && !upstream.is_empty()
+        {
+            lines.push(format!("  upstream: {upstream}"));
+        }
+    }
+    lines
 }
 
 pub(crate) fn render_recipe_removed_report(report: &CommandReport) -> Option<String> {
@@ -101,6 +141,47 @@ pub(crate) fn render_recipe_removed_report(report: &CommandReport) -> Option<Str
             &[format!("pkgname: {pkgname}"), format!("path: {path}")],
         ),
     ))
+}
+
+pub(crate) fn render_search_report(report: &CommandReport) -> Option<String> {
+    let details = report.details.as_ref()?;
+    let query = details.get("query")?.as_str()?;
+    let results = details.get("results")?.as_array()?;
+
+    let mut lines = vec![render_header(report.area, report.status), report.summary.clone()];
+    if results.is_empty() {
+        lines.push(String::new());
+        lines.push(format!("No matches for `{query}`."));
+        return Some(lines.join("\n"));
+    }
+
+    lines.push(String::new());
+    for (idx, result) in results.iter().enumerate() {
+        let name = result.get("pkgname").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let remote = result
+            .get("remote_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("local");
+        let version = if let Some(epoch) = result.get("epoch").and_then(|v| v.as_u64()) {
+            let pkgver = result
+                .get("pkgver")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0.0.0");
+            let pkgrel = result.get("pkgrel").and_then(|v| v.as_u64()).unwrap_or(1);
+            format!("{epoch}:{pkgver}-{pkgrel}")
+        } else {
+            "unknown".to_owned()
+        };
+        lines.push(format!("{} {}/{} {}", idx + 1, remote, name, version));
+        let desc = result
+            .get("description")
+            .and_then(|v| v.as_str())
+            .or_else(|| result.get("summary").and_then(|v| v.as_str()))
+            .unwrap_or("No description available.");
+        lines.push(format!("    {desc}"));
+    }
+
+    Some(lines.join("\n"))
 }
 
 fn render_install_report_sections(

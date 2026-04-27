@@ -10,8 +10,10 @@
 remote = "yoka-main"
 build_mode = "isolated"
 prefix = "/usr"
-allow_system_mode = false
+allow_system_mode = true
 snapshot_tool = "none"
+auto_create_config = true
+mode_policy = "host"
 install_recommends = true
 refresh_weak_deps = false
 install_preference = "binary"
@@ -56,6 +58,23 @@ wayland = true
 dir = "~/.config/elda/logs"
 level = 0
 
+# ===== DISPLAY (`DisplayConfig`) =====
+[display]
+default_mode = "human"
+human_detail = "normal"
+
+# ===== CAPABILITIES (`CapabilitiesConfig`) =====
+[capabilities]
+profile = "default-host"
+network_fetch = true
+network_publish = true
+local_editors = true
+local_exec_build = true
+system_activate = true
+profile_apply = true
+migration = true
+extension_runtime = true
+
 # ===== SUBMISSION (`SubmissionConfig`) =====
 [submission]
 mode = "pr"
@@ -74,5 +93,3 @@ base_branch = "main"
 # ----- Not in `Config` yet (spec / future slices); do not paste uncommented -----
 # [daemon]
 # refresh = "30m"
-# [display]
-# show_origin = true

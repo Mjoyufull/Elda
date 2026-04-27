@@ -242,6 +242,7 @@ impl Command {
             Self::Search(args) => {
                 let mut operands = vec![args.query.clone()];
                 push_flag(&mut operands, "--regex", args.regex);
+                push_flag(&mut operands, "--interactive", args.interactive);
                 (vec![command_name(self)], operands)
             }
             Self::Info(args)

@@ -15,6 +15,9 @@ pub struct RecipeDocument {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PackageDefinition {
     pub name: String,
+    pub description: Option<String>,
+    pub licenses: Vec<String>,
+    pub upstream: Option<String>,
     pub epoch: u64,
     pub version: String,
     pub rel: u64,

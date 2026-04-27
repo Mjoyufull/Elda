@@ -1,9 +1,21 @@
 use std::fs;
 use std::path::Path;
 
+use elda_recipe::parse_pkg_lua;
 use elda_repo::{RepoError, load_snapshot};
+use serde::Serialize;
 
 use crate::error::CoreError;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct RecipeCatalogEntry {
+    pub pkgname: String,
+    pub version: Option<String>,
+    pub source: String,
+    pub description: Option<String>,
+    pub licenses: Vec<String>,
+    pub upstream: Option<String>,
+}
 
 pub(crate) fn validate_recipe_pkgname(pkgname: &str) -> Result<(), CoreError> {
     let trimmed = pkgname.trim();
@@ -38,21 +50,64 @@ pub(crate) fn list_local_recipe_names(recipes_dir: &Path) -> Result<Vec<String>,
     Ok(names)
 }
 
-pub(crate) fn list_synced_pkg_names(snapshot_path: &Path) -> Result<Vec<String>, CoreError> {
+pub(crate) fn list_local_recipe_entries(
+    recipes_dir: &Path,
+) -> Result<Vec<RecipeCatalogEntry>, CoreError> {
+    let names = list_local_recipe_names(recipes_dir)?;
+    let mut entries = Vec::with_capacity(names.len());
+    for name in names {
+        let path = recipes_dir.join(&name).join("pkg.lua");
+        let recipe_content = fs::read_to_string(&path).map_err(CoreError::Io)?;
+        let recipe = parse_pkg_lua(&path, &recipe_content)?;
+        entries.push(RecipeCatalogEntry {
+            pkgname: recipe.package.name.clone(),
+            version: Some(format!(
+                "{}:{}-{}",
+                recipe.package.epoch, recipe.package.version, recipe.package.rel
+            )),
+            source: "local_recipe".to_owned(),
+            description: recipe.package.description.clone(),
+            licenses: recipe.package.licenses.clone(),
+            upstream: recipe.package.upstream.clone(),
+        });
+    }
+    entries.sort_by(|left, right| left.pkgname.cmp(&right.pkgname));
+    Ok(entries)
+}
+
+pub(crate) fn list_synced_pkg_entries(
+    snapshot_path: &Path,
+) -> Result<Vec<RecipeCatalogEntry>, CoreError> {
     let snapshot = match load_snapshot(snapshot_path) {
         Ok(snapshot) => snapshot,
         Err(RepoError::SnapshotMissing) => return Ok(Vec::new()),
         Err(error) => return Err(CoreError::Repo(error)),
     };
 
-    let mut names: Vec<String> = snapshot
+    let mut entries = snapshot
         .packages
-        .iter()
-        .map(|record| record.pkgname.clone())
-        .collect();
-    names.sort();
-    names.dedup();
-    Ok(names)
+        .into_iter()
+        .map(|record| {
+            let version = record.version_string();
+            let pkgname = record.pkgname.clone();
+            let licenses = record
+                .license
+                .as_deref()
+                .map(|value| vec![value.to_owned()])
+                .unwrap_or_default();
+            RecipeCatalogEntry {
+                pkgname,
+                version: Some(version),
+                source: format!("synced:{}", record.remote_name),
+                description: record.description.or(record.summary),
+                licenses,
+                upstream: record.homepage,
+            }
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| left.pkgname.cmp(&right.pkgname));
+    entries.dedup_by(|left, right| left.pkgname == right.pkgname && left.source == right.source);
+    Ok(entries)
 }
 
 pub(crate) fn remove_local_recipe_directory(

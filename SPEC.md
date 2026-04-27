@@ -274,6 +274,7 @@ The following fields live in `pkg.lua` and are part of package policy. If a fiel
 | `hooks` | Table keyed by lifecycle point; each value references a package-relative script or Lua chunk | Exceptional lifecycle hooks under §14.4. |
 | `provider_assets` | Table keyed by provider family, then provider name, then asset-entry arrays | Typed provider-specific assets such as init service files under §14.1. |
 | `profile` | Table with optional `native_arch`, `foreign_arches`, and `init` keys | Machine-shape defaults attached to a `package_kind = profile` anchor. |
+| `description` / `licenses` / `upstream` | Optional short text, license array, and project URL | Human discovery metadata for search/list/info surfaces and synced index records. |
 
 Representative shape:
 ```lua
@@ -1252,6 +1253,8 @@ Human-mode install output contract:
 - `elda rm <pkg...>` removes packages; `--cascade` removes reverse dependencies that become invalid, and `--purge-conffiles` drops preserved `*.eldasave` state
 - `elda u [<pkg...>]` upgrades the whole machine or the named package plus required closure from one synced snapshot; it does not permit resolver-broken partial upgrades. VCS packages (e.g., `-git`) are pinned to their install-time commit and do not auto-poll remote URLs during sync; operators must explicitly request VCS updates via `elda u --check-vcs`.
 - `elda search <query>` is substring match by default, `--regex` opts into regex, and results sort exact-name first, then prefix matches, then other substring matches
+- `elda search <query> --interactive` presents numbered results and accepts selection input (`1 2 3`, `1-3`) to install chosen matches
+- bare `elda <query>` in human mode is shorthand for interactive search
 - `elda rc ls` lists local recipe directories (each with `pkg.lua`) and distinct `pkgname` values from the current synced snapshot; it is a catalog aid, not a full resolver dry-run
 - `elda rc rm <pkgname>` removes only the on-disk recipe tree under the recipes directory when the package is not installed; it does not remove cached payloads or journal history
 - `elda ls` shows installed package name, version, reason, origin, source/remote, and current state membership

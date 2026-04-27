@@ -61,9 +61,13 @@ This gives Elda:
 ```sh
 elda search ripgrep
 elda search hypr --regex
+elda search fsel --interactive
+elda fsel
 ```
 
-`search` answers "is this already packaged in my synced remotes?"
+`search` answers "is this already packaged in my synced remotes?".
+`--interactive` presents a numbered list and lets you select one or more matches to install.
+Bare `elda <query>` is shorthand for interactive search in human mode.
 
 ### Search upstream forge software
 

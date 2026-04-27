@@ -23,6 +23,8 @@ pub struct Config {
     pub resolver: ResolverConfig,
     pub flags: FlagsConfig,
     pub logging: LoggingConfig,
+    pub display: DisplayConfig,
+    pub capabilities: CapabilitiesConfig,
     pub submission: SubmissionConfig,
 }
 
@@ -38,6 +40,60 @@ impl Config {
 
         Ok(config)
     }
+
+    pub fn write_default(root_dir: &Path) -> Result<(), CoreError> {
+        let config_dir = root_dir.join("etc/elda");
+        fs::create_dir_all(&config_dir)?;
+        let config_path = config_dir.join("config.toml");
+        if config_path.exists() {
+            return Ok(());
+        }
+        let content = r#"[defaults]
+remote = "yoka-main"
+build_mode = "isolated"
+prefix = "/usr"
+allow_system_mode = true
+snapshot_tool = "none"
+auto_create_config = true
+mode_policy = "host"
+install_recommends = true
+refresh_weak_deps = false
+install_preference = "binary"
+
+[privilege]
+provider = "auto"
+preserve_env = false
+interactive = true
+
+[profile]
+base = ""
+native_arch = "amd64"
+foreign_arches = []
+init = ""
+
+[logging]
+dir = "~/.config/elda/logs"
+level = 0
+
+[display]
+default_mode = "human"
+human_detail = "normal"
+
+[capabilities]
+profile = "default-host"
+network_fetch = true
+network_publish = true
+local_editors = true
+local_exec_build = true
+system_activate = true
+profile_apply = true
+migration = true
+extension_runtime = true
+"#
+        .to_owned();
+        fs::write(config_path, content)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,6 +104,8 @@ pub struct DefaultsConfig {
     pub prefix: PathBuf,
     pub allow_system_mode: bool,
     pub snapshot_tool: String,
+    pub auto_create_config: bool,
+    pub mode_policy: String,
     pub install_recommends: bool,
     pub refresh_weak_deps: bool,
     pub install_preference: InstallPreference,
@@ -61,6 +119,8 @@ impl Default for DefaultsConfig {
             prefix: PathBuf::from("/usr"),
             allow_system_mode: false,
             snapshot_tool: "none".to_owned(),
+            auto_create_config: true,
+            mode_policy: "host".to_owned(),
             install_recommends: true,
             refresh_weak_deps: false,
             install_preference: InstallPreference::Binary,
@@ -115,6 +175,52 @@ pub struct ResolverConfig {
 pub struct LoggingConfig {
     pub dir: String,
     pub level: u8,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct DisplayConfig {
+    pub default_mode: String,
+    pub human_detail: String,
+}
+
+impl Default for DisplayConfig {
+    fn default() -> Self {
+        Self {
+            default_mode: "human".to_owned(),
+            human_detail: "normal".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct CapabilitiesConfig {
+    pub profile: String,
+    pub network_fetch: bool,
+    pub network_publish: bool,
+    pub local_editors: bool,
+    pub local_exec_build: bool,
+    pub system_activate: bool,
+    pub profile_apply: bool,
+    pub migration: bool,
+    pub extension_runtime: bool,
+}
+
+impl Default for CapabilitiesConfig {
+    fn default() -> Self {
+        Self {
+            profile: "default-host".to_owned(),
+            network_fetch: true,
+            network_publish: true,
+            local_editors: true,
+            local_exec_build: true,
+            system_activate: true,
+            profile_apply: true,
+            migration: true,
+            extension_runtime: true,
+        }
+    }
 }
 
 impl Default for LoggingConfig {

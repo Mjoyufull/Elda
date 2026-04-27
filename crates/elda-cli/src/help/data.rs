@@ -20,7 +20,11 @@ pub(super) const CORE_ROWS: &[HelpRow] = &[
         "",
         "refresh configured remotes into the local snapshot",
     ),
-    HelpRow::new("search", "<query>", "search synced package indexes"),
+    HelpRow::new(
+        "search",
+        "<query>",
+        "search synced package indexes (`--interactive` can install selected matches)",
+    ),
     HelpRow::new(
         "info",
         "<pkg>",

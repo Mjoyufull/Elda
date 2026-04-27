@@ -29,6 +29,9 @@ pub(super) fn map_package_definition(
 
     Ok(PackageDefinition {
         name,
+        description: get_optional_string(&root, "description")?,
+        licenses: get_optional_string_array(&root, "licenses")?.unwrap_or_default(),
+        upstream: get_optional_string(&root, "upstream")?,
         epoch: integer_to_u64(epoch, "epoch")?,
         version,
         rel: integer_to_u64(rel, "rel")?,

@@ -149,6 +149,9 @@ mod tests {
                     path: recipe_dir.join("pkg.lua"),
                     package: PackageDefinition {
                         name: recipe_name.to_owned(),
+                        description: None,
+                        licenses: Vec::new(),
+                        upstream: None,
                         epoch: 0,
                         version: "0.1.0".to_owned(),
                         rel: 1,

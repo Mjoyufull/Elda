@@ -283,3 +283,45 @@ fn human_ci_submission_render_surfaces_remote_publication_details() {
     );
     assert!(rendered.contains("Artifacts\n  packages repo: /tmp/ci/pkgs"));
 }
+
+#[test]
+fn human_search_render_lists_numbered_matches_with_description() {
+    let report = CommandReport {
+        area: "search",
+        status: "ok",
+        exit_status: ExitStatus::Success,
+        command_path: vec!["search".to_owned()],
+        operands: vec!["fsel".to_owned()],
+        output_mode: OutputMode::Human,
+        dry_run: false,
+        summary: "found 2 synced package match(es).".to_owned(),
+        details: Some(json!({
+            "query": "fsel",
+            "regex": false,
+            "interactive": false,
+            "results": [
+                {
+                    "remote_name": "aur",
+                    "pkgname": "fsel",
+                    "epoch": 0,
+                    "pkgver": "3.4.1",
+                    "pkgrel": 1,
+                    "description": "Fast TUI app launcher and fuzzy finder"
+                },
+                {
+                    "remote_name": "aur",
+                    "pkgname": "fselect",
+                    "epoch": 0,
+                    "pkgver": "0.10.0",
+                    "pkgrel": 1,
+                    "summary": "Find files with SQL-like queries"
+                }
+            ]
+        })),
+    };
+
+    let rendered = render_human(&report);
+    assert!(rendered.contains("1 aur/fsel 0:3.4.1-1"));
+    assert!(rendered.contains("Fast TUI app launcher and fuzzy finder"));
+    assert!(rendered.contains("2 aur/fselect 0:0.10.0-1"));
+}

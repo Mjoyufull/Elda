@@ -112,6 +112,11 @@ pub(super) struct SearchArgs {
     pub(super) query: String,
     #[arg(long, help = "Treat the query as a regular expression")]
     pub(super) regex: bool,
+    #[arg(
+        long,
+        help = "Interactive selection prompt; can trigger install from matches in human mode"
+    )]
+    pub(super) interactive: bool,
 }
 
 #[derive(Debug, Args)]

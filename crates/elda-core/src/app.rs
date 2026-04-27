@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::config::{Config, InstallPreference};
 use crate::error::CoreError;
 use crate::flags::ResolvedFlagState;
-use crate::privilege::{PrivilegeRequest, PrivilegeStatus};
+use crate::privilege::{PrivilegeConfig, PrivilegeRequest, PrivilegeStatus};
 use crate::run_log::CommandLogSession;
 use crate::{CommandReport, CommandRequest};
 use elda_build::{BinarySourceVerification, BuiltPackage};
@@ -28,6 +28,7 @@ pub(crate) struct ParsedInstallRequest {
 pub(crate) struct ParsedSearchRequest {
     pub(crate) query: String,
     pub(crate) regex: bool,
+    pub(crate) interactive: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -178,14 +179,44 @@ impl AppContext {
         force_system_mode: bool,
     ) -> Result<Self, CoreError> {
         let root_dir = root_dir.as_ref();
-        let mut config = Config::load(root_dir)?;
+        let live_host_root = root_dir == Path::new("/");
+        let default_privilege = PrivilegeConfig::default();
+        let default_request = PrivilegeRequest::from_config(&default_privilege);
+        let default_status = PrivilegeStatus::detect(&default_privilege);
+        let config_path = root_dir.join("etc/elda/config.toml");
+        if !config_path.exists() {
+            if let Err(error) = Config::write_default(root_dir) {
+                if matches!(
+                    &error,
+                    CoreError::Io(io_error) if io_error.kind() == std::io::ErrorKind::PermissionDenied
+                ) && live_host_root
+                    && !default_status.is_superuser
+                {
+                    return Err(CoreError::PrivilegeRequired(default_request.clone()));
+                }
+                return Err(error);
+            }
+        }
+        let mut config = match Config::load(root_dir) {
+            Ok(config) => config,
+            Err(CoreError::Io(error))
+                if error.kind() == std::io::ErrorKind::PermissionDenied
+                    && live_host_root
+                    && !default_status.is_superuser =>
+            {
+                return Err(CoreError::PrivilegeRequired(default_request.clone()));
+            }
+            Err(error) => return Err(error),
+        };
+        if config.defaults.mode_policy == "host" && !config.defaults.allow_system_mode {
+            config.defaults.allow_system_mode = true;
+        }
         let privilege = PrivilegeStatus::detect(&config.privilege);
         let effective_prefix = if force_system_mode {
             PathBuf::from("/usr")
         } else {
             config.defaults.prefix.clone()
         };
-        let live_host_root = root_dir == Path::new("/");
 
         if live_host_root
             && effective_prefix == Path::new("/usr")
@@ -210,6 +241,7 @@ impl AppContext {
     }
 
     pub fn handle(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
+        self.enforce_capabilities(&request)?;
         match request.command_path.as_slice() {
             [command] if command == "i" || command == "ig" || command == "ib" => {
                 self.handle_install(request)
@@ -330,6 +362,37 @@ impl AppContext {
         }
     }
 
+    fn enforce_capabilities(&self, request: &CommandRequest) -> Result<(), CoreError> {
+        let capabilities = &self.config.capabilities;
+        let needs = match request.command_path.as_slice() {
+            [command] if command == "sync" || command == "search" || command == "info" => {
+                Some(("network.fetch", capabilities.network_fetch))
+            }
+            [command] if command == "i" || command == "ig" || command == "ib" => {
+                Some(("local.exec_build", capabilities.local_exec_build))
+            }
+            [namespace, ..] if namespace == "ci" => {
+                Some(("network.publish", capabilities.network_publish))
+            }
+            [namespace, ..] if namespace == "mg" => Some(("migration", capabilities.migration)),
+            [namespace, command] if namespace == "pf" && command == "apply" => {
+                Some(("profile.apply", capabilities.profile_apply))
+            }
+            _ => None,
+        };
+
+        if let Some((name, enabled)) = needs
+            && !enabled
+        {
+            return Err(CoreError::Operator(format!(
+                "command disabled by capability policy `{name}` (profile `{}`)",
+                capabilities.profile
+            )));
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn mutation_policy(&self) -> MutationPolicy {
         let snapshot_tool = self.config.defaults.snapshot_tool.trim().to_owned();
 
@@ -353,10 +416,15 @@ impl Default for ParsedInstallRequest {
 
 pub fn run_from_root(
     root_dir: impl AsRef<Path>,
-    request: CommandRequest,
+    mut request: CommandRequest,
 ) -> Result<CommandReport, CoreError> {
     let root_dir = root_dir.as_ref();
     let context = AppContext::from_root(root_dir, request.system_mode)?;
+    if request.output_mode == crate::OutputMode::Human
+        && context.config.display.default_mode == "json"
+    {
+        request.output_mode = crate::OutputMode::Json;
+    }
     let log_session = CommandLogSession::start(root_dir, &context.config, &request)?;
     let request_for_logging = request.clone();
     let result = context.handle(request);

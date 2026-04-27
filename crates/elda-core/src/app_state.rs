@@ -214,7 +214,7 @@ impl AppContext {
             };
             let plan = self.plan_install_targets(&install_request)?;
             self.validate_install_conflicts(&plan)?;
-            self.apply_install_plan(&plan, request.offline)?;
+            self.apply_install_plan(&plan, request.offline, request.output_mode)?;
         }
 
         Ok(CommandReport {

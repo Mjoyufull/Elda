@@ -7,6 +7,8 @@ mod resolve;
 mod review;
 pub(crate) mod solver;
 
+use std::io::IsTerminal;
+
 pub(crate) use dependency::constraint::{
     package_satisfies_constraint, parse_dependency_constraint, provides_satisfy_constraint,
 };
@@ -16,7 +18,7 @@ use serde_json::json;
 use crate::app::{AppContext, PlannedInstallAction};
 use crate::app_parse::installed_version;
 use crate::error::CoreError;
-use crate::{CommandReport, CommandRequest, ExitStatus};
+use crate::{CommandReport, CommandRequest, ExitStatus, OutputMode};
 use elda_install::{install_built_package, install_upgraded_package, remove_package_for_upgrade};
 
 use progress::{
@@ -67,7 +69,7 @@ impl AppContext {
         }
 
         self.review_generated_metadata_if_needed(&request, &install_plan)?;
-        let installs = self.apply_install_plan(&install_plan, request.offline)?;
+        let installs = self.apply_install_plan(&install_plan, request.offline, request.output_mode)?;
         Ok(CommandReport {
             area: "install",
             status: "ok",
@@ -93,11 +95,18 @@ impl AppContext {
         &self,
         install_plan: &[PlannedInstallAction],
         offline: bool,
+        output_mode: OutputMode,
     ) -> Result<Vec<serde_json::Value>, CoreError> {
         let mut installs = Vec::with_capacity(install_plan.len());
         let mutation_policy = self.mutation_policy();
 
         for action in install_plan {
+            render_live_progress(
+                action,
+                "starting",
+                output_mode,
+                self.config.display.human_detail.as_str(),
+            );
             let decision = install_execution_decision(action);
 
             if let Some(installed) = &action.already_installed
@@ -158,6 +167,12 @@ impl AppContext {
             }
 
             let mut built = self.build_resolved_target(&action.resolved, offline)?;
+            render_live_progress(
+                action,
+                "built payload",
+                output_mode,
+                self.config.display.human_detail.as_str(),
+            );
             built.package.dependencies = Self::planned_dependency_records(&action.dependencies);
             let mut replaced = Vec::new();
             for package_name in &action.replaced_packages {
@@ -210,6 +225,12 @@ impl AppContext {
                     &mutation_policy,
                 )?
             };
+            render_live_progress(
+                action,
+                "activated and recorded state",
+                output_mode,
+                self.config.display.human_detail.as_str(),
+            );
             installs.push(json!({
                 "target": action.target,
                 "selected_lane": built.resolved.selected_lane,
@@ -293,6 +314,41 @@ impl AppContext {
             })
             .collect::<Vec<_>>(),
         })
+    }
+}
+
+fn render_live_progress(
+    action: &PlannedInstallAction,
+    status: &str,
+    output_mode: OutputMode,
+    detail_level: &str,
+) {
+    if output_mode != OutputMode::Human
+        || !std::io::stdout().is_terminal()
+        || !std::io::stderr().is_terminal()
+    {
+        return;
+    }
+    match detail_level {
+        "minimal" => eprintln!("[install] {}: {status}", action.package_name),
+        "verbose" => {
+            eprintln!(
+                "[install:running] {} ({}/{})",
+                action.package_name, action.resolved.selected_lane, action.resolved.selected_source_kind
+            );
+            eprintln!(
+                "  -> {status} | source={} | remote={}",
+                action.resolved.selected_source_kind,
+                action.resolved.remote_name.as_deref().unwrap_or("local")
+            );
+        }
+        _ => {
+            eprintln!(
+                "[install:running] {} ({}/{})",
+                action.package_name, action.resolved.selected_lane, action.resolved.selected_source_kind
+            );
+            eprintln!("  -> {status}");
+        }
     }
 }
 
