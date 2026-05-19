@@ -191,6 +191,22 @@ fn upgrade_replaces_installed_package_when_new_candidate_declares_replaces() {
     )
     .expect("second sync should succeed");
 
+    let dry_run = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["u".to_owned()],
+            vec!["beta-tool".to_owned()],
+            OutputMode::Human,
+            true,
+        ),
+    )
+    .expect("replacement upgrade dry run should succeed");
+    let rendered = crate::render_human(&dry_run);
+    assert!(
+        rendered.contains("replaces alpha-tool"),
+        "human upgrade plan should name replaced packages:\n{rendered}"
+    );
+
     let report = run_from_root(
         tempdir.path(),
         CommandRequest::new(

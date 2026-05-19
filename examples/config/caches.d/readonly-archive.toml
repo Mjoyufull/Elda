@@ -1,0 +1,8 @@
+# Read-only archive cache (e.g. a long-term static mirror).
+# Lower priority than lan-mirror so it acts as a last-resort fallback before
+# Elda hits the live remote.
+
+name = "archive"
+base_url = "https://archive.example.invalid/elda"
+priority = 10
+enabled = true

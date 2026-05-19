@@ -20,8 +20,10 @@ impl AppContext {
         let mut packages_url = None::<String>;
         let mut channel = DEFAULT_REMOTE_CHANNEL.to_owned();
         let mut allow_stale = false;
+        let mut replace = false;
+        let mut exclude = Vec::new();
         let mut priority = 100_u32;
-        let mut operands = request.operands.iter().skip(1);
+        let mut operands = request.operands.iter().skip(1).peekable();
 
         while let Some(operand) = operands.next() {
             match operand.as_str() {
@@ -90,6 +92,31 @@ impl AppContext {
                     channel = parsed.to_owned();
                 }
                 "--allow-stale" => allow_stale = true,
+                "--replace" => replace = true,
+                "--exclude" => {
+                    let mut count = 0usize;
+                    while let Some(rest) = operands.next() {
+                        if rest.starts_with("--") {
+                            return Err(CoreError::Operator(format!(
+                                "`--exclude` consumes trailing package names; place other `rmt add` flags before `--exclude` (unexpected `{rest}`)"
+                            )));
+                        }
+                        count += 1;
+                        crate::app_parse::append_exclude_from_piece(rest, &mut exclude);
+                    }
+                    if count == 0 {
+                        return Err(CoreError::Operator(
+                            "`--exclude` requires at least one package name".to_owned(),
+                        ));
+                    }
+                    break;
+                }
+                _ if operand.starts_with("--exclude=") => {
+                    crate::app_parse::append_exclude_from_piece(
+                        operand.trim_start_matches("--exclude="),
+                        &mut exclude,
+                    );
+                }
                 other => {
                     return Err(CoreError::Operator(format!(
                         "unrecognized `rmt add` operand `{other}`"
@@ -112,6 +139,7 @@ impl AppContext {
                 "insecure remotes must not carry pinned trusted keys".to_owned(),
             ));
         }
+        let _replace = replace;
 
         Ok(RemoteDocument {
             name,
@@ -124,6 +152,7 @@ impl AppContext {
             trust,
             trusted_keys,
             allow_stale,
+            exclude,
             priority,
         })
     }

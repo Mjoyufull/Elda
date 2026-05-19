@@ -4,7 +4,9 @@ use std::process::Command;
 use elda_recipe::{BuildDefinition, PackageDefinition};
 
 use crate::error::BuildError;
-use crate::process::run_command;
+use std::sync::Arc;
+
+use crate::process::{run_command, run_command_streamed};
 
 pub fn detect_make_build(
     _package: &PackageDefinition,
@@ -26,15 +28,25 @@ pub fn build_with_make(
     build: &BuildDefinition,
     source_dir: &Path,
     stage_root: &Path,
+    stream_output: bool,
+    line_hook: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<(), BuildError> {
     let mut make = Command::new("make");
     make.current_dir(source_dir);
-    run_command("make", make, "building make project")?;
+    if stream_output {
+        run_command_streamed("make", make, "building make project", line_hook.clone())?;
+    } else {
+        run_command("make", make, "building make project")?;
+    }
 
     if build.tests {
         let mut test = Command::new("make");
         test.current_dir(source_dir).arg("test");
-        run_command("make", test, "running make tests")?;
+        if stream_output {
+            run_command_streamed("make", test, "running make tests", line_hook.clone())?;
+        } else {
+            run_command("make", test, "running make tests")?;
+        }
     }
 
     let mut install = Command::new("make");
@@ -43,7 +55,11 @@ pub fn build_with_make(
         .arg("install")
         .arg("PREFIX=/usr")
         .arg(format!("DESTDIR={}", stage_root.display()));
-    run_command("make", install, "installing make project")?;
+    if stream_output {
+        run_command_streamed("make", install, "installing make project", line_hook)?;
+    } else {
+        run_command("make", install, "installing make project")?;
+    }
 
     Ok(())
 }

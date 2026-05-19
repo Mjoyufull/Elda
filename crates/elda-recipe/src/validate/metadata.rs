@@ -14,7 +14,86 @@ pub(super) fn validate_metadata(package: &PackageDefinition, issues: &mut Vec<Va
     validate_flag_table("flags_allowed", package.flags_allowed.as_ref(), issues);
     validate_flag_table("flags_implies", package.flags_implies.as_ref(), issues);
     validate_flag_table("flags_conflicts", package.flags_conflicts.as_ref(), issues);
+    validate_flag_descriptions(package.flags_descriptions.as_ref(), issues);
+    validate_flag_cardinality(
+        "flags_required_one_of",
+        package.flags_required_one_of.as_ref(),
+        issues,
+    );
+    validate_flag_cardinality(
+        "flags_required_at_most_one",
+        package.flags_required_at_most_one.as_ref(),
+        issues,
+    );
+    validate_flag_cardinality(
+        "flags_required_any_of",
+        package.flags_required_any_of.as_ref(),
+        issues,
+    );
     validate_subpackages(package.subpackages.as_ref(), issues);
+}
+
+fn validate_flag_descriptions(value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
+    let Some(value) = value else {
+        return;
+    };
+    let table = match value {
+        LuaValue::Table(table) => table,
+        LuaValue::Array(arr) if arr.is_empty() => return,
+        _ => {
+            issues.push(error(
+                "flags_descriptions must be a table keyed by flag name",
+            ));
+            return;
+        }
+    };
+    for (flag, entry) in table {
+        if !matches!(entry, LuaValue::String(text) if !text.trim().is_empty()) {
+            issues.push(error(format!(
+                "flags_descriptions.{flag} must be a non-empty string description"
+            )));
+        }
+    }
+}
+
+fn validate_flag_cardinality(
+    field: &str,
+    value: Option<&LuaValue>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(value) = value else {
+        return;
+    };
+    let table = match value {
+        LuaValue::Table(table) => table,
+        LuaValue::Array(arr) if arr.is_empty() => return,
+        _ => {
+            issues.push(error(format!(
+                "{field} must be a table keyed by group name with arrays of flag names"
+            )));
+            return;
+        }
+    };
+    for (group, entry) in table {
+        let LuaValue::Array(entries) = entry else {
+            issues.push(error(format!(
+                "{field}.{group} must be an array of non-empty flag names"
+            )));
+            continue;
+        };
+        if entries.len() < 2 {
+            issues.push(error(format!(
+                "{field}.{group} must contain at least two flag names"
+            )));
+        }
+        for member in entries {
+            if !matches!(member, LuaValue::String(value) if !value.trim().is_empty()) {
+                issues.push(error(format!(
+                    "{field}.{group} must contain only non-empty string flag names"
+                )));
+            }
+        }
+    }
 }
 
 fn validate_inline_or_file(
@@ -73,11 +152,14 @@ fn validate_alternatives(value: Option<&LuaValue>, issues: &mut Vec<ValidationIs
 }
 
 fn validate_hooks(value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
-    let Some(LuaValue::Table(hooks)) = value else {
-        if value.is_some() {
+    let hooks = match value {
+        Some(LuaValue::Table(hooks)) => hooks,
+        Some(LuaValue::Array(arr)) if arr.is_empty() => return,
+        Some(_) => {
             issues.push(error("hooks must be a table keyed by lifecycle point"));
+            return;
         }
-        return;
+        None => return,
     };
 
     for (hook, spec) in hooks {
@@ -100,13 +182,16 @@ fn validate_hooks(value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
 }
 
 fn validate_provider_assets(value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
-    let Some(LuaValue::Table(families)) = value else {
-        if value.is_some() {
+    let families = match value {
+        Some(LuaValue::Table(families)) => families,
+        Some(LuaValue::Array(arr)) if arr.is_empty() => return,
+        Some(_) => {
             issues.push(error(
                 "provider_assets must be a table keyed by provider family, then provider name",
             ));
+            return;
         }
-        return;
+        None => return,
     };
 
     for (family, providers) in families {
@@ -212,20 +297,22 @@ fn validate_provider_tree_asset(
 }
 
 fn validate_flag_table(field: &str, value: Option<&LuaValue>, issues: &mut Vec<ValidationIssue>) {
-    let Some(LuaValue::Table(table)) = value else {
-        if value.is_some() {
+    let table = match value {
+        Some(LuaValue::Table(table)) => table,
+        Some(LuaValue::Array(arr)) if arr.is_empty() => return,
+        Some(_) => {
             issues.push(error(format!("{field} must be a table")));
+            return;
         }
-        return;
+        None => return,
     };
 
     for (flag, entry) in table {
         match field {
-            "flags_default" | "flags_allowed" => {
-                if !matches!(entry, LuaValue::Boolean(_)) {
-                    issues.push(error(format!("{field}.{flag} must be a boolean")));
-                }
+            "flags_default" | "flags_allowed" if !matches!(entry, LuaValue::Boolean(_)) => {
+                issues.push(error(format!("{field}.{flag} must be a boolean")));
             }
+            "flags_default" | "flags_allowed" => {}
             "flags_implies" | "flags_conflicts" => {
                 let LuaValue::Array(entries) = entry else {
                     issues.push(error(format!(

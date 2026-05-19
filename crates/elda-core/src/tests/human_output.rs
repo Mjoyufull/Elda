@@ -26,11 +26,24 @@ fn human_install_dry_run_renders_structured_sections() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("Target\n  requested: render-plan-tool"));
-    assert!(rendered.contains("  backend: prefix-copy"));
-    assert!(rendered.contains("Resolution\n  selected package: render-plan-tool"));
-    assert!(rendered.contains("Plan\n  install-explicit render-plan-tool"));
-    assert!(rendered.contains("Progress\n  render-plan-tool:\n    planned fetch-binary:"));
+    assert!(rendered.contains("┌─ Elda Transaction Plan"));
+    assert!(rendered.contains("├─ Target"));
+    assert!(rendered.contains("│  requested: render-plan-tool"));
+    assert!(rendered.contains("│  backend: prefix-copy"));
+    assert!(rendered.contains("├─ Resolution"));
+    assert!(rendered.contains("│  selected package: render-plan-tool"));
+    assert!(rendered.contains("├─ Plan"));
+    assert!(rendered.contains("│  install-explicit render-plan-tool"));
+    assert!(rendered.contains("├─ Preflight"));
+    assert!(
+        rendered.contains("│  candidate size: estimated-from-cached-payloads")
+            || rendered.contains("│  candidate size: unknown-until-source-build")
+            || rendered.contains("│  candidate size: binary-or-no-change")
+    );
+    assert!(rendered.contains("├─ Progress"));
+    assert!(rendered.contains("│  render-plan-tool:"));
+    assert!(rendered.contains("│    planned fetch-binary:"));
+    assert!(rendered.contains("└─ Proceed?"));
     assert!(!rendered.contains("\"plan\""));
 }
 
@@ -56,12 +69,20 @@ fn human_install_success_renders_result_block() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("Target\n  requested: render-result-tool"));
-    assert!(rendered.contains("Plan\n  install-explicit render-result-tool"));
-    assert!(rendered.contains("    done activate: backend prefix-copy"));
-    assert!(rendered.contains("Progress\n  render-result-tool:\n    done fetch-binary:"));
+    assert!(rendered.contains("┌─ Install Result"));
+    assert!(rendered.contains("├─ Target"));
+    assert!(rendered.contains("│  requested: render-result-tool"));
+    assert!(rendered.contains("├─ Plan"));
+    assert!(rendered.contains("│  install-explicit render-result-tool"));
+    // The live progression sink streamed the per-step status to stderr;
+    // the post-action human render must not redraw the Progress block.
     assert!(
-        rendered.contains("Result\n  render-result-tool 0:0.1.0-1 -> installed")
+        !rendered.contains("├─ Progress"),
+        "post-action render must not duplicate the live progression: {rendered}"
+    );
+    assert!(
+        rendered.contains("├─ Result")
+            && rendered.contains("│  render-result-tool 0:0.1.0-1 -> installed")
             && rendered.contains("backend prefix-copy")
     );
     assert!(rendered.contains("Log\n  path:"));
@@ -90,6 +111,7 @@ fn human_direct_git_dry_run_surfaces_generated_metadata_path() {
 
     assert!(rendered.contains("generated metadata: "));
     assert!(rendered.contains("/etc/elda/recipes/render-git-tool"));
+    assert!(rendered.contains("[V] vendor/ad-hoc"));
 }
 
 #[test]
@@ -140,188 +162,436 @@ fn human_install_render_includes_snapshot_summary_when_present() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("  backend: linux-copy"));
+    assert!(rendered.contains("│  backend: linux-copy"));
+    // Live tree streamed the per-step events; success render must not
+    // re-emit the Progress block that duplicates them.
     assert!(
-        rendered.contains(
-            "system-tool:\n    done snapshot-hooks: 2 request(s) via snapper, 2 captured"
-        )
+        !rendered.contains("│  system-tool:\n│    done snapshot-hooks:"),
+        "post-action human render duplicated the live progression: {rendered}"
     );
     assert!(rendered.contains("snapshots 2 via snapper, 2 captured"));
 }
 
 #[test]
-fn human_ci_pr_render_surfaces_target_branch_and_review_metadata() {
-    let report = CommandReport {
-        area: "ci",
-        status: "ok",
-        exit_status: ExitStatus::Success,
-        command_path: vec!["ci".to_owned(), "pr".to_owned()],
-        operands: vec!["123-origin-tool".to_owned()],
-        output_mode: OutputMode::Human,
-        dry_run: false,
-        summary: "created hosted review for `123-origin-tool`.".to_owned(),
-        details: Some(json!({
-            "submission_id": "123-origin-tool",
-            "mode": "pr",
-            "state": "submitted-for-review",
-            "branch_name": "elda/origin-tool",
-            "target_branch": "stable",
-            "remote_name": "upstream",
-            "pushed_ref": "refs/heads/elda/origin-tool",
-            "review_kind": "github-pr",
-            "review_id": "42",
-            "pr_url": "https://github.com/yoka-ci/pkgs/pull/42"
-        })),
-    };
+fn human_interbuild_plan_surfaces_parser_provenance_and_risk() {
+    if !all_tools_available(&["git", "make"]) {
+        return;
+    }
 
-    let rendered = render_human(&report);
-
-    assert!(rendered.contains(
-        "Reference
-  submission: 123-origin-tool"
-    ));
-    assert!(rendered.contains("  target branch: stable"));
-    assert!(rendered.contains("  remote: upstream"));
-    assert!(rendered.contains("  review kind: github-pr"));
-    assert!(rendered.contains("  review id: 42"));
-    assert!(rendered.contains("  review URL: https://github.com/yoka-ci/pkgs/pull/42"));
-}
-
-#[test]
-fn human_ci_logs_render_surfaces_log_content() {
-    let report = CommandReport {
-        area: "ci",
-        status: "ok",
-        exit_status: ExitStatus::Success,
-        command_path: vec!["ci".to_owned(), "logs".to_owned()],
-        operands: vec!["123-origin-tool".to_owned()],
-        output_mode: OutputMode::Human,
-        dry_run: false,
-        summary: "reported logs for `123-origin-tool`.".to_owned(),
-        details: Some(json!({
-            "submission_id": "123-origin-tool",
-            "state": "published",
-            "attempts": 2,
-            "log_path": "/tmp/ci-origin-tool.log",
-            "content": "scheduler_start attempt=2
-        scheduler_complete attempt=2"
-        })),
-    };
-
-    let rendered = render_human(&report);
-
-    assert!(rendered.contains(
-        "Log
-  submission: 123-origin-tool"
-    ));
-    assert!(rendered.contains("  attempts: 2"));
-    assert!(rendered.contains("  path: /tmp/ci-origin-tool.log"));
-    assert!(rendered.contains(
-        "Content
-  scheduler_start attempt=2"
-    ));
-    assert!(rendered.contains("  scheduler_complete attempt=2"));
-}
-
-#[test]
-fn human_ci_submission_render_surfaces_remote_publication_details() {
-    let report = CommandReport {
-        area: "ci",
-        status: "ok",
-        exit_status: ExitStatus::Success,
-        command_path: vec!["ci".to_owned(), "sub".to_owned()],
-        operands: vec!["origin-tool".to_owned()],
-        output_mode: OutputMode::Human,
-        dry_run: false,
-        summary: "registered ci submission `123-origin-tool` and pushed it to `origin`.".to_owned(),
-        details: Some(json!({
-            "submission": {
-                "id": "123-origin-tool",
-                "requested_targets": ["origin-tool"],
-                "packages": ["origin-tool"],
-                "branch_name": "elda/origin-tool",
-                "target_branch": "main",
-                "mode": "pr",
-                "state": "submitted-for-review",
-                "immediate": false,
-                "batch_name": null,
-                "created_at": 1,
-                "updated_at": 1,
-                "attempts": 2,
-                "planned_layers": 3,
-                "completed_layers": 3,
-                "queued_at": 1,
-                "started_at": 2,
-                "completed_at": 3,
-                "last_error": null,
-                "issues": [],
-                "published_packages": [],
-                "lock_path": null,
-                "index_path": null,
-                "signature_path": null,
-                "log_path": "/tmp/ci-origin-tool.log",
-                "packages_repo_path": "/tmp/ci/pkgs",
-                "trusted_key_fingerprint": null,
-                "repo_commit": "abc123",
-                "remote_name": "origin",
-                "remote_url": "https://github.com/yoka-ci/pkgs.git",
-                "pushed_ref": "refs/heads/elda/origin-tool",
-                "pushed_commit": "abc123",
-                "pushed_at": 1
-            }
-        })),
-    };
-
-    let rendered = render_human(&report);
-
-    assert!(rendered.contains("Submission\n  id: 123-origin-tool"));
-    assert!(rendered.contains("  state: submitted-for-review"));
-    assert!(rendered.contains("Remote\n  remote: origin"));
-    assert!(
-        rendered.contains("  url: https://github.com/yoka-ci/pkgs.git")
-            && rendered.contains("  ref: refs/heads/elda/origin-tool")
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let repo_dir = create_git_nix_flake_make_repo(tempdir.path(), "render-flake-tool");
+    write_interbuild_recipe(
+        tempdir.path(),
+        "render-flake-tool",
+        "nix_flake",
+        &repo_dir,
+        "",
     );
-    assert!(rendered.contains("Artifacts\n  packages repo: /tmp/ci/pkgs"));
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["ig".to_owned()],
+            vec!["render-flake-tool".to_owned()],
+            OutputMode::Human,
+            true,
+        ),
+    )
+    .expect("interbuild dry-run should succeed");
+
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("│  provenance: [I]"));
+    assert!(rendered.contains("├─ Provenance"));
+    assert!(rendered.contains("│  render-flake-tool: [I] parsed"));
+    assert!(rendered.contains("non-native provenance actions: 1"));
+    assert!(rendered.contains("planned parse-interbuild-source"));
+    assert!(rendered.contains("without nix CLI"));
 }
 
 #[test]
-fn human_search_render_lists_numbered_matches_with_description() {
+fn human_failure_report_surfaces_blocker_context_and_action() {
+    let report = crate::report_runtime_failure(
+        &crate::CoreError::Repo(elda_repo::RepoError::SnapshotMissing),
+        &CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["missing-tool".to_owned()],
+            OutputMode::Human,
+            false,
+        )
+        .with_offline(true),
+    );
+
+    assert_eq!(report.exit_status, ExitStatus::ResolutionFailure);
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("install: blocked"));
+    assert!(rendered.contains("┌─ install blocked: missing-tool"));
+    assert!(rendered.contains("├─ Blocked"));
+    assert!(rendered.contains("│  kind: resolution failure"));
+    assert!(rendered.contains("│  command: elda i missing-tool"));
+    assert!(rendered.contains("│  offline: true"));
+    assert!(rendered.contains("├─ Action"));
+    assert!(rendered.contains("│  run `elda sync`"));
+}
+
+#[test]
+fn human_interbuild_plan_surfaces_parser_detail_block() {
+    if !all_tools_available(&["git", "make"]) {
+        return;
+    }
+
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let repo_dir = create_git_gentoo_make_overlay(tempdir.path(), "render-gentoo-tool");
+    write_interbuild_recipe(
+        tempdir.path(),
+        "render-gentoo-tool",
+        "gentoo_overlay",
+        &repo_dir,
+        "    package = \"app-misc/render-gentoo-tool\",\n",
+    );
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["ig".to_owned()],
+            vec!["render-gentoo-tool".to_owned()],
+            OutputMode::Human,
+            true,
+        ),
+    )
+    .expect("interbuild dry-run should succeed");
+    let details = report.details.as_ref().expect("details should exist");
+    let interbuild = &details["plan"]["actions"][0]["interbuild"];
+
+    assert_eq!(interbuild["parser"], "gentoo_overlay");
+    assert_eq!(interbuild["external_cli_required"], false);
+
+    let rendered = render_human(&report);
+    assert!(rendered.contains("render-gentoo-tool interbuild: parser gentoo_overlay"));
+    assert!(rendered.contains("bounded-ebuild-metadata-parser"));
+    assert!(rendered.contains("no external CLI"));
+    assert!(rendered.contains("gentoo EAPI 8"));
+}
+
+#[test]
+fn human_interbuild_plan_surfaces_aur_parser_detail_block() {
+    if !all_tools_available(&["git", "make"]) {
+        return;
+    }
+
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let repo_dir = create_git_aur_make_repo(tempdir.path(), "render-aur-tool");
+    write_interbuild_recipe(
+        tempdir.path(),
+        "render-aur-tool",
+        "aur_pkgbuild",
+        &repo_dir,
+        "",
+    );
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["ig".to_owned()],
+            vec!["render-aur-tool".to_owned()],
+            OutputMode::Human,
+            true,
+        ),
+    )
+    .expect("AUR interbuild dry-run should succeed");
+    let details = report.details.as_ref().expect("details should exist");
+    let interbuild = &details["plan"]["actions"][0]["interbuild"];
+
+    assert_eq!(interbuild["parser"], "aur_pkgbuild");
+    assert_eq!(interbuild["external_cli_required"], false);
+
+    let rendered = render_human(&report);
+    assert!(rendered.contains("render-aur-tool interbuild: parser aur_pkgbuild"));
+    assert!(rendered.contains("bounded-pkgbuild-metadata-parser"));
+    assert!(rendered.contains("aur 0 depend(s), 0 makedepend(s), 0 optdepend(s), 0 function(s), 0 arch source set(s), 0 VCS source(s), static pkgver"));
+}
+
+#[test]
+fn human_interbuild_plan_surfaces_aur_vcs_context() {
+    if !all_tools_available(&["git", "make"]) {
+        return;
+    }
+
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let repo_dir = create_git_aur_vcs_make_repo(tempdir.path(), "render-aur-vcs-tool");
+    write_interbuild_recipe(
+        tempdir.path(),
+        "render-aur-vcs-tool",
+        "aur_pkgbuild",
+        &repo_dir,
+        "    pkgname = \"render-aur-vcs-tool-git\",\n",
+    );
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["ig".to_owned()],
+            vec!["render-aur-vcs-tool".to_owned()],
+            OutputMode::Human,
+            false,
+        ),
+    )
+    .expect("AUR VCS interbuild install should succeed");
+
+    let rendered = render_human(&report);
+    assert!(rendered.contains("1 VCS source(s), pkgver() present"));
+}
+
+#[test]
+fn human_interbuild_plan_surfaces_xbps_parser_detail_block() {
+    if !all_tools_available(&["git", "make"]) {
+        return;
+    }
+
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let repo_dir = create_git_xbps_make_repo(tempdir.path(), "render-xbps-tool");
+    write_interbuild_recipe(
+        tempdir.path(),
+        "render-xbps-tool",
+        "xbps_template",
+        &repo_dir,
+        "",
+    );
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["ig".to_owned()],
+            vec!["render-xbps-tool".to_owned()],
+            OutputMode::Human,
+            true,
+        ),
+    )
+    .expect("XBPS interbuild dry-run should succeed");
+    let details = report.details.as_ref().expect("details should exist");
+    let interbuild = &details["plan"]["actions"][0]["interbuild"];
+
+    assert_eq!(interbuild["parser"], "xbps_template");
+    assert_eq!(interbuild["external_cli_required"], false);
+
+    let rendered = render_human(&report);
+    assert!(rendered.contains("render-xbps-tool interbuild: parser xbps_template"));
+    assert!(rendered.contains("bounded-xbps-template-parser"));
+    assert!(
+        rendered.contains("xbps 0 depend(s), 0 makedepend(s), 0 hostmakedepend(s), 0 function(s)")
+    );
+}
+
+#[test]
+fn human_metadata_add_can_render_priority_sorted_source_options() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config_with_extras(
+        tempdir.path(),
+        "/opt/elda",
+        true,
+        false,
+        "\n[metadata]\nlink_option_mode = \"list-options\"\nlink_strategy_priority = [\"make\", \"nix_flake\"]\n",
+    );
+    let repo_dir = create_git_nix_flake_make_repo(tempdir.path(), "render-options-tool");
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["add".to_owned()],
+            vec![repo_dir.display().to_string()],
+            OutputMode::Human,
+            false,
+        ),
+    )
+    .expect("metadata add should succeed");
+
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("source options:"));
+    assert!(rendered.contains("* 1. make [git, derived]"));
+    assert!(rendered.contains("  2. nix_flake [nix_flake, bounded]"));
+}
+
+#[test]
+fn human_state_ls_renders_per_package_blocks_in_nix_profile_style() {
     let report = CommandReport {
-        area: "search",
+        area: "state",
         status: "ok",
         exit_status: ExitStatus::Success,
-        command_path: vec!["search".to_owned()],
-        operands: vec!["fsel".to_owned()],
+        command_path: vec!["ls".to_owned()],
+        operands: Vec::new(),
         output_mode: OutputMode::Human,
         dry_run: false,
-        summary: "found 2 synced package match(es).".to_owned(),
+        summary: "listed 2 installed package(s).".to_owned(),
         details: Some(json!({
-            "query": "fsel",
-            "regex": false,
-            "interactive": false,
-            "results": [
+            "packages": [
                 {
-                    "remote_name": "aur",
-                    "pkgname": "fsel",
-                    "epoch": 0,
-                    "pkgver": "3.4.1",
-                    "pkgrel": 1,
-                    "description": "Fast TUI app launcher and fuzzy finder"
+                    "pkgname": "bfetch",
+                    "version": "0:0.1.0-1",
+                    "arch": "amd64",
+                    "install_reason": "explicit",
+                    "source_kind": "local_recipe",
+                    "source_ref": "/etc/elda/recipes/bfetch",
+                    "variant_id": "default",
+                    "repo_commit": "4bc9d6447f96b12e554fbdaa5ffe6e1b363de9d4",
+                    "state_id": "system-1777246755498",
+                    "manifest_hash": "498ca50ab1b22eb01c73569d8d8538c1f5e47f45d7a72bd72803a39a3206d8aa",
+                    "payload_sha256": "484c25d02516adc3d2ba5bdd53fa1aab5805ad4d8ad9e46b28535582b2fc42f6",
+                    "remote_name": null,
+                    "pinned_version": null,
+                    "held": false,
+                    "hold_source": null,
+                    "package_kind": "normal"
                 },
                 {
-                    "remote_name": "aur",
-                    "pkgname": "fselect",
-                    "epoch": 0,
-                    "pkgver": "0.10.0",
-                    "pkgrel": 1,
-                    "summary": "Find files with SQL-like queries"
+                    "pkgname": "fsel",
+                    "version": "0:3.3.1-1",
+                    "arch": "amd64",
+                    "install_reason": "dependency",
+                    "source_kind": "interbuild",
+                    "source_ref": "nix_flake:github:fsel/fsel",
+                    "variant_id": "default",
+                    "remote_name": "yoka-core",
+                    "state_id": "system-1777308937160",
+                    "manifest_hash": "deadbeef",
+                    "payload_sha256": null,
+                    "pinned_version": "3.3.1",
+                    "held": true,
+                    "hold_source": "operator",
+                    "package_kind": "normal"
                 }
             ]
         })),
     };
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("1 aur/fsel 0:3.4.1-1"));
-    assert!(rendered.contains("Fast TUI app launcher and fuzzy finder"));
-    assert!(rendered.contains("2 aur/fselect 0:0.10.0-1"));
+
+    assert!(rendered.contains("state: ok"));
+    assert!(rendered.contains("listed 2 installed package(s)."));
+    assert!(rendered.contains("Name:           bfetch"));
+    assert!(rendered.contains("Version:        0:0.1.0-1"));
+    assert!(rendered.contains("Provenance:     [E] local_recipe (Native)"));
+    assert!(rendered.contains("Source ref:     /etc/elda/recipes/bfetch"));
+    assert!(rendered.contains("Repo commit:    4bc9d6447f96b12e554fbdaa5ffe6e1b363de9d4"));
+    assert!(rendered.contains(
+        "Manifest:       498ca50ab1b22eb01c73569d8d8538c1f5e47f45d7a72bd72803a39a3206d8aa"
+    ));
+    assert!(rendered.contains(
+        "Payload:        484c25d02516adc3d2ba5bdd53fa1aab5805ad4d8ad9e46b28535582b2fc42f6"
+    ));
+
+    assert!(rendered.contains("Name:           fsel"));
+    assert!(rendered.contains("Provenance:     [I] interbuild (Interbuild)"));
+    assert!(rendered.contains("Remote:         yoka-core"));
+    assert!(rendered.contains("Pinned:         3.3.1"));
+    assert!(rendered.contains("Hold:           yes (operator)"));
+
+    assert!(!rendered.contains("\"packages\""));
+    assert!(!rendered.contains("\"manifest_hash\""));
+}
+
+#[test]
+fn human_state_ls_renders_empty_state_without_blocks() {
+    let report = CommandReport {
+        area: "state",
+        status: "ok",
+        exit_status: ExitStatus::Success,
+        command_path: vec!["ls".to_owned()],
+        operands: Vec::new(),
+        output_mode: OutputMode::Human,
+        dry_run: false,
+        summary: "listed 0 installed package(s).".to_owned(),
+        details: Some(json!({ "packages": [] })),
+    };
+
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("state: ok"));
+    assert!(rendered.contains("listed 0 installed package(s)."));
+    assert!(rendered.contains("No installed packages."));
+    assert!(!rendered.contains("Name:"));
+    assert!(!rendered.contains("\"packages\""));
+}
+
+#[test]
+fn human_recipe_catalog_renders_per_recipe_blocks_with_provenance() {
+    let report = CommandReport {
+        area: "recipe",
+        status: "ok",
+        exit_status: ExitStatus::Success,
+        command_path: vec!["rc".to_owned(), "ls".to_owned()],
+        operands: Vec::new(),
+        output_mode: OutputMode::Human,
+        dry_run: false,
+        summary: "1 local recipe(s); 1 synced install name(s).".to_owned(),
+        details: Some(json!({
+            "catalog": {
+                "recipes_dir": "/etc/elda/recipes",
+                "local_recipes": ["bfetch"],
+                "local_entries": [{
+                    "pkgname": "bfetch",
+                    "version": "0:0.1.0-1",
+                    "source": "local_recipe",
+                    "description": "binary fetch tool",
+                    "upstream": "https://github.com/example/bfetch",
+                    "licenses": ["MIT"]
+                }],
+                "synced_packages": ["yoka-core/cosmic-shell"],
+                "synced_entries": [{
+                    "pkgname": "cosmic-shell",
+                    "version": "0:1.0.0-1",
+                    "source": "synced:yoka-core",
+                    "description": "cosmic desktop",
+                    "upstream": "https://system76.com",
+                    "licenses": ["GPL-3.0"]
+                }]
+            }
+        })),
+    };
+
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("recipe: ok"));
+    assert!(rendered.contains("1 local recipe(s); 1 synced install name(s)."));
+    assert!(rendered.contains("directory: /etc/elda/recipes"));
+
+    assert!(rendered.contains("Name:           bfetch"));
+    assert!(rendered.contains("Provenance:     [E] local_recipe (Native)"));
+    assert!(rendered.contains("Description:    binary fetch tool"));
+    assert!(rendered.contains("Upstream:       https://github.com/example/bfetch"));
+    assert!(rendered.contains("Licenses:       MIT"));
+
+    assert!(rendered.contains("Name:           cosmic-shell"));
+    assert!(rendered.contains("Provenance:     [E] synced/yoka-core (Native, remote)"));
+    assert!(!rendered.contains("\"catalog\""));
+    assert!(!rendered.contains("\"local_recipes\""));
+}
+
+#[test]
+fn human_render_does_not_emit_raw_json_for_unstyled_reports() {
+    let report = CommandReport {
+        area: "verify",
+        status: "ok",
+        exit_status: ExitStatus::Success,
+        command_path: vec!["verify".to_owned()],
+        operands: Vec::new(),
+        output_mode: OutputMode::Human,
+        dry_run: false,
+        summary: "verified 0 installed package(s).".to_owned(),
+        details: Some(json!({ "verified": [], "secret_field": "should-not-leak" })),
+    };
+
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("verify: ok"));
+    assert!(rendered.contains("verified 0 installed package(s)."));
+    assert!(!rendered.contains("\"verified\""));
+    assert!(!rendered.contains("secret_field"));
+    assert!(!rendered.contains("should-not-leak"));
 }

@@ -1,0 +1,14 @@
+# Boot backend extension that publishes new boot entries through snapper /
+# the host bootloader after activation. Boot backends register through the
+# `BootBackend` extension point (SPEC §15).
+
+name = "snapper-boot-backend"
+kind = "boot-backend"
+version = "0.2.1"
+enabled = true
+
+binary = "/usr/lib/elda/extensions/snapper-boot"
+capabilities = [
+  "boot-publish",
+  "boot-rollback",
+]

@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use pubgrub::{DefaultStringReporter, PubGrubError, Reporter, SelectedDependencies, resolve};
 
+use crate::CommandRequest;
 use crate::app::{AppContext, ParsedInstallRequest, ResolvedDependencyPlan, ResolvedInstallTarget};
 use crate::error::CoreError;
 
@@ -30,8 +31,9 @@ impl AppContext {
     pub(crate) fn solve_install_request(
         &self,
         request: &ParsedInstallRequest,
+        command: Option<&CommandRequest>,
     ) -> Result<SolverResolution, CoreError> {
-        let graph = SolverGraphBuilder::for_install(self, request)?;
+        let graph = SolverGraphBuilder::for_install(self, request, command)?;
         solve_graph(graph)
     }
 
@@ -40,8 +42,10 @@ impl AppContext {
         request: &ParsedInstallRequest,
         targets: &[String],
         refresh_weak_deps: bool,
+        command: Option<&CommandRequest>,
     ) -> Result<SolverResolution, CoreError> {
-        let graph = SolverGraphBuilder::for_upgrade(self, request, targets, refresh_weak_deps)?;
+        let graph =
+            SolverGraphBuilder::for_upgrade(self, request, targets, refresh_weak_deps, command)?;
         solve_graph(graph)
     }
 }
@@ -58,11 +62,9 @@ fn solve_graph(graph: SolverGraph) -> Result<SolverResolution, CoreError> {
     let packages = graph
         .real_packages
         .iter()
-        .filter_map(|(package_name, node)| {
-            is_selected_real_package(&selected, package_name, node).then(|| {
-                resolve_package(node, &graph, &selected)
-                    .map(|package| (package_name.clone(), package))
-            })
+        .filter(|(package_name, node)| is_selected_real_package(&selected, package_name, node))
+        .map(|(package_name, node)| {
+            resolve_package(node, &graph, &selected).map(|package| (package_name.clone(), package))
         })
         .collect::<Result<BTreeMap<_, _>, _>>()?;
     let order = package_order(&graph, &packages);

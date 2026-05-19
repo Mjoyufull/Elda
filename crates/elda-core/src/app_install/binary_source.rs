@@ -15,7 +15,7 @@ impl AppContext {
 
         if !matches!(
             resolved.selected_source_kind.as_str(),
-            "url_archive" | "github_release"
+            "url_archive" | "github_release" | "release_asset" | "appimage"
         ) {
             return Ok(());
         }
@@ -57,6 +57,15 @@ impl AppContext {
         });
 
         Ok(caches)
+    }
+
+    /// Collect configured release-asset trust keys.
+    ///
+    /// These are Ed25519 public keys (base64-encoded) that Elda uses
+    /// to verify minisig/Ed25519 sidecars declared in release_asset
+    /// recipes via the `signature` field.
+    pub(crate) fn configured_release_trusted_keys(&self) -> Vec<String> {
+        self.config.trust.release_keys.clone()
     }
 }
 

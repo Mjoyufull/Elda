@@ -25,6 +25,50 @@ fn named_install_without_configured_remotes_points_to_remote_bootstrap() {
 }
 
 #[test]
+fn sync_accepts_target_remote_names() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let main_binary = create_vendor_binary(tempdir.path(), "main-only-tool");
+    let extra_binary = create_vendor_binary(tempdir.path(), "extra-only-tool");
+    let main_index = write_remote_index(tempdir.path(), "main-only-tool", &main_binary);
+    let extra_index = write_remote_index(tempdir.path(), "extra-only-tool", &extra_binary);
+    register_fixture_remote(tempdir.path(), "main", &main_index);
+    register_fixture_remote(tempdir.path(), "extra", &extra_index);
+
+    let sync_report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["sync".to_owned()],
+            vec!["main".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("targeted sync should succeed");
+
+    let sync = sync_report
+        .details
+        .as_ref()
+        .and_then(|details| details.get("sync"))
+        .expect("sync details should exist");
+    assert_eq!(
+        sync.get("remote_count").and_then(|value| value.as_u64()),
+        Some(1)
+    );
+    assert_eq!(
+        sync.get("package_count").and_then(|value| value.as_u64()),
+        Some(1)
+    );
+    assert!(
+        sync.get("remotes")
+            .and_then(|remotes| remotes.as_array())
+            .is_some_and(
+                |remotes| remotes[0].get("name").and_then(|name| name.as_str()) == Some("main")
+            )
+    );
+}
+
+#[test]
 fn sync_search_info_and_named_install_work_from_repo_snapshot() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/opt/elda");

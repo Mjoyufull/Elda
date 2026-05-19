@@ -6,7 +6,11 @@ pub(super) fn materialize_binary_source(
     source: &SourceDefinition,
     package_arch: Option<&str>,
 ) -> Result<SourceDefinition, BuildError> {
-    if source.kind != "github_release" || source.github_release_assets.is_empty() {
+    if !matches!(
+        source.kind.as_str(),
+        "github_release" | "release_asset" | "appimage"
+    ) || source.github_release_assets.is_empty()
+    {
         return Ok(source.clone());
     }
 
@@ -21,7 +25,8 @@ pub(super) fn materialize_binary_source(
         .get(package_arch)
         .ok_or_else(|| {
             BuildError::Invalid(format!(
-                "github_release source does not define an asset for architecture `{package_arch}`"
+                "{} source does not define an asset for architecture `{package_arch}`",
+                source.kind
             ))
         })?;
 
@@ -42,6 +47,7 @@ fn merged_fields(
         "sha256".to_owned(),
         ScalarValue::String(asset.sha256.clone()),
     );
+    merge_optional_string(&mut fields, "signature", asset.signature.as_deref());
     merge_optional_string(&mut fields, "binary", asset.binary.as_deref());
     merge_optional_integer(&mut fields, "strip_components", asset.strip_components);
     merge_optional_string(&mut fields, "subdir", asset.subdir.as_deref());
@@ -94,6 +100,7 @@ mod tests {
             GitHubReleaseAssetDefinition {
                 asset: "fsel-x86_64.tar.xz".to_owned(),
                 sha256: "abc123".to_owned(),
+                signature: Some("fsel-x86_64.tar.xz.minisig".to_owned()),
                 binary: Some("fsel".to_owned()),
                 strip_components: Some(1),
                 subdir: None,
@@ -119,6 +126,12 @@ mod tests {
             Some(&ScalarValue::String("fsel".to_owned()))
         );
         assert_eq!(
+            materialized.fields.get("signature"),
+            Some(&ScalarValue::String(
+                "fsel-x86_64.tar.xz.minisig".to_owned()
+            ))
+        );
+        assert_eq!(
             materialized.fields.get("rename"),
             Some(&ScalarValue::String("fsel-renamed".to_owned()))
         );
@@ -138,6 +151,7 @@ mod tests {
                 GitHubReleaseAssetDefinition {
                     asset: "fsel-aarch64.tar.xz".to_owned(),
                     sha256: "abc123".to_owned(),
+                    signature: None,
                     binary: None,
                     strip_components: None,
                     subdir: None,
@@ -152,6 +166,98 @@ mod tests {
             error
                 .to_string()
                 .contains("does not define an asset for architecture `amd64`")
+        );
+    }
+}
+
+#[cfg(test)]
+mod release_asset_tests {
+    use std::collections::BTreeMap;
+
+    use super::materialize_binary_source;
+    use elda_recipe::{GitHubReleaseAssetDefinition, ScalarValue, SourceDefinition};
+
+    #[test]
+    fn release_asset_uses_arch_asset_selection() {
+        let fields = BTreeMap::from([
+            (
+                "provider".to_owned(),
+                ScalarValue::String("github".to_owned()),
+            ),
+            (
+                "repo".to_owned(),
+                ScalarValue::String("owner/tool".to_owned()),
+            ),
+            ("tag".to_owned(), ScalarValue::String("v1.0.0".to_owned())),
+        ]);
+        let assets = BTreeMap::from([(
+            "amd64".to_owned(),
+            GitHubReleaseAssetDefinition {
+                asset: "tool-linux-amd64.tar.gz".to_owned(),
+                sha256: "abc123".to_owned(),
+                signature: Some("tool-linux-amd64.tar.gz.minisig".to_owned()),
+                binary: Some("tool".to_owned()),
+                strip_components: None,
+                subdir: None,
+                rename: None,
+            },
+        )]);
+        let source =
+            SourceDefinition::single_lane_with_assets("release_asset".to_owned(), fields, assets);
+
+        let materialized =
+            materialize_binary_source(&source, Some("amd64")).expect("asset should resolve");
+
+        assert_eq!(materialized.kind, "release_asset");
+        assert_eq!(
+            materialized.fields.get("asset"),
+            Some(&ScalarValue::String("tool-linux-amd64.tar.gz".to_owned()))
+        );
+        assert_eq!(
+            materialized.fields.get("binary"),
+            Some(&ScalarValue::String("tool".to_owned()))
+        );
+        assert_eq!(
+            materialized.fields.get("signature"),
+            Some(&ScalarValue::String(
+                "tool-linux-amd64.tar.gz.minisig".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn appimage_preserves_kind_when_materializing_arch_assets() {
+        let fields = BTreeMap::from([
+            (
+                "repo".to_owned(),
+                ScalarValue::String("owner/tool".to_owned()),
+            ),
+            ("tag".to_owned(), ScalarValue::String("v1.0.0".to_owned())),
+        ]);
+        let assets = BTreeMap::from([(
+            "amd64".to_owned(),
+            GitHubReleaseAssetDefinition {
+                asset: "tool-x86_64-unknown-linux-gnu.AppImage".to_owned(),
+                sha256: "abc123".to_owned(),
+                signature: None,
+                binary: Some("tool".to_owned()),
+                strip_components: None,
+                subdir: None,
+                rename: None,
+            },
+        )]);
+        let source =
+            SourceDefinition::single_lane_with_assets("appimage".to_owned(), fields, assets);
+
+        let materialized =
+            materialize_binary_source(&source, Some("amd64")).expect("asset should resolve");
+
+        assert_eq!(materialized.kind, "appimage");
+        assert_eq!(
+            materialized.fields.get("asset"),
+            Some(&ScalarValue::String(
+                "tool-x86_64-unknown-linux-gnu.AppImage".to_owned()
+            ))
         );
     }
 }

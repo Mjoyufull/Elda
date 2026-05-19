@@ -1,6 +1,6 @@
 use super::data::{
-    ACID_LIME, BURNT_RUST, CORE_ROWS, ELECTRIC_MAGENTA, EXAMPLES, FLAG_ROWS, HAZARD_ORANGE,
-    HelpRow, LOGO, NAMESPACE_ROWS, PURE_WHITE, SIGNAL_YELLOW, STATE_ROWS,
+    ASH_WHITE, CHALK_YELLOW, CORAL_RED, CORE_ROWS, EXAMPLES, FLAG_ROWS, GLACIER_BLUE, HelpRow,
+    LAVENDER_VIOLET, LOGO, NAMESPACE_ROWS, PEACH_HAZARD, STATE_ROWS, SYNTAX_GREEN,
 };
 use super::style::{center_text, paint, section_title};
 
@@ -12,7 +12,7 @@ pub(super) fn render_root_help(color: bool, width: usize) -> String {
         "replacement-grade Unix-first package manager",
         width,
         color,
-        PURE_WHITE,
+        ASH_WHITE,
         false,
     ));
     output.push('\n');
@@ -20,7 +20,7 @@ pub(super) fn render_root_help(color: bool, width: usize) -> String {
         env!("CARGO_PKG_VERSION"),
         width,
         color,
-        ELECTRIC_MAGENTA,
+        LAVENDER_VIOLET,
         true,
     ));
     output.push_str("\n\n");
@@ -30,7 +30,7 @@ pub(super) fn render_root_help(color: bool, width: usize) -> String {
         "{}\n\n",
         paint(
             "elda <command> [options] [operands]",
-            SIGNAL_YELLOW,
+            CHALK_YELLOW,
             true,
             color
         )
@@ -62,19 +62,19 @@ fn format_section(title: &str, rows: &[HelpRow], color: bool) -> String {
         } else {
             "├─"
         };
-        output.push_str(&paint(branch, HAZARD_ORANGE, true, color));
+        output.push_str(&paint(branch, PEACH_HAZARD, true, color));
         output.push(' ');
-        output.push_str(&paint(row.command, ACID_LIME, true, color));
+        output.push_str(&paint(row.command, SYNTAX_GREEN, true, color));
         if !row.args.is_empty() {
             output.push(' ');
-            output.push_str(&paint(row.args, PURE_WHITE, false, color));
+            output.push_str(&paint(row.args, GLACIER_BLUE, false, color));
         }
         let padding = width.saturating_sub(row.label_width()) + 2;
         output.push_str(&" ".repeat(padding));
         output.push(' ');
-        output.push_str(&paint("#", PURE_WHITE, true, color));
+        output.push_str(&paint("#", ASH_WHITE, true, color));
         output.push(' ');
-        output.push_str(&paint(row.description, PURE_WHITE, false, color));
+        output.push_str(&paint(row.description, ASH_WHITE, false, color));
         output.push('\n');
     }
     output
@@ -95,15 +95,15 @@ fn format_examples(color: bool) -> String {
         } else {
             "├─"
         };
-        output.push_str(&paint(branch, HAZARD_ORANGE, true, color));
+        output.push_str(&paint(branch, PEACH_HAZARD, true, color));
         output.push(' ');
-        output.push_str(&paint(row.command, ELECTRIC_MAGENTA, true, color));
+        output.push_str(&paint(row.command, LAVENDER_VIOLET, true, color));
         let padding = width.saturating_sub(row.command.chars().count()) + 2;
         output.push_str(&" ".repeat(padding));
         output.push(' ');
-        output.push_str(&paint("#", PURE_WHITE, true, color));
+        output.push_str(&paint("#", ASH_WHITE, true, color));
         output.push(' ');
-        output.push_str(&paint(row.description, PURE_WHITE, false, color));
+        output.push_str(&paint(row.description, ASH_WHITE, false, color));
         output.push('\n');
     }
     output
@@ -133,13 +133,13 @@ fn colorize_logo_line(line: &str) -> String {
     for ch in line.chars() {
         match ch {
             'E' | 'L' | 'D' | 'A' => {
-                output.push_str(&paint(&ch.to_string(), ACID_LIME, true, true))
+                output.push_str(&paint(&ch.to_string(), SYNTAX_GREEN, true, true))
             }
-            'M' | 'm' => output.push_str(&paint(&ch.to_string(), HAZARD_ORANGE, true, true)),
+            'M' | 'm' => output.push_str(&paint(&ch.to_string(), PEACH_HAZARD, true, true)),
             'H' | 'K' | 'I' | 'F' => {
-                output.push_str(&paint(&ch.to_string(), BURNT_RUST, true, true))
+                output.push_str(&paint(&ch.to_string(), CORAL_RED, true, true))
             }
-            '#' | '@' => output.push_str(&paint(&ch.to_string(), ELECTRIC_MAGENTA, true, true)),
+            '#' | '@' => output.push_str(&paint(&ch.to_string(), LAVENDER_VIOLET, true, true)),
             _ => output.push(ch),
         }
     }

@@ -161,6 +161,7 @@ impl StateCommand {
 pub(super) enum CacheCommand {
     #[command(about = "Register a cache document")]
     Add(CacheAddArgs),
+    #[command(alias = "list")]
     #[command(about = "List registered caches")]
     Ls,
 }
@@ -210,6 +211,7 @@ impl DaemonCommand {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum ExtensionCommand {
+    #[command(alias = "list")]
     #[command(about = "List configured extensions")]
     Ls,
 }
@@ -218,6 +220,134 @@ impl ExtensionCommand {
     pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
         match self {
             Self::Ls => (vec!["ext".to_owned(), "ls".to_owned()], Vec::new()),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ReviewCommand {
+    #[command(alias = "list")]
+    #[command(about = "List recorded source-definition review stamps")]
+    Ls,
+    #[command(about = "Show review stamps for one package")]
+    Info(super::common::PackageArg),
+    #[command(about = "Forget one recorded review stamp")]
+    Forget(super::common::PackageArg),
+    #[command(about = "Open the reviewed recipe in a pager and compare review memory")]
+    Diff(super::common::PackageArg),
+}
+
+impl ReviewCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Ls => (vec!["review".to_owned(), "ls".to_owned()], Vec::new()),
+            Self::Info(args) => (
+                vec!["review".to_owned(), "info".to_owned()],
+                vec![args.package.clone()],
+            ),
+            Self::Forget(args) => {
+                let mut operands = vec![args.package.clone()];
+                operands.push("--kind".to_owned());
+                operands.push("interbuild".to_owned());
+                (vec!["review".to_owned(), "forget".to_owned()], operands)
+            }
+            Self::Diff(args) => {
+                let mut operands = vec![args.package.clone()];
+                operands.push("--kind".to_owned());
+                operands.push("interbuild".to_owned());
+                (vec!["review".to_owned(), "diff".to_owned()], operands)
+            }
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum TriggerCommand {
+    #[command(alias = "list")]
+    #[command(about = "List pending and last-run system triggers")]
+    Ls,
+    #[command(about = "Inspect one system trigger")]
+    Info(ValueArg),
+    #[command(about = "Run one pending system trigger")]
+    Run(ValueArg),
+    #[command(about = "Compare pending vs last-run trigger state")]
+    Diff(ValueArg),
+}
+
+impl TriggerCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Ls => (vec!["trigger".to_owned(), "ls".to_owned()], Vec::new()),
+            Self::Info(args) => (
+                vec!["trigger".to_owned(), "info".to_owned()],
+                vec![args.value.clone()],
+            ),
+            Self::Run(args) => (
+                vec!["trigger".to_owned(), "run".to_owned()],
+                vec![args.value.clone()],
+            ),
+            Self::Diff(args) => (
+                vec!["trigger".to_owned(), "diff".to_owned()],
+                vec![args.value.clone()],
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum MaintCommand {
+    #[command(about = "Check recovery, triggers, remotes, and world health")]
+    Check,
+    #[command(about = "Run maintenance repair modules (recovery, triggers, profile)")]
+    Fix {
+        #[arg(
+            value_name = "MODULE",
+            help = "recovery | triggers | profile | all (default: all)"
+        )]
+        module: Option<String>,
+    },
+}
+
+impl MaintCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Check => (vec!["maint".to_owned(), "check".to_owned()], Vec::new()),
+            Self::Fix { module } => (
+                vec!["maint".to_owned(), "fix".to_owned()],
+                module.clone().into_iter().collect(),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+pub(super) enum ConfigCommand {
+    #[command(about = "List pending .eldanew and .eldasave configuration files")]
+    Pending,
+    #[command(about = "Show a pending configuration sidecar diff")]
+    Diff(ValueArg),
+    #[command(about = "Apply a pending .eldanew or .eldasave sidecar")]
+    Apply(ValueArg),
+    #[command(about = "Keep the live file and discard the pending sidecar")]
+    Keep(ValueArg),
+}
+
+impl ConfigCommand {
+    pub(super) fn request_parts(&self) -> (Vec<String>, Vec<String>) {
+        match self {
+            Self::Pending => (vec!["config".to_owned(), "pending".to_owned()], Vec::new()),
+            Self::Diff(args) => (
+                vec!["config".to_owned(), "diff".to_owned()],
+                vec![args.value.clone()],
+            ),
+            Self::Apply(args) => (
+                vec!["config".to_owned(), "apply".to_owned()],
+                vec![args.value.clone()],
+            ),
+            Self::Keep(args) => (
+                vec!["config".to_owned(), "keep".to_owned()],
+                vec![args.value.clone()],
+            ),
         }
     }
 }

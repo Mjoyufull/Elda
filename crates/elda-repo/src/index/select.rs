@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::{RemotePayloadTrust, TrustMode};
+use crate::model::{RemotePayloadTrust, RemoteTrustInspection, TrustMode};
 
 pub fn resolve_package(
     snapshot_path: &Path,
@@ -56,6 +56,64 @@ pub fn load_remote_payload_trust(
     })
 }
 
+pub fn inspect_remote_trust(
+    snapshot_path: &Path,
+    remote: &RemoteDocument,
+) -> Result<RemoteTrustInspection, RepoError> {
+    let trust_state = super::state::load_remote_trust_state(snapshot_path, &remote.name)?;
+    let snapshot_record = match super::sync::load_snapshot(snapshot_path) {
+        Ok(snapshot) => snapshot
+            .remotes
+            .into_iter()
+            .find(|record| record.name == remote.name),
+        Err(RepoError::SnapshotMissing) => None,
+        Err(error) => return Err(error),
+    };
+
+    Ok(RemoteTrustInspection {
+        remote_name: remote.name.clone(),
+        trust: remote.trust.clone(),
+        enabled: remote.enabled,
+        channel: remote.channel.clone(),
+        allow_stale: remote.allow_stale,
+        configured_trusted_keys: remote.trusted_keys.clone(),
+        persisted_trusted_public_keys: trust_state.trusted_public_keys.clone(),
+        persisted_trusted_fingerprints: trust_state.trusted_fingerprints.clone(),
+        metadata_url: remote.metadata_url.clone(),
+        signature_url: remote.signature_url.clone(),
+        snapshot_present: snapshot_record.is_some(),
+        snapshot_verified: snapshot_record.as_ref().map(|record| record.verified),
+        snapshot_stale: snapshot_record.as_ref().map(|record| record.stale),
+        selected_key: snapshot_record
+            .as_ref()
+            .and_then(|record| record.selected_key.clone()),
+        last_sync_unix: trust_state.last_sync_unix.or_else(|| {
+            snapshot_record
+                .as_ref()
+                .and_then(|record| record.last_sync_unix)
+        }),
+        last_verified_unix: trust_state.last_verified_unix.or_else(|| {
+            snapshot_record
+                .as_ref()
+                .and_then(|record| record.last_verified_unix)
+        }),
+        last_error: trust_state.last_error.clone(),
+        rotation_policy: rotation_policy(remote),
+        payload_verification: payload_verification(remote, snapshot_record.as_ref(), &trust_state),
+        pending_rotation: trust_state.last_error.as_deref().is_some_and(|error| {
+            error.contains("rotation")
+                || error.contains("key changed")
+                || error.contains("accept-rotated-key")
+        }),
+        rotation_accept_required: remote.trust == TrustMode::Tofu
+            && remote.metadata_url.is_some()
+            && trust_state
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("accept-rotated-key")),
+    })
+}
+
 pub fn search_packages(
     snapshot_path: &Path,
     query: &str,
@@ -90,6 +148,52 @@ pub fn search_packages(
     });
 
     Ok(matches)
+}
+
+fn rotation_policy(remote: &RemoteDocument) -> String {
+    match &remote.trust {
+        TrustMode::Insecure => "unsigned insecure remote; key rotation is disabled".to_owned(),
+        TrustMode::Pinned => {
+            if remote.trusted_keys.is_empty() {
+                "pinned remote is blocked until trusted keys are configured".to_owned()
+            } else {
+                "pinned key set; rotations require explicit remote document update".to_owned()
+            }
+        }
+        TrustMode::Tofu => {
+            if remote.metadata_url.is_some() {
+                "TOFU with signed metadata rotation; rotated keys require --accept-rotated-key"
+                    .to_owned()
+            } else {
+                "TOFU first-use trust; key changes are blocked without metadata_url".to_owned()
+            }
+        }
+    }
+}
+
+fn payload_verification(
+    remote: &RemoteDocument,
+    snapshot_record: Option<&SyncedRemoteRecord>,
+    trust_state: &super::state::RemoteTrustState,
+) -> String {
+    if remote.trust == TrustMode::Insecure {
+        return "payload signatures are not enforced for insecure remotes".to_owned();
+    }
+    if snapshot_record.is_none() {
+        return "no synced snapshot yet; run elda sync before payload trust is usable".to_owned();
+    }
+    if !snapshot_record.is_some_and(|record| record.verified) {
+        return "last snapshot is unverified; signed payload installs are blocked".to_owned();
+    }
+    if trust_state.trusted_public_keys.is_empty() {
+        return "snapshot is verified but payload key material is missing; run elda sync again"
+            .to_owned();
+    }
+
+    format!(
+        "signed payload verification enabled with {} persisted remote key(s)",
+        trust_state.trusted_public_keys.len()
+    )
 }
 
 pub(super) fn candidate_order(left: &SyncedPackageRecord, right: &SyncedPackageRecord) -> Ordering {

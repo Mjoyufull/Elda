@@ -16,6 +16,12 @@ pub use submission::{
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
+pub struct TrustConfig {
+    pub release_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub defaults: DefaultsConfig,
     pub privilege: PrivilegeConfig,
@@ -25,7 +31,10 @@ pub struct Config {
     pub logging: LoggingConfig,
     pub display: DisplayConfig,
     pub capabilities: CapabilitiesConfig,
+    pub metadata: MetadataConfig,
+    pub git: GitConfig,
     pub submission: SubmissionConfig,
+    pub trust: TrustConfig,
 }
 
 impl Config {
@@ -39,6 +48,57 @@ impl Config {
         let config = toml::from_str::<Self>(&content)?;
 
         Ok(config)
+    }
+
+    pub fn append_release_keys(root_dir: &Path, keys: &[String]) -> Result<(), CoreError> {
+        if keys.is_empty() {
+            return Ok(());
+        }
+        let config_path = root_dir.join("etc/elda/config.toml");
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let mut doc: toml::Table = if config_path.exists() {
+            let content = fs::read_to_string(&config_path)?;
+            content
+                .parse()
+                .map_err(|error| CoreError::Operator(format!("invalid config.toml: {error}")))?
+        } else {
+            toml::Table::new()
+        };
+
+        let trust = doc
+            .entry("trust")
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        let toml::Value::Table(trust_table) = trust else {
+            return Err(CoreError::Operator(
+                "[trust] in config.toml must be a table".to_owned(),
+            ));
+        };
+        let release = trust_table
+            .entry("release_keys")
+            .or_insert_with(|| toml::Value::Array(Vec::new()));
+        let toml::Value::Array(release_keys) = release else {
+            return Err(CoreError::Operator(
+                "[trust].release_keys must be an array".to_owned(),
+            ));
+        };
+
+        for key in keys {
+            if !release_keys
+                .iter()
+                .any(|value| value.as_str() == Some(key.as_str()))
+            {
+                release_keys.push(toml::Value::String(key.clone()));
+            }
+        }
+
+        let content = toml::to_string_pretty(&doc).map_err(|error| {
+            CoreError::Operator(format!("failed to write config.toml: {error}"))
+        })?;
+        fs::write(config_path, content)?;
+        Ok(())
     }
 
     pub fn write_default(root_dir: &Path) -> Result<(), CoreError> {
@@ -78,6 +138,7 @@ level = 0
 [display]
 default_mode = "human"
 human_detail = "normal"
+tree_chars = "auto"
 
 [capabilities]
 profile = "default-host"
@@ -89,6 +150,34 @@ system_activate = true
 profile_apply = true
 migration = true
 extension_runtime = true
+
+[metadata]
+link_option_mode = "priority"
+link_strategy_priority = [
+  "elda-native",
+  "nix_flake",
+  "gentoo_ebuild",
+  "aur_pkgbuild",
+  "xbps_template",
+  "cargo",
+  "cmake",
+  "meson",
+  "make",
+  "go",
+  "python",
+  "zig",
+  "nimble",
+  "git_release",
+  "git_source",
+]
+
+[git]
+tag_policy = "semver"
+include_prereleases = true
+strip_v_prefix = true
+allow_date_versions = true
+max_tags = 50
+allowed_protocols = ["https", "ssh", "file"]
 "#
         .to_owned();
         fs::write(config_path, content)?;
@@ -164,6 +253,84 @@ pub struct FlagsConfig {
     pub package: BTreeMap<String, BTreeMap<String, bool>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct GitConfig {
+    pub tag_policy: String,
+    pub include_prereleases: bool,
+    pub strip_v_prefix: bool,
+    pub allow_date_versions: bool,
+    pub max_tags: usize,
+    pub allowed_protocols: Vec<String>,
+}
+
+impl Default for GitConfig {
+    fn default() -> Self {
+        Self {
+            tag_policy: "semver".to_owned(),
+            include_prereleases: true,
+            strip_v_prefix: true,
+            allow_date_versions: true,
+            max_tags: 50,
+            allowed_protocols: vec!["https".to_owned(), "ssh".to_owned(), "file".to_owned()],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct MetadataConfig {
+    pub link_strategy_priority: Vec<String>,
+    pub link_option_mode: LinkOptionMode,
+    /// Preferred ordering for **payload** assets on git releases (`git_release` / GitHub/GitLab
+    /// API summaries). Kebab-case identifiers match release asset formats (`tar-gz`, `zip`,
+    /// `app-image`, …). Empty = built-in default (archives and distro packages before AppImages).
+    /// Any format omitted from a non-empty list is excluded from automatic binary selection.
+    pub release_binary_format_priority: Vec<String>,
+}
+
+impl Default for MetadataConfig {
+    fn default() -> Self {
+        Self {
+            link_strategy_priority: default_link_strategy_priority(),
+            link_option_mode: LinkOptionMode::Priority,
+            release_binary_format_priority: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum LinkOptionMode {
+    #[default]
+    Priority,
+    ListOptions,
+}
+
+#[must_use]
+pub fn default_link_strategy_priority() -> Vec<String> {
+    [
+        "elda-native",
+        "nix_flake",
+        "gentoo_ebuild",
+        "aur_pkgbuild",
+        "xbps_template",
+        "cargo",
+        "cmake",
+        "meson",
+        "make",
+        "go",
+        "python",
+        "zig",
+        "nimble",
+        "git_release",
+        "git_source",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct ResolverConfig {
@@ -182,6 +349,7 @@ pub struct LoggingConfig {
 pub struct DisplayConfig {
     pub default_mode: String,
     pub human_detail: String,
+    pub tree_chars: String,
 }
 
 impl Default for DisplayConfig {
@@ -189,6 +357,7 @@ impl Default for DisplayConfig {
         Self {
             default_mode: "human".to_owned(),
             human_detail: "normal".to_owned(),
+            tree_chars: "auto".to_owned(),
         }
     }
 }
@@ -260,8 +429,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        Config, InstallPreference, LoggingConfig, ProfileConfig, SubmissionAuthKind,
-        SubmissionMode, default_native_arch,
+        Config, InstallPreference, LinkOptionMode, LoggingConfig, ProfileConfig,
+        SubmissionAuthKind, SubmissionMode, default_link_strategy_priority, default_native_arch,
     };
 
     #[test]
@@ -314,6 +483,18 @@ pipewire = true
 [flags.package.fsel]
 wayland = true
 
+[metadata]
+link_option_mode = "list-options"
+link_strategy_priority = ["elda-native", "nix_flake", "gentoo_ebuild", "make"]
+
+[git]
+tag_policy = "semver"
+include_prereleases = false
+strip_v_prefix = true
+allow_date_versions = false
+max_tags = 25
+allowed_protocols = ["https", "ssh", "file", "http"]
+
 [submission]
 mode = "pr"
 auto_open = true
@@ -353,6 +534,33 @@ show_remote = true
         assert_eq!(
             config.defaults.install_preference,
             InstallPreference::Source
+        );
+        assert_eq!(
+            config.metadata.link_option_mode,
+            LinkOptionMode::ListOptions
+        );
+        assert_eq!(
+            config.metadata.link_strategy_priority,
+            vec![
+                "elda-native".to_owned(),
+                "nix_flake".to_owned(),
+                "gentoo_ebuild".to_owned(),
+                "make".to_owned(),
+            ]
+        );
+        assert_eq!(config.git.tag_policy, "semver");
+        assert!(!config.git.include_prereleases);
+        assert!(config.git.strip_v_prefix);
+        assert!(!config.git.allow_date_versions);
+        assert_eq!(config.git.max_tags, 25);
+        assert_eq!(
+            config.git.allowed_protocols,
+            vec![
+                "https".to_owned(),
+                "ssh".to_owned(),
+                "file".to_owned(),
+                "http".to_owned(),
+            ]
         );
         assert_eq!(config.submission.mode, SubmissionMode::Pr);
         assert!(config.submission.auto_open);
@@ -407,6 +615,41 @@ show_remote = true
                 .and_then(|flags| flags.get("wayland")),
             Some(&true)
         );
+    }
+
+    #[test]
+    fn fixture_configs_load_against_runtime_schema() {
+        for relative in [
+            "config.toml",
+            "su/config.toml",
+            "fixtures/config/system-default.toml",
+            "fixtures/config/prefix-source.toml",
+            "fixtures/config/profile-defaults.toml",
+            "fixtures/config/su-system.toml",
+        ] {
+            let tempdir = TempDir::new().expect("tempdir should exist");
+            let config_dir = tempdir.path().join("etc/elda");
+            fs::create_dir_all(&config_dir).expect("config dir should exist");
+            let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join(relative);
+            fs::copy(source, config_dir.join("config.toml")).expect("fixture config should copy");
+
+            let config = Config::load(tempdir.path()).expect("fixture config should load");
+            assert!(!config.metadata.link_strategy_priority.is_empty());
+        }
+    }
+
+    #[test]
+    fn metadata_defaults_keep_operator_strategy_order() {
+        let config = Config::default();
+
+        assert_eq!(
+            config.metadata.link_strategy_priority,
+            default_link_strategy_priority()
+        );
+        assert_eq!(config.metadata.link_option_mode, LinkOptionMode::Priority);
+        assert_eq!(config.git.max_tags, 50);
     }
 
     #[test]

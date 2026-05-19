@@ -105,9 +105,7 @@ pub(super) fn build_provider_asset_visibility(
         declared_provider_assets: recipe
             .map(describe_declared_provider_assets)
             .unwrap_or_default(),
-        declarative_assets: recipe
-            .map(describe_recipe_assets)
-            .unwrap_or_else(DeclarativeAssetVisibility::default),
+        declarative_assets: recipe.map(describe_recipe_assets).unwrap_or_default(),
         installed_system_assets: installed_system_assets
             .map(|assets| describe_installed_system_assets(assets, provider_families)),
     })

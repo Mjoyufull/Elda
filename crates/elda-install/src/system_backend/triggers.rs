@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use elda_build::BuiltPackage;
@@ -11,46 +10,10 @@ use elda_linux::{SystemTrigger, activation_backend_for_system_mode, detect_trigg
 
 use crate::InstallError;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PendingTriggerRecord {
-    pub name: String,
-    pub reason: String,
-    #[serde(default)]
-    pub boot_path: bool,
-    #[serde(default)]
-    pub critical: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TriggerRunRecord {
-    pub name: String,
-    pub output_path: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-struct TriggerState {
-    pending: Vec<PendingTriggerRecord>,
-    last_run: Vec<TriggerRunRecord>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct BootStatusReport {
-    #[serde(default)]
-    pub managed_inputs: Vec<String>,
-    #[serde(default)]
-    pub pending_triggers: Vec<PendingTriggerRecord>,
-    #[serde(default)]
-    pub last_run: Vec<TriggerRunRecord>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct TriggerRepairReport {
-    pub repaired: Vec<String>,
-    pub pending: Vec<PendingTriggerRecord>,
-    pub backend: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub boot_status: Option<BootStatusReport>,
-}
+use super::trigger_model::{
+    BootStatusReport, PendingTriggerRecord, TriggerRepairReport, TriggerRunRecord,
+    TriggerStateReport,
+};
 
 pub(crate) fn run_install_triggers(
     database: &Database,
@@ -72,6 +35,28 @@ pub(crate) fn run_remove_triggers(
 ) -> Result<(), InstallError> {
     let trigger_names = detect_trigger_names(removed_paths.iter().map(String::as_str));
     run_triggers(database, &trigger_names)
+}
+
+pub fn run_named_trigger(
+    database: &Database,
+    name: &str,
+) -> Result<TriggerRepairReport, InstallError> {
+    let trigger = trigger_from_name(name)
+        .ok_or_else(|| InstallError::Unsupported(format!("unknown system trigger `{name}`")))?;
+    if database.layout().mode != InstallationMode::System {
+        return Err(InstallError::Unsupported(
+            "trigger run requires system activation mode (`-S`)".to_owned(),
+        ));
+    }
+
+    run_triggers(database, &[trigger])?;
+
+    Ok(TriggerRepairReport {
+        repaired: vec![trigger.as_str().to_owned()],
+        pending: pending_triggers(database.layout())?,
+        backend: activation_backend_for_system_mode(true).name().to_owned(),
+        boot_status: Some(load_boot_status(database.layout())?),
+    })
 }
 
 pub fn repair_triggers(database: &Database) -> Result<TriggerRepairReport, InstallError> {
@@ -177,7 +162,7 @@ fn run_triggers(database: &Database, trigger_names: &[SystemTrigger]) -> Result<
 
 fn finalize_trigger_state(
     layout: &StateLayout,
-    state: &TriggerState,
+    state: &TriggerStateReport,
     paths: &[String],
 ) -> Result<(), InstallError> {
     let mut state = state.clone();
@@ -199,32 +184,32 @@ fn execute_trigger(
     let output = match trigger {
         SystemTrigger::Ldconfig => json!({
             "trigger": trigger.as_str(),
-            "libraries": filter_paths(&paths, |path| {
+            "libraries": filter_paths(paths, |path| {
                 (path.starts_with("/usr/lib/") || path.starts_with("/usr/lib64/"))
                     && path.rsplit_once('/').is_some_and(|(_, file_name)| file_name.contains(".so"))
             }),
         }),
         SystemTrigger::DesktopDb => json!({
             "trigger": trigger.as_str(),
-            "desktop_entries": filter_paths(&paths, |path| {
+            "desktop_entries": filter_paths(paths, |path| {
                 path.starts_with("/usr/share/applications/") && path.ends_with(".desktop")
             }),
         }),
         SystemTrigger::IconCache => json!({
             "trigger": trigger.as_str(),
-            "icons": filter_paths(&paths, |path| path.starts_with("/usr/share/icons/")),
+            "icons": filter_paths(paths, |path| path.starts_with("/usr/share/icons/")),
         }),
         SystemTrigger::FontCache => json!({
             "trigger": trigger.as_str(),
-            "fonts": filter_paths(&paths, |path| path.starts_with("/usr/share/fonts/")),
+            "fonts": filter_paths(paths, |path| path.starts_with("/usr/share/fonts/")),
         }),
         SystemTrigger::Depmod => json!({
             "trigger": trigger.as_str(),
-            "modules": filter_paths(&paths, |path| path.starts_with("/usr/lib/modules/")),
+            "modules": filter_paths(paths, |path| path.starts_with("/usr/lib/modules/")),
         }),
         SystemTrigger::Initramfs => json!({
             "trigger": trigger.as_str(),
-            "boot_inputs": filter_paths(&paths, |path| {
+            "boot_inputs": filter_paths(paths, |path| {
                 path.starts_with("/boot/") || path.starts_with("/usr/lib/modules/")
             }),
         }),
@@ -266,7 +251,7 @@ where
         .collect::<Vec<_>>()
 }
 
-fn update_last_run(state: &mut TriggerState, trigger: SystemTrigger, output_path: String) {
+fn update_last_run(state: &mut TriggerStateReport, trigger: SystemTrigger, output_path: String) {
     state
         .last_run
         .retain(|record| record.name != trigger.as_str());
@@ -276,16 +261,21 @@ fn update_last_run(state: &mut TriggerState, trigger: SystemTrigger, output_path
     });
 }
 
-fn load_trigger_state(layout: &StateLayout) -> Result<TriggerState, InstallError> {
+pub(super) fn load_trigger_state(layout: &StateLayout) -> Result<TriggerStateReport, InstallError> {
     let path = trigger_state_path(layout);
     if !path.exists() {
-        return Ok(TriggerState::default());
+        return Ok(TriggerStateReport::default());
     }
 
-    Ok(serde_json::from_slice::<TriggerState>(&fs::read(path)?)?)
+    Ok(serde_json::from_slice::<TriggerStateReport>(&fs::read(
+        path,
+    )?)?)
 }
 
-fn save_trigger_state(layout: &StateLayout, state: &TriggerState) -> Result<(), InstallError> {
+fn save_trigger_state(
+    layout: &StateLayout,
+    state: &TriggerStateReport,
+) -> Result<(), InstallError> {
     let path = trigger_state_path(layout);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -316,7 +306,7 @@ fn boot_state_path(layout: &StateLayout) -> PathBuf {
     layout.state_dir.join("system-backend").join("boot.json")
 }
 
-fn trigger_output_path(layout: &StateLayout, trigger: SystemTrigger) -> PathBuf {
+pub(super) fn trigger_output_path(layout: &StateLayout, trigger: SystemTrigger) -> PathBuf {
     layout
         .state_dir
         .join("system-backend")
@@ -324,7 +314,7 @@ fn trigger_output_path(layout: &StateLayout, trigger: SystemTrigger) -> PathBuf 
         .join(format!("{}.json", trigger.as_str()))
 }
 
-fn boot_status_from_state(state: &TriggerState, paths: &[String]) -> BootStatusReport {
+fn boot_status_from_state(state: &TriggerStateReport, paths: &[String]) -> BootStatusReport {
     BootStatusReport {
         managed_inputs: filter_paths(paths, |path| {
             path.starts_with("/boot/") || path.starts_with("/usr/lib/modules/")
@@ -355,7 +345,7 @@ fn pending_trigger_record(trigger: SystemTrigger, reason: String) -> PendingTrig
     }
 }
 
-fn trigger_from_name(name: &str) -> Option<SystemTrigger> {
+pub(super) fn trigger_from_name(name: &str) -> Option<SystemTrigger> {
     match name {
         "ldconfig" => Some(SystemTrigger::Ldconfig),
         "desktop_db" => Some(SystemTrigger::DesktopDb),

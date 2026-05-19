@@ -12,7 +12,11 @@ mod remote_push;
 mod review;
 mod scheduler;
 mod store;
-mod workspace;
+pub(crate) mod workspace;
+
+pub(crate) use publish::publish_workspace;
+pub(crate) use publish_plan::{PlannedCiPackage, PlannedCiWork, plan_ci_work};
+pub(crate) use workspace::CiWorkspacePaths;
 
 use crate::app::AppContext;
 use crate::error::CoreError;

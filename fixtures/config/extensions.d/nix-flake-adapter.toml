@@ -1,0 +1,15 @@
+# Extension registration. Each extension is one TOML file under
+# /etc/elda/extensions.d/. Discovery is explicit from config: Elda does not
+# scan disk for adapters that are not enumerated here.
+# Path: /etc/elda/extensions.d/nix-flake-adapter.toml
+
+name = "nix-flake-adapter"
+kind = "interepo-adapter"
+version = "0.1.0"
+enabled = true
+
+# Out-of-process adapter binary that speaks the versioned extension protocol.
+# Capabilities are explicit and capability-scoped so the host knows what
+# protocol surface this adapter is allowed to drive.
+binary = "/usr/lib/elda/extensions/nix-flake-adapter"
+capabilities = ["interepo-resolve", "interepo-fetch"]

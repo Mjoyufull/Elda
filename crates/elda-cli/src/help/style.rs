@@ -2,7 +2,7 @@ use std::env;
 use std::ffi::OsString;
 use std::io::{IsTerminal, stdout};
 
-use super::data::PURE_WHITE;
+use super::data::ASH_WHITE;
 
 pub(super) fn center_text(
     text: &str,
@@ -16,7 +16,7 @@ pub(super) fn center_text(
 }
 
 pub(super) fn section_title(title: &str, color: bool) -> String {
-    paint(title, PURE_WHITE, true, color)
+    paint(title, ASH_WHITE, true, color)
 }
 
 pub(super) fn paint(text: &str, rgb: (u8, u8, u8), bold: bool, color: bool) -> String {

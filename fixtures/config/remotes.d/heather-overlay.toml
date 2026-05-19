@@ -1,0 +1,14 @@
+# Dynamic interemote example: a Gentoo overlay is registered as a remote.
+# It is not an Elda index document. `elda rmt preview heather-overlay` clones
+# it read-only, detects the overlay shape, applies `exclude`, and reports the
+# bounded translated catalog before `elda sync` writes package records.
+
+name = "heather-overlay"
+index_url = "https://github.com/heather7283/heather7283-overlay"
+channel = "stable"
+priority = 120
+enabled = true
+trust = "tofu"
+trusted_keys = []
+allow_stale = false
+exclude = ["firefox", "vlc"]

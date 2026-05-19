@@ -109,27 +109,80 @@ impl AppContext {
         &self,
         request: &CommandRequest,
     ) -> Result<ParsedDowngradeRequest, CoreError> {
+        let mut git_ref = None;
+        let mut values = Vec::new();
         let mut operands = request.operands.iter();
-        let package = operands
+
+        while let Some(operand) = operands.next() {
+            match operand.as_str() {
+                "--to-tag" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--to-tag` requires one tag name".to_owned())
+                    })?;
+                    crate::app_install::set_git_ref(
+                        &mut git_ref,
+                        elda_recipe::GitRefKind::Tag,
+                        value,
+                    )?;
+                }
+                "--to-rev" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--to-rev` requires one revision".to_owned())
+                    })?;
+                    crate::app_install::set_git_ref(
+                        &mut git_ref,
+                        elda_recipe::GitRefKind::Rev,
+                        value,
+                    )?;
+                }
+                _ if operand.starts_with("--to-tag=") => {
+                    crate::app_install::set_git_ref(
+                        &mut git_ref,
+                        elda_recipe::GitRefKind::Tag,
+                        operand.trim_start_matches("--to-tag="),
+                    )?;
+                }
+                _ if operand.starts_with("--to-rev=") => {
+                    crate::app_install::set_git_ref(
+                        &mut git_ref,
+                        elda_recipe::GitRefKind::Rev,
+                        operand.trim_start_matches("--to-rev="),
+                    )?;
+                }
+                _ => values.push(operand.clone()),
+            }
+        }
+
+        let mut values = values.into_iter();
+        let package = values
             .next()
-            .ok_or_else(|| CoreError::Operator("downgrade requires one package".to_owned()))?
-            .clone();
-        let version = operands
+            .ok_or_else(|| CoreError::Operator("downgrade requires one package".to_owned()))?;
+        let version = values
             .next()
             .map(|value| {
-                PackageVersion::from_str(value).map_err(|error| {
+                PackageVersion::from_str(&value).map_err(|error| {
                     CoreError::Operator(format!("invalid downgrade version `{value}`: {error}"))
                 })
             })
             .transpose()?;
 
-        if let Some(extra) = operands.next() {
+        if let Some(extra) = values.next() {
             return Err(CoreError::Operator(format!(
                 "unexpected downgrade operand `{extra}`"
             )));
         }
+        if git_ref.is_some() && version.is_some() {
+            return Err(CoreError::Operator(
+                "source-ref downgrade flags cannot be combined with an archived version operand"
+                    .to_owned(),
+            ));
+        }
 
-        Ok(ParsedDowngradeRequest { package, version })
+        Ok(ParsedDowngradeRequest {
+            package,
+            version,
+            git_ref,
+        })
     }
 
     pub(crate) fn parse_rdeps_request(
@@ -201,6 +254,7 @@ impl AppContext {
     ) -> Result<ParsedVendorAddRequest, CoreError> {
         let mut binary = None;
         let mut asset = None;
+        let mut replace = false;
         let mut positionals = Vec::new();
         let mut operands = request.operands.iter();
 
@@ -218,6 +272,9 @@ impl AppContext {
                     })?;
                     asset = Some(value.clone());
                 }
+                "--replace" => {
+                    replace = true;
+                }
                 _ => positionals.push(operand.clone()),
             }
         }
@@ -233,6 +290,7 @@ impl AppContext {
             source: positionals[1].clone(),
             binary,
             asset,
+            replace,
         })
     }
 }
@@ -248,4 +306,21 @@ pub(crate) fn dependency_name_from_constraint(constraint: &str) -> String {
 #[must_use]
 pub(crate) fn installed_version(package: &InstalledPackageDetails) -> String {
     format!("{}:{}-{}", package.epoch, package.pkgver, package.pkgrel)
+}
+
+pub(crate) fn append_exclude_from_piece(piece: &str, excludes: &mut Vec<String>) {
+    if piece.is_empty() {
+        return;
+    }
+
+    if piece.contains(',') {
+        for fragment in piece.split(',') {
+            let fragment = fragment.trim();
+            if !fragment.is_empty() {
+                excludes.push(fragment.to_owned());
+            }
+        }
+    } else {
+        excludes.push(piece.trim().to_owned());
+    }
 }

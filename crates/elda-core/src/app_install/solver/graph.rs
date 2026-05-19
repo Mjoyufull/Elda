@@ -3,13 +3,17 @@ use std::str::FromStr;
 
 use pubgrub::Ranges;
 
+use crate::CommandRequest;
 use crate::app::{
     AppContext, DependencyCandidate, ParsedInstallRequest, ResolvedDependencyPlan,
     ResolvedInstallTarget,
 };
 use crate::app_install::parse_dependency_constraint;
+use crate::app_install::provider_choice::{
+    install_allows_provider_prompt, prompt_virtual_provider_selection, reorder_provider_candidates,
+};
 use crate::error::CoreError;
-use elda_recipe::DependencyEntry;
+use elda_recipe::{DependencyBody, DependencyEntry};
 use elda_types::{ConstraintVersion, PackageVersion};
 
 use super::types::{SolverPackage, SolverVersion};
@@ -61,6 +65,8 @@ pub(crate) struct SolverGraph {
 pub(crate) struct SolverGraphBuilder<'a> {
     app: &'a AppContext,
     request: &'a ParsedInstallRequest,
+    command: Option<&'a CommandRequest>,
+    provider_overrides: BTreeMap<String, String>,
     include_weak_for_packages: BTreeSet<String>,
     root_requirements: Vec<RootRequirement>,
     real_packages: BTreeMap<String, RealPackageNode>,
@@ -74,8 +80,9 @@ impl<'a> SolverGraphBuilder<'a> {
     pub(crate) fn for_install(
         app: &'a AppContext,
         request: &'a ParsedInstallRequest,
+        command: Option<&'a CommandRequest>,
     ) -> Result<SolverGraph, CoreError> {
-        let mut builder = Self::new(app, request);
+        let mut builder = Self::new(app, request, command);
 
         for target in &request.targets {
             let resolved = app.resolve_install_target(target, request)?;
@@ -108,8 +115,9 @@ impl<'a> SolverGraphBuilder<'a> {
         request: &'a ParsedInstallRequest,
         targets: &[String],
         refresh_weak_deps: bool,
+        command: Option<&'a CommandRequest>,
     ) -> Result<SolverGraph, CoreError> {
-        let mut builder = Self::new(app, request);
+        let mut builder = Self::new(app, request, command);
 
         for target in targets {
             let resolved = app.resolve_install_target(target, request)?;
@@ -139,10 +147,16 @@ impl<'a> SolverGraphBuilder<'a> {
         Ok(builder.finish())
     }
 
-    fn new(app: &'a AppContext, request: &'a ParsedInstallRequest) -> Self {
+    fn new(
+        app: &'a AppContext,
+        request: &'a ParsedInstallRequest,
+        command: Option<&'a CommandRequest>,
+    ) -> Self {
         Self {
             app,
             request,
+            command,
+            provider_overrides: BTreeMap::new(),
             include_weak_for_packages: BTreeSet::new(),
             root_requirements: Vec::new(),
             real_packages: BTreeMap::new(),
@@ -174,7 +188,7 @@ impl<'a> SolverGraphBuilder<'a> {
     }
 
     fn expand_real_package(&mut self, package_name: &str) -> Result<(), CoreError> {
-        let (package, include_weak) = {
+        let (package, include_weak, effective_flags) = {
             let node = self
                 .real_packages
                 .get(package_name)
@@ -182,16 +196,20 @@ impl<'a> SolverGraphBuilder<'a> {
             (
                 node.resolved.recipe.package.clone(),
                 self.include_weak_for_packages.contains(package_name),
+                node.resolved.flag_state.effective_flags.clone(),
             )
         };
 
+        let active_depends = filter_dependency_entries(&package.depends, &effective_flags);
         let mut dependencies =
-            self.resolve_dependency_entries("depends", false, &package.depends)?;
+            self.resolve_dependency_entries("depends", false, &active_depends)?;
         if include_weak && self.app.config.defaults.install_recommends {
+            let active_recommends =
+                filter_dependency_entries(&package.recommends, &effective_flags);
             dependencies.extend(self.resolve_dependency_entries(
                 "recommends",
                 true,
-                &package.recommends,
+                &active_recommends,
             )?);
         }
         let conflicts = self.resolve_conflict_packages(&package.conflicts)?;
@@ -215,10 +233,10 @@ impl<'a> SolverGraphBuilder<'a> {
         let mut dependencies = Vec::with_capacity(entries.len());
 
         for entry in entries {
-            match entry {
-                DependencyEntry::Constraint(value) => dependencies
+            match &entry.body {
+                DependencyBody::Constraint(value) => dependencies
                     .push(self.resolve_named_dependency(dependency_kind, is_weak, value)?),
-                DependencyEntry::AnyOf(values) => dependencies
+                DependencyBody::AnyOf(values) => dependencies
                     .push(self.resolve_any_of_dependency(dependency_kind, is_weak, values)?),
             }
         }
@@ -257,7 +275,7 @@ impl<'a> SolverGraphBuilder<'a> {
                 } else {
                     Vec::new()
                 };
-                return self.wrap_choice_edge(plan, exact_packages, true);
+                return self.wrap_choice_edge(plan, exact_packages, true, &constraint.name);
             }
 
             return Ok(DependencyEdge {
@@ -272,7 +290,7 @@ impl<'a> SolverGraphBuilder<'a> {
         }
 
         let packages = self.provider_package_names(&constraint.name, value)?;
-        self.wrap_choice_edge(plan, packages, is_weak)
+        self.wrap_choice_edge(plan, packages, is_weak, &constraint.name)
     }
 
     fn resolve_any_of_dependency(
@@ -308,8 +326,9 @@ impl<'a> SolverGraphBuilder<'a> {
             is_weak,
             provider_group: Some(values.join(" | ")),
         };
+        let label_source = values.first().cloned().unwrap_or_default();
         if !exact_packages.is_empty() {
-            return self.wrap_choice_edge(plan, exact_packages, is_weak);
+            return self.wrap_choice_edge(plan, exact_packages, is_weak, &label_source);
         }
 
         let mut provider_packages = Vec::new();
@@ -322,7 +341,7 @@ impl<'a> SolverGraphBuilder<'a> {
             }
         }
 
-        self.wrap_choice_edge(plan, provider_packages, is_weak)
+        self.wrap_choice_edge(plan, provider_packages, is_weak, &label_source)
     }
 
     fn wrap_choice_edge(
@@ -330,8 +349,9 @@ impl<'a> SolverGraphBuilder<'a> {
         plan: ResolvedDependencyPlan,
         package_names: Vec<String>,
         allow_absent: bool,
+        label_hint: &str,
     ) -> Result<DependencyEdge, CoreError> {
-        let package = self.register_choice_package(package_names, allow_absent);
+        let package = self.register_choice_package(package_names, allow_absent, label_hint);
 
         Ok(DependencyEdge {
             plan,
@@ -344,9 +364,15 @@ impl<'a> SolverGraphBuilder<'a> {
         &mut self,
         package_names: Vec<String>,
         allow_absent: bool,
+        label_hint: &str,
     ) -> SolverPackage {
         self.next_choice_id += 1;
-        let key = format!("choice-{}", self.next_choice_id);
+        let label = sanitize_choice_label(label_hint);
+        let key = if label.is_empty() {
+            format!("choice-{}", self.next_choice_id)
+        } else {
+            format!("choice-{}:{label}", self.next_choice_id)
+        };
         let mut versions = Vec::new();
         if allow_absent {
             versions.push(ChoiceVersionNode {
@@ -392,7 +418,7 @@ impl<'a> SolverGraphBuilder<'a> {
     }
 
     fn rank_provider_candidates(
-        &self,
+        &mut self,
         virtual_name: &str,
         candidates: &[DependencyCandidate],
     ) -> Result<Vec<DependencyCandidate>, CoreError> {
@@ -415,10 +441,27 @@ impl<'a> SolverGraphBuilder<'a> {
                 .then_with(|| left.target.cmp(&right.target))
         });
 
+        if let Some(chosen) = self
+            .request
+            .provider_choices
+            .get(virtual_name)
+            .or_else(|| self.provider_overrides.get(virtual_name))
+        {
+            reorder_provider_candidates(&mut ranked, chosen)?;
+            return Ok(ranked);
+        }
+
         if self.provider_candidates_are_ambiguous(preferences, &ranked) {
+            if install_allows_provider_prompt(self.command) {
+                let chosen = prompt_virtual_provider_selection(virtual_name, &ranked)?;
+                self.provider_overrides
+                    .insert(virtual_name.to_owned(), chosen.clone());
+                reorder_provider_candidates(&mut ranked, &chosen)?;
+                return Ok(ranked);
+            }
             return Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
                 format!(
-                    "ambiguous virtual provider for `{virtual_name}`; candidates are `{}`",
+                    "ambiguous virtual provider for `{virtual_name}`; candidates are `{}`; pass `--provider {virtual_name}=<package>` or set [resolver.provider_preferences].{virtual_name}",
                     ranked
                         .iter()
                         .map(|candidate| candidate.target.as_str())
@@ -561,4 +604,46 @@ pub(crate) fn singleton_package_range(version: PackageVersion) -> SolverRange {
 
 pub(crate) fn singleton_absent_range() -> SolverRange {
     SolverRange::singleton(SolverVersion::Absent)
+}
+
+fn sanitize_choice_label(label: &str) -> String {
+    let trimmed = label.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let mut sanitized = String::with_capacity(trimmed.len());
+    for ch in trimmed.chars() {
+        if ch.is_ascii_alphanumeric()
+            || matches!(
+                ch,
+                '-' | '_' | '.' | ':' | '+' | '|' | '/' | '<' | '>' | '=' | '!'
+            )
+        {
+            sanitized.push(ch);
+        } else if ch.is_whitespace() {
+            sanitized.push('_');
+        } else {
+            sanitized.push('?');
+        }
+    }
+    if sanitized.len() > 64 {
+        sanitized.truncate(64);
+    }
+    sanitized
+}
+
+pub(crate) fn filter_dependency_entries(
+    entries: &[DependencyEntry],
+    effective_flags: &BTreeMap<String, bool>,
+) -> Vec<DependencyEntry> {
+    entries
+        .iter()
+        .filter(|entry| {
+            entry
+                .when
+                .as_ref()
+                .is_none_or(|predicate| predicate.evaluate(effective_flags))
+        })
+        .cloned()
+        .collect()
 }

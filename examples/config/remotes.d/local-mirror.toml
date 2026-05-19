@@ -1,0 +1,18 @@
+# Local on-disk mirror of a signed native index. Useful for air-gapped builders
+# and smoke tests. Trust still comes from the detached signature/key, not the
+# local filesystem path.
+
+name = "local-mirror"
+index_url = "file:///srv/mirrors/elda/index-v1.json.zst"
+channel = "stable"
+packages_url = "file:///srv/mirrors/elda/pkgs.git"
+signature_url = "file:///srv/mirrors/elda/index-v1.json.zst.sig"
+metadata_url = "file:///srv/mirrors/elda/remote-metadata-v1.toml"
+priority = 200
+enabled = true
+trust = "pinned"
+trusted_keys = [
+  "ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344",
+]
+allow_stale = true
+exclude = []

@@ -1,49 +1,45 @@
 ## Core palette
 
-| Role             |       Hex |             RGB | Notes                            |
-| ---------------- | --------: | --------------: | -------------------------------- |
-| Acid Lime        | `#ABFF43` |  `171, 255, 67` | Main wordmark color              |
-| Hazard Orange    | `#FF6B00` |   `255, 107, 0` | Strong UI strip / warning tone   |
-| Alarm Red        | `#FF0000` |     `255, 0, 0` | Borders, urgency, separators     |
-| Electric Magenta | `#FF00FF` |   `255, 0, 255` | Side blocks / high-energy accent |
-| Burnt Rust       | `#873003` |    `135, 48, 3` | Shadowed orange/brown detail     |
-| Void Black       | `#100700` |      `16, 7, 0` | Text, icons, contrast anchor     |
-| Pure White       | `#FFFFFF` | `255, 255, 255` | Background / negative space      |
+| Role             |       Hex |           RGB | Notes                                |
+| ---------------- | --------: | ------------: | ------------------------------------ |
+| Syntax Green     | `#98C379` | `152, 195, 121`| Main wordmark / success state        |
+| Peach Hazard     | `#D19A66` | `209, 154, 102`| Subtle UI strip / warning tone       |
+| Coral Red        | `#E06C75` | `224, 108, 117`| Borders, urgency, errors             |
+| Lavender Violet  | `#C678DD` | `198, 120, 221`| Side blocks / calm energy accent     |
+| Glacier Blue     | `#61AFEF` |  `97, 175, 239`| Info, secondary accents, links       |
+| Void Deep        | `#282C34` |   `40, 44, 52` | Main background / dark anchor        |
+| Ash White        | `#ABB2BF` | `171, 178, 191`| Primary text / readable foreground   |
 
 ## Optional micro-accent
 
-| Role          |       Hex |           RGB | Notes               |
-| ------------- | --------: | ------------: | ------------------- |
-| Signal Yellow | `#FFFF00` | `255, 255, 0` | Tiny highlight only |
+| Role          |       Hex |           RGB | Notes                                |
+| ------------- | --------: | ------------: | ------------------------------------ |
+| Chalk Yellow  | `#E5C07B` | `229, 192, 123`| Tiny highlights / modified states    |
+| Surface Grey  | `#3E4451` |   `62, 68, 81` | Hover states / subtle dividers       |
 
 ## Best-use version
-* **Base:** `#FFFFFF`
-* **Primary:** `#ABFF43`
-* **Secondary:** `#FF6B00`
-* **Accent 1:** `#FF00FF`
-* **Accent 2:** `#FF0000`
-* **Text / contrast:** `#100700`
+* **Base (Background):** `#282C34`
+* **Text:** `#ABB2BF`
+* **Primary:** `#98C379`
+* **Secondary:** `#61AFEF`
+* **Accent 1:** `#C678DD`
+* **Accent 2:** `#E06C75`
 
 ## CSS variables
 
 ```css
 :root {
-  --acid-lime: #ABFF43;
-  --hazard-orange: #FF6B00;
-  --alarm-red: #FF0000;
-  --electric-magenta: #FF00FF;
-  --burnt-rust: #873003;
-  --void-black: #100700;
-  --pure-white: #FFFFFF;
-  --signal-yellow: #FFFF00;
+  /* Base & Text */
+  --void-deep: #282C34;
+  --surface-grey: #3E4451;
+  --ash-white: #ABB2BF;
+
+  /* Accents */
+  --syntax-green: #98C379;
+  --peach-hazard: #D19A66;
+  --coral-red: #E06C75;
+  --lavender-violet: #C678DD;
+  --glacier-blue: #61AFEF;
+  --chalk-yellow: #E5C07B;
 }
 ```
-
-## Quick read of the palette
-
-This logo is basically built on:
-
-* **retro warning UI**
-* **neon mecha terminal energy**
-* **high-contrast arcade signage**
-* **industrial hazard striping + playful cyber color**

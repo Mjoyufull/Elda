@@ -57,7 +57,7 @@ pub(super) fn reconcile_cache_policy(
 
     let retained_payloads = retained_package_basenames(database)?;
     let mut candidates = collect_prunable_entries(database.layout(), &retained_payloads, policy)?;
-    candidates.sort_by(|left, right| left.last_access_unix.cmp(&right.last_access_unix));
+    candidates.sort_by_key(|candidate| candidate.last_access_unix);
 
     let mut usage_after_bytes = usage_before_bytes;
     let mut deleted_entries = Vec::new();

@@ -1,10 +1,15 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
+use crate::app_render_tree::{TreeStyle, set_configured_tree_style};
 use crate::config::{Config, InstallPreference};
 use crate::error::CoreError;
 use crate::flags::ResolvedFlagState;
 use crate::privilege::{PrivilegeConfig, PrivilegeRequest, PrivilegeStatus};
+use crate::progress::{NullSink, ProgressSink};
+use crate::progress_live::{LiveSink, LiveSinkMode};
 use crate::run_log::CommandLogSession;
 use crate::{CommandReport, CommandRequest};
 use elda_build::{BinarySourceVerification, BuiltPackage};
@@ -16,12 +21,21 @@ pub(crate) use crate::app_model::{
     DesiredStateDocument, DesiredStatePackage, DesiredStateProfile, ResolvedProfileState,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ParsedInstallRequest {
     pub(crate) targets: Vec<String>,
     pub(crate) hard_lane: Option<InstallPreference>,
     pub(crate) preferred_lane: Option<InstallPreference>,
+    pub(crate) source_option: Option<usize>,
+    pub(crate) source_strategy: Option<String>,
+    pub(crate) git_ref: Option<elda_recipe::GitRefRequest>,
+    pub(crate) git_source_refs: BTreeMap<String, String>,
+    pub(crate) git_ref_overrides: BTreeMap<String, elda_recipe::GitRefRequest>,
     pub(crate) cli_flag_overrides: BTreeMap<String, bool>,
+    pub(crate) replace: bool,
+    pub(crate) exclude: Vec<String>,
+    /// Explicit virtual-name → provider package overrides from `--provider`.
+    pub(crate) provider_choices: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +49,8 @@ pub(crate) struct ParsedSearchRequest {
 pub(crate) struct ParsedUpgradeRequest {
     pub(crate) targets: Vec<String>,
     pub(crate) refresh_weak_deps: bool,
+    pub(crate) rebuild_variant_drift: bool,
+    pub(crate) git_ref: Option<elda_recipe::GitRefRequest>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +70,7 @@ pub(crate) struct ParsedDiffRequest {
 pub(crate) struct ParsedDowngradeRequest {
     pub(crate) package: String,
     pub(crate) version: Option<PackageVersion>,
+    pub(crate) git_ref: Option<elda_recipe::GitRefRequest>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +92,7 @@ pub(crate) struct ParsedVendorAddRequest {
     pub(crate) source: String,
     pub(crate) binary: Option<String>,
     pub(crate) asset: Option<String>,
+    pub(crate) replace: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -89,8 +107,11 @@ pub(crate) struct ResolvedInstallTarget {
     pub(crate) remote_recipe_source: Option<RemoteRecipeSource>,
     pub(crate) binary_source_verification: Option<BinarySourceVerification>,
     pub(crate) ad_hoc_git: bool,
+    pub(crate) ad_hoc_git_moving: bool,
     pub(crate) generated_recipe_name: Option<String>,
     pub(crate) generated_recipe_dir: Option<PathBuf>,
+    pub(crate) source_options: Vec<elda_recipe::SourceOptionReport>,
+    pub(crate) selected_source_option: Option<elda_recipe::SourceOptionReport>,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +167,8 @@ pub(crate) struct PlannedUpgradeAction {
     pub(crate) dependencies: Vec<ResolvedDependencyPlan>,
     pub(crate) installed: Option<InstalledPackageDetails>,
     pub(crate) explicit_target: bool,
+    pub(crate) candidate_repo_commit: Option<String>,
+    pub(crate) rebuild_variant_drift: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -167,10 +190,21 @@ pub(crate) struct UpgradeDecision {
     pub(crate) hold_source: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AppContext {
     pub(crate) config: Config,
     pub(crate) database: Database,
+    pub(crate) progress: Arc<dyn ProgressSink>,
+    pub(crate) frame_counter: Arc<AtomicU64>,
+}
+
+impl std::fmt::Debug for AppContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppContext")
+            .field("config", &self.config)
+            .field("database", &self.database)
+            .finish_non_exhaustive()
+    }
 }
 
 impl AppContext {
@@ -184,18 +218,18 @@ impl AppContext {
         let default_request = PrivilegeRequest::from_config(&default_privilege);
         let default_status = PrivilegeStatus::detect(&default_privilege);
         let config_path = root_dir.join("etc/elda/config.toml");
-        if !config_path.exists() {
-            if let Err(error) = Config::write_default(root_dir) {
-                if matches!(
-                    &error,
-                    CoreError::Io(io_error) if io_error.kind() == std::io::ErrorKind::PermissionDenied
-                ) && live_host_root
-                    && !default_status.is_superuser
-                {
-                    return Err(CoreError::PrivilegeRequired(default_request.clone()));
-                }
-                return Err(error);
+        if !config_path.exists()
+            && let Err(error) = Config::write_default(root_dir)
+        {
+            if matches!(
+                &error,
+                CoreError::Io(io_error) if io_error.kind() == std::io::ErrorKind::PermissionDenied
+            ) && live_host_root
+                && !default_status.is_superuser
+            {
+                return Err(CoreError::PrivilegeRequired(default_request.clone()));
             }
+            return Err(error);
         }
         let mut config = match Config::load(root_dir) {
             Ok(config) => config,
@@ -237,12 +271,37 @@ impl AppContext {
         let layout = StateLayout::new(root_dir, effective_prefix);
         let database = Database::new(layout);
 
-        Ok(Self { config, database })
+        Ok(Self {
+            config,
+            database,
+            progress: Arc::new(NullSink),
+            frame_counter: Arc::new(AtomicU64::new(0)),
+        })
+    }
+
+    #[must_use]
+    pub fn with_progress_sink(mut self, sink: Arc<dyn ProgressSink>) -> Self {
+        self.progress = sink;
+        self
+    }
+
+    pub(crate) fn next_frame_id(&self) -> crate::progress::FrameId {
+        crate::progress::next_frame_id(&self.frame_counter)
+    }
+
+    pub(crate) fn progress_sink(&self) -> &dyn ProgressSink {
+        self.progress.as_ref()
+    }
+
+    pub(crate) fn progress_sink_arc(&self) -> std::sync::Arc<dyn ProgressSink> {
+        std::sync::Arc::clone(&self.progress)
     }
 
     pub fn handle(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
         self.enforce_capabilities(&request)?;
+        crate::app_mutation_gate::confirm_dispatch_mutation(&request)?;
         match request.command_path.as_slice() {
+            [command] if command == "a" || command == "add" => self.handle_metadata_add(request),
             [command] if command == "i" || command == "ig" || command == "ib" => {
                 self.handle_install(request)
             }
@@ -251,6 +310,20 @@ impl AppContext {
             [command] if command == "u" => self.handle_upgrade(request),
             [command] if command == "sync" => self.handle_sync(request),
             [command] if command == "check" => self.handle_check(request),
+            [command] if command == "doctor" => self.handle_doctor(request),
+            [command] if command == "version" => self.handle_version(request),
+            [namespace, command] if namespace == "review" && command == "ls" => {
+                self.handle_review_list(request)
+            }
+            [namespace, command] if namespace == "review" && command == "info" => {
+                self.handle_review_info(request)
+            }
+            [namespace, command] if namespace == "review" && command == "forget" => {
+                self.handle_review_forget(request)
+            }
+            [namespace, command] if namespace == "review" && command == "diff" => {
+                self.handle_review_diff(request)
+            }
             [command] if command == "search" => self.handle_search(request),
             [command] if command == "info" => self.handle_info(request),
             [command] if command == "verify" => self.handle_verify(request),
@@ -258,6 +331,7 @@ impl AppContext {
             [command] if command == "diff" => self.handle_diff(request),
             [command] if command == "why" => self.handle_why(request),
             [command] if command == "rdeps" => self.handle_rdeps(request),
+            [command] if command == "versions" => self.handle_git_versions(request),
             [command] if command == "pin" => self.handle_pin(request),
             [command] if command == "unpin" => self.handle_unpin(request),
             [command] if command == "hold" => self.handle_hold(request),
@@ -265,23 +339,99 @@ impl AppContext {
             [command] if command == "downgrade" => self.handle_downgrade(request),
             [command] if command == "recover" => self.handle_recover(request),
             [command] if command == "fix-triggers" => self.handle_fix_triggers(request),
+            [namespace, command] if namespace == "trigger" && command == "ls" => {
+                self.handle_trigger_list(request)
+            }
+            [namespace, command] if namespace == "trigger" && command == "info" => {
+                self.handle_trigger_info(request)
+            }
+            [namespace, command] if namespace == "trigger" && command == "run" => {
+                self.handle_trigger_run(request)
+            }
+            [namespace, command] if namespace == "trigger" && command == "diff" => {
+                self.handle_trigger_diff(request)
+            }
+            [namespace, command] if namespace == "maint" && command == "check" => {
+                self.handle_maint_check(request)
+            }
+            [namespace, command] if namespace == "maint" && command == "fix" => {
+                self.handle_maint_fix(request)
+            }
+            [command] if command == "init" => self.handle_init(request),
+            [namespace, command] if namespace == "config" && command == "pending" => {
+                self.handle_config_pending(request)
+            }
+            [namespace, command] if namespace == "config" && command == "diff" => {
+                self.handle_config_diff(request)
+            }
+            [namespace, command] if namespace == "config" && command == "apply" => {
+                self.handle_config_apply(request)
+            }
+            [namespace, command] if namespace == "config" && command == "keep" => {
+                self.handle_config_keep(request)
+            }
             [command] if command == "rollback" => self.handle_rollback(request),
             [command] if command == "autoremove" => self.handle_autoremove_plan(request),
             [command] if command == "files" => self.handle_files(request),
+            [command, subcommand] if command == "files" && subcommand == "search" => {
+                self.handle_file_search(request)
+            }
             [command, subcommand] if command == "files" && subcommand == "owner" => {
                 self.handle_file_owner(request)
             }
             [namespace, command] if namespace == "rmt" && command == "add" => {
                 self.handle_remote_add(request)
             }
+            [namespace, command] if namespace == "rmt" && command == "add-from-bundle" => {
+                self.handle_remote_add_from_bundle(request)
+            }
+            [namespace, command] if namespace == "rmt" && command == "ls" => {
+                self.handle_remote_list(request)
+            }
+            [namespace, command] if namespace == "rmt" && command == "info" => {
+                self.handle_remote_info(request)
+            }
+            [namespace, command] if namespace == "rmt" && command == "preview" => {
+                self.handle_remote_preview(request)
+            }
+            [namespace, command] if namespace == "rmt" && command == "trust" => {
+                self.handle_remote_trust(request)
+            }
+            [namespace, command] if namespace == "rmt" && command == "enable" => {
+                self.handle_remote_set_enabled(request, true)
+            }
+            [namespace, command] if namespace == "rmt" && command == "disable" => {
+                self.handle_remote_set_enabled(request, false)
+            }
+            [namespace, command] if namespace == "rmt" && command == "set-priority" => {
+                self.handle_remote_set_priority(request)
+            }
+            [namespace, command] if namespace == "rmt" && command == "rm" => {
+                self.handle_remote_remove(request)
+            }
             [namespace, command] if namespace == "rc" && command == "add" => {
                 self.handle_recipe_add(request)
+            }
+            [namespace, command] if namespace == "rc" && command == "show" => {
+                self.handle_recipe_show(request)
+            }
+            [namespace, command] if namespace == "rc" && command == "diff" => {
+                self.handle_recipe_diff(request)
+            }
+            [namespace, command] if namespace == "rc" && command == "publish-ready" => {
+                self.handle_recipe_publish_ready(request)
             }
             [namespace, command] if namespace == "rc" && command == "edit" => {
                 self.handle_recipe_edit(request)
             }
             [namespace, command] if namespace == "rc" && command == "check" => {
                 self.handle_recipe_check(request)
+            }
+            [namespace, command] if namespace == "rc" && command == "format" => {
+                self.handle_recipe_format(request)
+            }
+            [namespace, command] if namespace == "rc" && command == "normalize" => {
+                self.handle_recipe_normalize(request)
             }
             [namespace, command] if namespace == "rc" && command == "ls" => {
                 self.handle_recipe_ls(request)
@@ -337,6 +487,8 @@ impl AppContext {
             [namespace, command] if namespace == "fl" && command == "diff" => {
                 self.handle_flag_diff(request)
             }
+            [command] if command == "adopt" => self.handle_adopt(request),
+            [namespace, ..] if namespace == "mg" => self.handle_migration_namespace(request),
             [namespace, command] if namespace == "daemon" && command == "status" => {
                 self.handle_daemon_status(request)
             }
@@ -346,8 +498,26 @@ impl AppContext {
             [namespace, command] if namespace == "daemon" && command == "refresh" => {
                 self.handle_daemon_refresh(request)
             }
+            [namespace, ..] if namespace == "host" => {
+                crate::app_host::handle_host_namespace(self, request)
+            }
+            [namespace, ..] if namespace == "publish" => {
+                crate::app_publish::handle_publish_namespace(self, request)
+            }
             [namespace, ..] if namespace == "ci" => self.handle_ci_namespace(request),
             [namespace, ..] if namespace == "forge" => self.handle_forge_namespace(request),
+            [namespace, command] if namespace == "git" && command == "tags" => {
+                self.handle_git_tags(request)
+            }
+            [namespace, command] if namespace == "git" && command == "releases" => {
+                self.handle_git_releases(request)
+            }
+            [namespace, command] if namespace == "appimage" && command == "inspect" => {
+                self.handle_appimage_inspect(request)
+            }
+            [namespace, command] if namespace == "ext" && command == "ls" => {
+                self.handle_extension_list(request)
+            }
             [namespace, ..] if namespace == "qa" => self.handle_qa_namespace(request),
             [namespace, command] if namespace == "state" && command == "show" => {
                 self.handle_state_show(request)
@@ -368,6 +538,15 @@ impl AppContext {
             [command] if command == "sync" || command == "search" || command == "info" => {
                 Some(("network.fetch", capabilities.network_fetch))
             }
+            [namespace, ..] if namespace == "git" => {
+                Some(("network.fetch", capabilities.network_fetch))
+            }
+            [command] if command == "versions" => {
+                Some(("network.fetch", capabilities.network_fetch))
+            }
+            [command] if command == "a" || command == "add" => {
+                Some(("local.exec_build", capabilities.local_exec_build))
+            }
             [command] if command == "i" || command == "ig" || command == "ib" => {
                 Some(("local.exec_build", capabilities.local_exec_build))
             }
@@ -375,6 +554,9 @@ impl AppContext {
                 Some(("network.publish", capabilities.network_publish))
             }
             [namespace, ..] if namespace == "mg" => Some(("migration", capabilities.migration)),
+            [namespace, ..] if namespace == "ext" => {
+                Some(("extension.runtime", capabilities.extension_runtime))
+            }
             [namespace, command] if namespace == "pf" && command == "apply" => {
                 Some(("profile.apply", capabilities.profile_apply))
             }
@@ -403,14 +585,11 @@ impl AppContext {
     }
 }
 
-impl Default for ParsedInstallRequest {
-    fn default() -> Self {
-        Self {
-            targets: Vec::new(),
-            hard_lane: None,
-            preferred_lane: None,
-            cli_flag_overrides: BTreeMap::new(),
-        }
+fn display_tree_style(value: &str) -> Option<TreeStyle> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "ascii" => Some(TreeStyle::Ascii),
+        "unicode" => Some(TreeStyle::Unicode),
+        _ => None,
     }
 }
 
@@ -420,11 +599,17 @@ pub fn run_from_root(
 ) -> Result<CommandReport, CoreError> {
     let root_dir = root_dir.as_ref();
     let context = AppContext::from_root(root_dir, request.system_mode)?;
+    set_configured_tree_style(display_tree_style(&context.config.display.tree_chars));
     if request.output_mode == crate::OutputMode::Human
         && context.config.display.default_mode == "json"
     {
         request.output_mode = crate::OutputMode::Json;
     }
+    let context = if let Some(mode) = LiveSinkMode::detect(request.output_mode, request.no_stream) {
+        context.with_progress_sink(Arc::new(LiveSink::new(mode)))
+    } else {
+        context
+    };
     let log_session = CommandLogSession::start(root_dir, &context.config, &request)?;
     let request_for_logging = request.clone();
     let result = context.handle(request);

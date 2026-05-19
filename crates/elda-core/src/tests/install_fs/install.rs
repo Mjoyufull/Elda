@@ -142,6 +142,27 @@ fn direct_git_install_round_trips_through_prefix_backend() {
             }))
     );
 
+    let list_report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["ls".to_owned()],
+            vec!["--source-kind".to_owned(), "git".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("filtered ls should succeed");
+    assert!(
+        list_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("packages"))
+            .and_then(|packages| packages.as_array())
+            .is_some_and(|packages| packages.iter().any(|package| {
+                package.get("pkgname").and_then(|value| value.as_str()) == Some("sample-tool")
+            }))
+    );
+
     let files_report = run_from_root(
         tempdir.path(),
         CommandRequest::new(
@@ -159,6 +180,29 @@ fn direct_git_install_round_trips_through_prefix_backend() {
             .and_then(|details| details.get("files"))
             .and_then(|files| files.as_array())
             .is_some_and(|files| files.iter().any(|file| {
+                file.get("path")
+                    .and_then(|path| path.as_str())
+                    .is_some_and(|path| path == "/usr/bin/sample-tool")
+            }))
+    );
+
+    let search_report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["files".to_owned(), "search".to_owned()],
+            vec!["sample-tool".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("files search should succeed");
+    assert!(
+        search_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("matches"))
+            .and_then(|matches| matches.as_array())
+            .is_some_and(|matches| matches.iter().any(|file| {
                 file.get("path")
                     .and_then(|path| path.as_str())
                     .is_some_and(|path| path == "/usr/bin/sample-tool")
@@ -259,6 +303,10 @@ fn verify_reports_missing_managed_file() {
 
     assert_eq!(verify_report.area, "verify");
     assert_eq!(verify_report.status, "verify-failed");
+    assert_eq!(
+        verify_report.exit_status,
+        elda_types::ExitStatus::OperatorFailure
+    );
     assert!(
         verify_report
             .details
@@ -347,4 +395,111 @@ fn install_fails_loudly_on_unmanaged_path_collision() {
             .to_string()
             .contains("unmanaged path collision on `/usr/bin/collision-tool`")
     );
+}
+
+#[test]
+fn install_reuses_unmanaged_terminfo_without_owning_it() {
+    if !all_tools_available(&["make"]) {
+        return;
+    }
+
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let repo_dir = create_git_make_terminfo_repo(tempdir.path(), "terminfo-foot", "foot-term\n");
+    write_local_git_recipe(tempdir.path(), "terminfo-foot", &repo_dir);
+
+    let live_terminfo = tempdir.path().join("opt/elda/share/terminfo/f/foot");
+    fs::create_dir_all(
+        live_terminfo
+            .parent()
+            .expect("terminfo path should have a parent"),
+    )
+    .expect("terminfo parent should be created");
+    fs::write(&live_terminfo, "foot-term\n").expect("unmanaged terminfo should be written");
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["terminfo-foot".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("shared terminfo should not block install");
+
+    let files_report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["files".to_owned()],
+            vec!["terminfo-foot".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("files should succeed");
+    assert!(
+        files_report
+            .details
+            .as_ref()
+            .and_then(|details| details.get("files"))
+            .and_then(|files| files.as_array())
+            .is_some_and(|files| files.iter().all(|file| {
+                file.get("path").and_then(|path| path.as_str())
+                    != Some("/usr/share/terminfo/f/foot")
+            }))
+    );
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["rm".to_owned()],
+            vec!["terminfo-foot".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("remove should succeed");
+
+    assert_eq!(
+        fs::read_to_string(&live_terminfo).expect("unmanaged terminfo should remain"),
+        "foot-term\n"
+    );
+}
+
+fn create_git_make_terminfo_repo(
+    root: &std::path::Path,
+    name: &str,
+    terminfo_contents: &str,
+) -> std::path::PathBuf {
+    let repo_dir = root.join(format!("{name}-source"));
+    fs::create_dir_all(&repo_dir).expect("repo dir should exist");
+    fs::write(repo_dir.join(name), "#!/bin/sh\necho terminfo fixture\n")
+        .expect("script binary should be written");
+    make_executable(&repo_dir.join(name));
+    fs::write(repo_dir.join("foot.terminfo"), terminfo_contents)
+        .expect("terminfo fixture should be written");
+    fs::write(
+        repo_dir.join("Makefile"),
+        format!(
+            "all:\n\tchmod +x {name}\n\ninstall:\n\tinstall -d $(DESTDIR)$(PREFIX)/bin\n\tinstall -m 0755 {name} $(DESTDIR)$(PREFIX)/bin/{name}\n\tinstall -d $(DESTDIR)$(PREFIX)/share/terminfo/f\n\tinstall -m 0644 foot.terminfo $(DESTDIR)$(PREFIX)/share/terminfo/f/foot\n"
+        ),
+    )
+    .expect("makefile should be written");
+    make_git_repo(&repo_dir);
+
+    repo_dir
+}
+
+fn write_local_git_recipe(root: &std::path::Path, name: &str, repo_dir: &std::path::Path) {
+    let recipes_dir = root.join("etc/elda/recipes").join(name);
+    fs::create_dir_all(&recipes_dir).expect("recipe dir should exist");
+    fs::write(
+        recipes_dir.join("pkg.lua"),
+        format!(
+            "pkg = {{\n  name = \"{name}\",\n  epoch = 0,\n  version = \"0.1.0\",\n  rel = 1,\n  arch = {{ \"amd64\" }},\n  kind = \"normal\",\n  source = {{\n    kind = \"git\",\n    url = \"file://{repo}\",\n    branch = \"main\",\n  }},\n  depends = {{}},\n  makedepends = {{}},\n  checkdepends = {{}},\n  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n  provides = {{}},\n  conflicts = {{}},\n  replaces = {{}},\n  conffiles = {{}},\n}}\n",
+            repo = repo_dir.display(),
+        ),
+    )
+    .expect("git recipe should be written");
 }

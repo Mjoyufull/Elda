@@ -3,7 +3,11 @@ use super::*;
 #[test]
 fn rc_add_scaffolds_new_recipe() {
     let tempdir = TempDir::new().expect("tempdir should exist");
-    let report = add_recipe(tempdir.path(), "hello", None).expect("add should succeed");
+    let crate::import::ImportResult::Single(report) =
+        add_recipe(tempdir.path(), "hello", None).expect("add should succeed")
+    else {
+        panic!("expected single")
+    };
 
     assert!(report.generated_pkg_lua);
     assert!(tempdir.path().join("hello/pkg.lua").exists());
@@ -20,8 +24,11 @@ fn rc_add_imports_pkgit_files() {
         .expect("bldit should be written");
 
     let target_root = tempdir.path().join("recipes");
-    let report =
-        add_recipe(&target_root, &source.to_string_lossy(), None).expect("import should succeed");
+    let crate::import::ImportResult::Single(report) =
+        add_recipe(&target_root, &source.to_string_lossy(), None).expect("import should succeed")
+    else {
+        panic!("expected single")
+    };
 
     assert!(report.imported_legacy_pkgdeps);
     assert!(report.imported_legacy_bldit);
@@ -46,8 +53,11 @@ fn local_import_uses_file_source_when_no_git_remote_exists() {
     fs::create_dir_all(&source).expect("source dir should exist");
 
     let target_root = tempdir.path().join("recipes");
-    let report =
-        add_recipe(&target_root, &source.to_string_lossy(), None).expect("import should succeed");
+    let crate::import::ImportResult::Single(report) =
+        add_recipe(&target_root, &source.to_string_lossy(), None).expect("import should succeed")
+    else {
+        panic!("expected single")
+    };
     let pkg_lua = fs::read_to_string(report.recipe_dir.join("pkg.lua"))
         .expect("generated pkg.lua should be readable");
 

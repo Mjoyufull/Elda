@@ -43,6 +43,7 @@ fn install_selects_synced_provider_from_best_remote_priority() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![fixture_remote_key_fingerprint()],
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 10,
         },
     )
@@ -60,6 +61,7 @@ fn install_selects_synced_provider_from_best_remote_priority() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![fixture_remote_key_fingerprint()],
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 20,
         },
     )
@@ -135,6 +137,7 @@ fn install_selects_highest_version_provider_within_same_remote_priority() {
                 trust: TrustMode::Pinned,
                 trusted_keys: vec![fixture_remote_key_fingerprint()],
                 allow_stale: false,
+                exclude: Vec::new(),
                 priority: 10,
             },
         )
@@ -216,6 +219,7 @@ fn install_allows_configured_provider_preference_to_override_remote_priority() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![fixture_remote_key_fingerprint()],
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 10,
         },
     )
@@ -233,6 +237,7 @@ fn install_allows_configured_provider_preference_to_override_remote_priority() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![fixture_remote_key_fingerprint()],
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 20,
         },
     )

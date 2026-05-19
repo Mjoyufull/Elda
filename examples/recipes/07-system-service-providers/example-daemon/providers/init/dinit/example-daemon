@@ -1,0 +1,10 @@
+# Example dinit service file.
+# Activated by the configured init provider, not by Elda directly.
+type        = process
+command     = /usr/bin/example-daemon --config /etc/example-daemon/example-daemon.conf
+working-dir = /var/lib/example-daemon
+restart     = true
+smooth-recovery = true
+logfile     = /var/log/example-daemon/example-daemon.log
+run-as      = example-daemon
+depends-on  = local.target

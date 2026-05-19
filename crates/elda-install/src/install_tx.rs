@@ -1,4 +1,6 @@
-use elda_build::BuiltPackage;
+use std::collections::BTreeSet;
+
+use elda_build::{BuiltPackage, ManifestEntry, ManifestEntryKind};
 use elda_db::{
     Database, InstallRecord, InstallationMode, PackageDependencyRecord, PackageFileRecord,
 };
@@ -18,6 +20,24 @@ use crate::{
     next_state_id,
 };
 
+#[derive(Debug, Clone)]
+pub(crate) struct InstallRecordOptions {
+    pub(crate) pinned_version: Option<String>,
+    pub(crate) held: bool,
+    pub(crate) hold_source: Option<String>,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct InstallPathDecisions {
+    shared_unmanaged_paths: BTreeSet<String>,
+}
+
+impl InstallPathDecisions {
+    pub(crate) fn should_skip_entry(&self, path: &str) -> bool {
+        self.shared_unmanaged_paths.contains(path)
+    }
+}
+
 pub fn install_built_package(
     database: &Database,
     package: &BuiltPackage,
@@ -31,9 +51,11 @@ pub fn install_built_package(
         database,
         package,
         install_reason,
-        pinned_version,
-        held,
-        hold_source,
+        InstallRecordOptions {
+            pinned_version,
+            held,
+            hold_source,
+        },
         InstallExecution {
             archive_state: true,
             take_lock: true,
@@ -56,9 +78,11 @@ pub fn install_upgraded_package(
         database,
         package,
         install_reason,
-        pinned_version,
-        held,
-        hold_source,
+        InstallRecordOptions {
+            pinned_version,
+            held,
+            hold_source,
+        },
         InstallExecution {
             archive_state: true,
             take_lock: true,
@@ -72,9 +96,7 @@ pub(crate) fn install_built_package_internal(
     database: &Database,
     package: &BuiltPackage,
     install_reason: &str,
-    pinned_version: Option<String>,
-    held: bool,
-    hold_source: Option<String>,
+    record_options: InstallRecordOptions,
     execution: InstallExecution,
     policy: &MutationPolicy,
 ) -> Result<InstallReport, InstallError> {
@@ -89,7 +111,7 @@ pub(crate) fn install_built_package_internal(
         None
     };
     ensure_no_pending_journals(database.layout())?;
-    validate_install_paths(database, package)?;
+    let path_decisions = validate_install_paths(database, package)?;
 
     let state_id = next_state_id(next_state_prefix(database.layout()));
     let transaction_root = database
@@ -110,8 +132,9 @@ pub(crate) fn install_built_package_internal(
         &state_id,
         &transaction_root,
         &mut journal,
+        &path_decisions,
     )?;
-    let files = package_file_records(package);
+    let files = package_file_records(package, &path_decisions);
     let dependencies = package_dependency_records(package);
 
     database.record_install(
@@ -133,9 +156,9 @@ pub(crate) fn install_built_package_internal(
             repo_commit: package.repo_commit.clone(),
             payload_sha256: Some(package.payload_sha256.clone()),
             manifest_hash: Some(package.manifest_hash.clone()),
-            pinned_version,
-            held,
-            hold_source,
+            pinned_version: record_options.pinned_version,
+            held: record_options.held,
+            hold_source: record_options.hold_source,
         },
         &files,
         &dependencies,
@@ -165,13 +188,17 @@ pub(crate) fn install_built_package_internal(
     })
 }
 
-fn validate_install_paths(database: &Database, package: &BuiltPackage) -> Result<(), InstallError> {
+fn validate_install_paths(
+    database: &Database,
+    package: &BuiltPackage,
+) -> Result<InstallPathDecisions, InstallError> {
     if database.installed_package(&package.package_name)?.is_some() {
         return Err(InstallError::AlreadyInstalled(package.package_name.clone()));
     }
 
+    let mut decisions = InstallPathDecisions::default();
     for entry in &package.manifest.entries {
-        if entry.kind == elda_build::ManifestEntryKind::Directory {
+        if entry.kind == ManifestEntryKind::Directory {
             continue;
         }
 
@@ -187,14 +214,40 @@ fn validate_install_paths(database: &Database, package: &BuiltPackage) -> Result
         }
 
         let target_path = map_manifest_path(database.layout(), &entry.path)?;
-        if (target_path.exists() || target_path.is_symlink())
-            && !(package.conffiles.iter().any(|path| path == &entry.path) && owners.is_empty())
-        {
+        if target_path.exists() || target_path.is_symlink() {
+            if package.conffiles.iter().any(|path| path == &entry.path) && owners.is_empty() {
+                continue;
+            }
+            if can_reuse_shared_unmanaged_entry(entry, &target_path)? {
+                decisions.shared_unmanaged_paths.insert(entry.path.clone());
+                continue;
+            }
             return Err(InstallError::UnmanagedPathCollision(entry.path.clone()));
         }
     }
 
-    Ok(())
+    Ok(decisions)
+}
+
+fn can_reuse_shared_unmanaged_entry(
+    entry: &ManifestEntry,
+    target_path: &std::path::Path,
+) -> Result<bool, InstallError> {
+    if !is_shared_terminfo_path(&entry.path)
+        || !matches!(
+            entry.kind,
+            ManifestEntryKind::RegularFile | ManifestEntryKind::Symlink
+        )
+    {
+        return Ok(false);
+    }
+
+    let metadata = std::fs::symlink_metadata(target_path)?;
+    Ok(metadata.is_file() || metadata.file_type().is_symlink())
+}
+
+fn is_shared_terminfo_path(path: &str) -> bool {
+    path.starts_with("/usr/share/terminfo/") || path.starts_with("/usr/lib/terminfo/")
 }
 
 fn begin_install_journal(
@@ -220,8 +273,12 @@ fn apply_manifest(
     execution: InstallExecution,
     transaction_root: &std::path::Path,
     journal: &mut TransactionJournal,
+    path_decisions: &InstallPathDecisions,
 ) -> Result<(), InstallError> {
     for entry in &package.manifest.entries {
+        if path_decisions.should_skip_entry(&entry.path) {
+            continue;
+        }
         let applied = apply_entry(
             database.layout(),
             transaction_root,
@@ -252,6 +309,7 @@ fn apply_install_state(
     state_id: &str,
     transaction_root: &std::path::Path,
     journal: &mut TransactionJournal,
+    path_decisions: &InstallPathDecisions,
 ) -> Result<(), InstallError> {
     if database.layout().mode == InstallationMode::System {
         let staged = prepare_staged_install(
@@ -261,6 +319,7 @@ fn apply_install_state(
             transaction_root,
             journal,
             execution.conffile_mode,
+            path_decisions,
         )?;
         activate_staged_state(database, &staged, journal)?;
         journal.state = JournalState::FilesApplied;
@@ -269,14 +328,25 @@ fn apply_install_state(
     }
 
     unpack_payload(&package.payload_path, transaction_root)?;
-    apply_manifest(database, package, execution, transaction_root, journal)
+    apply_manifest(
+        database,
+        package,
+        execution,
+        transaction_root,
+        journal,
+        path_decisions,
+    )
 }
 
-fn package_file_records(package: &BuiltPackage) -> Vec<PackageFileRecord> {
+fn package_file_records(
+    package: &BuiltPackage,
+    path_decisions: &InstallPathDecisions,
+) -> Vec<PackageFileRecord> {
     package
         .manifest
         .entries
         .iter()
+        .filter(|entry| !path_decisions.should_skip_entry(&entry.path))
         .map(|entry| PackageFileRecord {
             pkgname: package.package_name.clone(),
             arch: Some(package.arch.clone()),

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use elda_core::{PrivilegeProvider, PrivilegeRequest};
 use tempfile::TempDir;
 
+use super::command::render_privilege_frame;
 use super::provider::resolve_provider;
 use super::shell::{render_shell_command, shell_quote};
 
@@ -79,6 +80,28 @@ fn render_shell_command_quotes_forwarded_arguments() {
     .expect("shell command should render");
 
     assert_eq!(command, "'/tmp/elda' 'ls' 'path with space'");
+}
+
+#[test]
+fn privilege_frame_names_selected_provider_and_policy() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let sudo = tempdir.path().join("sudo");
+    create_executable(sudo.clone());
+    let request = PrivilegeRequest {
+        provider: PrivilegeProvider::Auto,
+        preserve_env: true,
+        interactive: false,
+    };
+    let resolved = resolve_provider(&request, Some(OsString::from(tempdir.path().as_os_str())))
+        .expect("provider should resolve");
+
+    let frame = render_privilege_frame(&request, &resolved);
+
+    assert!(frame.contains("Privilege Escalation"));
+    assert!(frame.contains("selected:  sudo"));
+    assert!(frame.contains(&sudo.display().to_string()));
+    assert!(frame.contains("non-interactive"));
+    assert!(frame.contains("preserve selected environment"));
 }
 
 fn create_executable(path: PathBuf) {

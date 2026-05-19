@@ -59,6 +59,11 @@ impl AppContext {
                 source.packages_url, source.remote_name
             )));
         }
+        elda_build::ensure_git_protocol_allowed(
+            &source.packages_url,
+            &self.config.git.allowed_protocols,
+        )
+        .map_err(|error| CoreError::Operator(error.to_string()))?;
 
         let temp_root = self.remote_recipe_temp_root(source);
         if temp_root.exists() {

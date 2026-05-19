@@ -44,6 +44,10 @@ pub struct PackageDefinition {
     pub flags_allowed: Option<LuaValue>,
     pub flags_implies: Option<LuaValue>,
     pub flags_conflicts: Option<LuaValue>,
+    pub flags_descriptions: Option<LuaValue>,
+    pub flags_required_one_of: Option<LuaValue>,
+    pub flags_required_at_most_one: Option<LuaValue>,
+    pub flags_required_any_of: Option<LuaValue>,
     pub subpackages: Option<LuaValue>,
     pub profile: Option<ProfilePolicy>,
     pub build: Option<BuildDefinition>,
@@ -77,6 +81,7 @@ pub struct SourceLaneDefinition {
 pub struct GitHubReleaseAssetDefinition {
     pub asset: String,
     pub sha256: String,
+    pub signature: Option<String>,
     pub binary: Option<String>,
     pub strip_components: Option<i64>,
     pub subdir: Option<String>,
@@ -92,10 +97,115 @@ pub struct BuildDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DependencyEntry {
+    pub body: DependencyBody,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<FlagPredicate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum DependencyEntry {
+pub enum DependencyBody {
     Constraint(String),
     AnyOf(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FlagPredicate {
+    pub raw: String,
+    pub atoms: Vec<FlagPredicateAtom>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FlagPredicateAtom {
+    pub flag: String,
+    pub expected: bool,
+}
+
+impl DependencyEntry {
+    #[must_use]
+    pub fn constraint(value: impl Into<String>) -> Self {
+        Self {
+            body: DependencyBody::Constraint(value.into()),
+            when: None,
+        }
+    }
+
+    #[must_use]
+    pub fn any_of<I: IntoIterator<Item = String>>(values: I) -> Self {
+        Self {
+            body: DependencyBody::AnyOf(values.into_iter().collect()),
+            when: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_when(mut self, when: Option<FlagPredicate>) -> Self {
+        self.when = when;
+        self
+    }
+
+    #[must_use]
+    pub fn referenced_flags(&self) -> Vec<&str> {
+        self.when
+            .as_ref()
+            .map(|predicate| {
+                predicate
+                    .atoms
+                    .iter()
+                    .map(|atom| atom.flag.as_str())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
+impl FlagPredicate {
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        let mut atoms = Vec::new();
+        for token in raw.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            let (expected, name) = if let Some(name) = token.strip_prefix('+') {
+                (true, name)
+            } else if let Some(name) = token.strip_prefix('-') {
+                (false, name)
+            } else {
+                return Err(format!(
+                    "flag predicate token `{token}` must start with `+` or `-`"
+                ));
+            };
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(format!(
+                    "flag predicate `{raw}` contains an empty flag name"
+                ));
+            }
+            atoms.push(FlagPredicateAtom {
+                flag: name.to_owned(),
+                expected,
+            });
+        }
+        if atoms.is_empty() {
+            return Err(format!(
+                "flag predicate `{raw}` must contain at least one `+flag` or `-flag` atom"
+            ));
+        }
+        Ok(Self {
+            raw: raw.to_owned(),
+            atoms,
+        })
+    }
+
+    #[must_use]
+    pub fn evaluate(&self, effective: &BTreeMap<String, bool>) -> bool {
+        self.atoms.iter().all(|atom| {
+            let actual = effective.get(&atom.flag).copied().unwrap_or(false);
+            actual == atom.expected
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -184,8 +294,10 @@ impl SourceDefinition {
 #[must_use]
 pub fn infer_lane_name(kind: &str) -> Option<&'static str> {
     match kind {
-        "git" | "nix_flake" | "gentoo_overlay" => Some(SOURCE_LANE_SOURCE),
-        "url_archive" | "github_release" => Some(SOURCE_LANE_BINARY),
+        "git" | "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template" => {
+            Some(SOURCE_LANE_SOURCE)
+        }
+        "url_archive" | "github_release" | "release_asset" | "appimage" => Some(SOURCE_LANE_BINARY),
         _ => None,
     }
 }

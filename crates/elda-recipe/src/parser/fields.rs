@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::error::RecipeError;
-use crate::model::{DependencyEntry, LuaValue, ScalarValue};
+use crate::model::{DependencyBody, DependencyEntry, FlagPredicate, LuaValue, ScalarValue};
 
 pub(super) fn get_required_string(
     table: &BTreeMap<String, LuaValue>,
@@ -152,11 +152,11 @@ pub(super) fn get_dependency_entries(
     let mut entries = Vec::with_capacity(items.len());
     for item in items {
         match item {
-            LuaValue::String(value) => entries.push(DependencyEntry::Constraint(value.clone())),
-            LuaValue::Table(table) => entries.push(parse_any_of_dependency(key, table)?),
+            LuaValue::String(value) => entries.push(DependencyEntry::constraint(value.clone())),
+            LuaValue::Table(table) => entries.push(parse_dependency_table(key, table)?),
             _ => {
                 return Err(RecipeError::Parse(format!(
-                    "field `{key}` supports only string constraints or any-of tables"
+                    "field `{key}` supports only string constraints or dependency tables"
                 )));
             }
         }
@@ -181,25 +181,73 @@ pub(super) fn scalar_from_lua(key: &str, value: LuaValue) -> Result<ScalarValue,
     }
 }
 
-fn parse_any_of_dependency(
+fn parse_dependency_table(
     key: &str,
     table: &BTreeMap<String, LuaValue>,
 ) -> Result<DependencyEntry, RecipeError> {
-    let Some(LuaValue::Array(values)) = table.get("any") else {
-        return Err(RecipeError::Parse(format!(
-            "field `{key}` supports only string constraints or {{ any = {{ ... }} }} tables"
-        )));
-    };
+    let when = parse_dependency_when(key, table)?;
 
-    let mut providers = Vec::with_capacity(values.len());
-    for value in values {
-        let LuaValue::String(value) = value else {
+    if let Some(any_value) = table.get("any") {
+        let LuaValue::Array(values) = any_value else {
             return Err(RecipeError::Parse(format!(
-                "field `{key}` any-of providers must be strings"
+                "field `{key}` table entry `any` must be an array of provider strings"
             )));
         };
-        providers.push(value.clone());
+        let mut providers = Vec::with_capacity(values.len());
+        for value in values {
+            let LuaValue::String(value) = value else {
+                return Err(RecipeError::Parse(format!(
+                    "field `{key}` any-of providers must be strings"
+                )));
+            };
+            providers.push(value.clone());
+        }
+        if providers.is_empty() {
+            return Err(RecipeError::Parse(format!(
+                "field `{key}` any-of provider list must not be empty"
+            )));
+        }
+        return Ok(DependencyEntry {
+            body: DependencyBody::AnyOf(providers),
+            when,
+        });
     }
 
-    Ok(DependencyEntry::AnyOf(providers))
+    if let Some(name_value) = table.get("name") {
+        let LuaValue::String(name) = name_value else {
+            return Err(RecipeError::Parse(format!(
+                "field `{key}` table entry `name` must be a string constraint"
+            )));
+        };
+        if name.trim().is_empty() {
+            return Err(RecipeError::Parse(format!(
+                "field `{key}` table entry `name` must not be empty"
+            )));
+        }
+        return Ok(DependencyEntry {
+            body: DependencyBody::Constraint(name.clone()),
+            when,
+        });
+    }
+
+    Err(RecipeError::Parse(format!(
+        "field `{key}` dependency tables must define `name = \"<constraint>\"` or `any = {{ ... }}`"
+    )))
+}
+
+fn parse_dependency_when(
+    key: &str,
+    table: &BTreeMap<String, LuaValue>,
+) -> Result<Option<FlagPredicate>, RecipeError> {
+    let Some(value) = table.get("when") else {
+        return Ok(None);
+    };
+    let LuaValue::String(raw) = value else {
+        return Err(RecipeError::Parse(format!(
+            "field `{key}` table entry `when` must be a `+flag,-flag` predicate string"
+        )));
+    };
+    FlagPredicate::parse(raw)
+        .map(Some)
+        .map_err(|message| RecipeError::Parse(format!("field `{key}` `when`: {message}")))
 }

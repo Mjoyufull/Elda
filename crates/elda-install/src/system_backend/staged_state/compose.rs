@@ -16,6 +16,7 @@ use crate::InstallError;
 use crate::cached_archive::built_package_from_installed;
 use crate::conffile::{apply_conffile_entry, record_matches_live_file};
 use crate::fsops::{sidecar_path, unpack_payload};
+use crate::install_tx::InstallPathDecisions;
 use crate::journal::TransactionJournal;
 use crate::system_backend::{active_provider_families, provider_assets};
 use crate::{InstallConffileMode, RemoveConffileMode};
@@ -27,6 +28,7 @@ pub(crate) fn prepare_staged_install(
     transaction_root: &Path,
     journal: &mut TransactionJournal,
     conffile_mode: InstallConffileMode,
+    path_decisions: &InstallPathDecisions,
 ) -> Result<StagedSystemState, InstallError> {
     let stage_root = create_stage_root(database.layout(), state_id, journal)?;
     let mut system_packages =
@@ -37,6 +39,7 @@ pub(crate) fn prepare_staged_install(
         &stage_root,
         package,
         conffile_mode,
+        path_decisions,
     )?;
     system_packages.insert(
         package.package_name.clone(),
@@ -166,6 +169,7 @@ fn materialize_incoming_package(
     stage_root: &Path,
     package: &BuiltPackage,
     conffile_mode: InstallConffileMode,
+    path_decisions: &InstallPathDecisions,
 ) -> Result<(), InstallError> {
     let unpack_root = transaction_root
         .join("staged-incoming")
@@ -177,6 +181,9 @@ fn materialize_incoming_package(
     unpack_payload(&package.payload_path, &unpack_root)?;
 
     for entry in &package.manifest.entries {
+        if path_decisions.should_skip_entry(&entry.path) {
+            continue;
+        }
         let stage_target = live_path(stage_root, &entry.path)?;
         let live_target = live_path(&layout.root_dir, &entry.path)?;
         if package.conffiles.iter().any(|path| path == &entry.path)

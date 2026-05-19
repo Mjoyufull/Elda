@@ -104,37 +104,41 @@ pub(super) fn remove_profile_anchors(
     Ok(removed)
 }
 
+pub(super) struct ProfileSelectionPlanJsonInput<'a> {
+    pub(super) plan_kind: &'a str,
+    pub(super) current: &'a ResolvedProfileState,
+    pub(super) desired: &'a crate::app::DesiredStateProfile,
+    pub(super) declared_policy: &'a super::policy::ProfilePolicyResolution,
+    pub(super) install_plan: &'a [PlannedInstallAction],
+    pub(super) removed_profile_anchors: &'a [String],
+    pub(super) provider_reconciliation: &'a serde_json::Value,
+    pub(super) runtime_view: &'a ProfileRuntimeView,
+}
+
 pub(super) fn profile_selection_plan_json(
-    plan_kind: &str,
-    current: &ResolvedProfileState,
-    desired: &crate::app::DesiredStateProfile,
-    declared_policy: &super::policy::ProfilePolicyResolution,
-    install_plan: &[PlannedInstallAction],
-    removed_profile_anchors: &[String],
-    provider_reconciliation: &serde_json::Value,
-    runtime_view: &ProfileRuntimeView,
+    input: ProfileSelectionPlanJsonInput<'_>,
 ) -> serde_json::Value {
     json!({
-        "kind": plan_kind,
-        "previous_active_profiles": current.active_profiles,
-        "next_active_profiles": desired.active_profiles,
-        "previous_native_arch": current.native_arch,
-        "next_native_arch": desired.native_arch,
-        "previous_init": empty_to(current.init.clone(), "unset".to_owned()),
-        "next_init": empty_to(desired.init.clone(), "unset".to_owned()),
-        "previous_foreign_arches": current.foreign_arches,
-        "next_foreign_arches": desired.foreign_arches,
-        "declared_profile_policy": profile_policy_json(declared_policy),
-        "install_actions": install_plan
+        "kind": input.plan_kind,
+        "previous_active_profiles": input.current.active_profiles,
+        "next_active_profiles": input.desired.active_profiles,
+        "previous_native_arch": input.current.native_arch,
+        "next_native_arch": input.desired.native_arch,
+        "previous_init": empty_to(input.current.init.clone(), "unset".to_owned()),
+        "next_init": empty_to(input.desired.init.clone(), "unset".to_owned()),
+        "previous_foreign_arches": input.current.foreign_arches,
+        "next_foreign_arches": input.desired.foreign_arches,
+        "declared_profile_policy": profile_policy_json(input.declared_policy),
+        "install_actions": input.install_plan
             .iter()
             .map(profile_plan_action_json)
             .collect::<Vec<_>>(),
-        "remove_profile_anchors": removed_profile_anchors,
-        "provider_reconciliation": provider_reconciliation,
-        "provider_families": &runtime_view.provider_families,
-        "pending_handler_transitions": &runtime_view.pending_handler_transitions,
-        "required_activation_class": runtime_view.required_activation_class,
-        "handler_backend": runtime_view.backend,
+        "remove_profile_anchors": input.removed_profile_anchors,
+        "provider_reconciliation": input.provider_reconciliation,
+        "provider_families": &input.runtime_view.provider_families,
+        "pending_handler_transitions": &input.runtime_view.pending_handler_transitions,
+        "required_activation_class": input.runtime_view.required_activation_class,
+        "handler_backend": input.runtime_view.backend,
     })
 }
 

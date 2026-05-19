@@ -174,7 +174,7 @@ pub(super) fn process_submission(
         ),
     )?;
 
-    match publish_workspace(app, workspace, plan, &submission.id) {
+    match publish_workspace(app, workspace, plan, &submission.id, "stable") {
         Ok(published) => {
             let completed_at = current_unix_timestamp();
             submission.state = "published".to_owned();

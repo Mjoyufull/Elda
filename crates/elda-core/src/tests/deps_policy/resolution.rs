@@ -168,10 +168,10 @@ fn install_backtracks_any_of_exact_alternatives_to_avoid_conflicts() {
         "dep-a",
         &dep_a,
         "0.1.0",
-        "{}",
-        "{}",
-        "{}",
-        "{ \"base-tool\" }",
+        PolicyFieldLua {
+            conflicts: "{ \"base-tool\" }",
+            ..Default::default()
+        },
     );
     write_local_binary_recipe(tempdir.path(), "dep-b", &dep_b, &[]);
     write_local_binary_recipe(tempdir.path(), "base-tool", &base_binary, &[]);
@@ -305,4 +305,63 @@ fn install_fails_on_ambiguous_virtual_provider_dependency() {
     )
     .expect_err("ambiguous virtual provider dependency should fail");
     assert!(error.to_string().contains("ambiguous virtual provider"));
+}
+
+#[test]
+fn install_resolves_ambiguous_virtual_provider_with_cli_flag() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    let provider_a = create_vendor_binary(tempdir.path(), "mesa-provider");
+    let provider_b = create_vendor_binary(tempdir.path(), "nvidia-provider");
+    let app_binary = create_script_binary(tempdir.path(), "app-tool", "app tool");
+    write_local_binary_recipe_with_provides(
+        tempdir.path(),
+        "mesa-provider",
+        &provider_a,
+        "{}",
+        &["gl-provider"],
+    );
+    write_local_binary_recipe_with_provides(
+        tempdir.path(),
+        "nvidia-provider",
+        &provider_b,
+        "{}",
+        &["gl-provider"],
+    );
+    write_local_binary_recipe_with_lua_fields(
+        tempdir.path(),
+        "app-tool",
+        &app_binary,
+        "0.1.0",
+        "{ \"gl-provider\" }",
+        "{}",
+        "{}",
+    );
+
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec![
+                "app-tool".to_owned(),
+                "--provider".to_owned(),
+                "gl-provider=mesa-provider".to_owned(),
+            ],
+            OutputMode::Json,
+            true,
+        ),
+    )
+    .expect("install dry-run should succeed with explicit provider");
+    assert_eq!(report.status, "planned");
+    let plan_text = report
+        .details
+        .map(|details| details.to_string())
+        .unwrap_or_default();
+    assert!(
+        plan_text.contains("mesa-provider"),
+        "plan should include the selected provider package"
+    );
+    assert!(
+        !plan_text.contains("ambiguous virtual provider"),
+        "explicit provider should resolve ambiguity"
+    );
 }

@@ -97,6 +97,7 @@ fn mirror_remote_copies_binary_payloads_from_synced_snapshot() {
             trust: TrustMode::Insecure,
             trusted_keys: Vec::new(),
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 10,
         },
     )

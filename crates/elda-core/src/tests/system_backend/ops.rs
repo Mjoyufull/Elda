@@ -109,6 +109,49 @@ fn fix_triggers_repairs_current_system_backend_outputs_and_check_reports_pending
             })
     );
     assert!(ldconfig_output.exists());
+
+    let trigger_list = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["trigger".to_owned(), "ls".to_owned()],
+            Vec::new(),
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("trigger ls should succeed");
+    assert_eq!(trigger_list.area, "trigger");
+    assert_eq!(trigger_list.status, "ok");
+    assert!(
+        trigger_list
+            .details
+            .as_ref()
+            .and_then(|details| details.get("triggers"))
+            .and_then(|triggers| triggers.get("last_run"))
+            .and_then(|last_run| last_run.as_array())
+            .is_some_and(|last_run| last_run.iter().any(|record| {
+                record.get("name").and_then(|name| name.as_str()) == Some("ldconfig")
+            }))
+    );
+
+    let trigger_info = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["trigger".to_owned(), "info".to_owned()],
+            vec!["ldconfig".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("trigger info should succeed");
+    assert!(
+        trigger_info
+            .details
+            .as_ref()
+            .and_then(|details| details.get("trigger"))
+            .and_then(|trigger| trigger.get("output"))
+            .is_some_and(|output| !output.is_null())
+    );
 }
 
 #[test]

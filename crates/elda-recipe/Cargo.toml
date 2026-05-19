@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 elda-types = { path = "../elda-types" }
+rnix = "0.14.0"
+rowan = "0.16.1"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

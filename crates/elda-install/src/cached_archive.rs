@@ -54,6 +54,7 @@ pub(crate) fn built_package_from_archive(
             "manifest hash",
         )?,
         manifest,
+        interbuild: None,
     })
 }
 
@@ -133,6 +134,7 @@ pub(crate) fn built_package_from_installed(
             "manifest hash",
         )?,
         manifest,
+        interbuild: None,
     })
 }
 

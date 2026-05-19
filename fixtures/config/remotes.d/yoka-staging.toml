@@ -1,0 +1,12 @@
+# TOFU staging remote. Disabled until explicitly enabled with `elda rmt enable yoka-staging`.
+
+name = "yoka-staging"
+index_url = "https://github.com/Mjoyufull/Elda/releases/download/staging/index-v1.json.zst"
+channel = "staging"
+packages_url = "https://github.com/Mjoyufull/Elda.git"
+priority = 50
+enabled = false
+trust = "tofu"
+trusted_keys = []
+allow_stale = false
+exclude = []

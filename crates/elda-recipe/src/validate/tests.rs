@@ -330,3 +330,80 @@ pkg = {
             .contains("profile.foreign_arches contains duplicate entry `i386`")
     }));
 }
+
+#[test]
+fn appimage_github_release_style_validates() {
+    let document = parse_pkg_lua(
+        Path::new("pkg.lua"),
+        r#"
+pkg = {
+  name = "tool",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "normal",
+  source = {
+    kind = "appimage",
+    repo = "owner/tool",
+    tag = "v1",
+    asset = "tool-1.0.0-x86_64-unknown-linux-gnu.AppImage",
+    sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    binary = "tool",
+  },
+  depends = {},
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+}
+"#,
+    )
+    .expect("pkg.lua should parse");
+
+    assert!(validate_recipe(&document).is_empty());
+}
+
+#[test]
+fn appimage_url_lane_validates_without_release_fields() {
+    let document = parse_pkg_lua(
+        Path::new("pkg.lua"),
+        r#"
+pkg = {
+  name = "tool",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "normal",
+  source = {
+    kind = "appimage",
+    url = "file:///tmp/example.AppImage",
+    sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    binary = "tool",
+    integration = "desktop",
+  },
+  depends = {},
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+}
+"#,
+    )
+    .expect("pkg.lua should parse");
+
+    assert!(validate_recipe(&document).is_empty());
+}

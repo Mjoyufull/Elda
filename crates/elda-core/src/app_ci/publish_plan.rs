@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::app::AppContext;
 use crate::error::CoreError;
-use elda_recipe::{DependencyEntry, add_recipe, is_git_like_target, load_recipe};
+use elda_recipe::{
+    DependencyBody, DependencyEntry, add_recipe_with_priority, is_git_like_target, load_recipe,
+};
 use elda_types::NamedConstraint;
 
 #[derive(Debug, Clone)]
@@ -36,7 +38,18 @@ pub(crate) fn resolve_ci_targets(
     for target in targets {
         let target_path = PathBuf::from(target);
         if target_path.exists() || is_git_like_target(target) {
-            let report = add_recipe(&app.database.layout().recipes_dir, target, None)?;
+            let report = match add_recipe_with_priority(
+                &app.database.layout().recipes_dir,
+                target,
+                None,
+                &app.config.metadata.link_strategy_priority,
+                &app.config.metadata.release_binary_format_priority,
+            )? {
+                elda_recipe::ImportResult::Single(r) => r,
+                elda_recipe::ImportResult::Bulk(_) => {
+                    return Err(CoreError::Operator("Bulk imports are not supported in CI planning. Use `elda add <url>` first.".to_owned()));
+                }
+            };
             resolved.push(report.recipe_name);
             continue;
         }
@@ -183,13 +196,13 @@ fn assign_layers(
 }
 
 fn local_dependency_targets(
-    recipes_dir: &PathBuf,
+    recipes_dir: &Path,
     entries: &[DependencyEntry],
 ) -> Result<Vec<String>, CoreError> {
     let mut resolved = Vec::new();
     for entry in entries {
-        match entry {
-            DependencyEntry::Constraint(value) => {
+        match &entry.body {
+            DependencyBody::Constraint(value) => {
                 let package_name = NamedConstraint::parse_dependency(value)
                     .map_err(|error| CoreError::Operator(error.to_string()))?
                     .name;
@@ -197,7 +210,7 @@ fn local_dependency_targets(
                     resolved.push(package_name);
                 }
             }
-            DependencyEntry::AnyOf(values) => {
+            DependencyBody::AnyOf(values) => {
                 let selected = values.iter().find_map(|value| {
                     NamedConstraint::parse_dependency(value)
                         .ok()
@@ -224,9 +237,15 @@ fn local_dependency_targets(
 fn dependency_strings(entries: &[DependencyEntry]) -> Vec<String> {
     entries
         .iter()
-        .map(|entry| match entry {
-            DependencyEntry::Constraint(value) => value.clone(),
-            DependencyEntry::AnyOf(values) => format!("any({})", values.join(" | ")),
+        .map(|entry| {
+            let body = match &entry.body {
+                DependencyBody::Constraint(value) => value.clone(),
+                DependencyBody::AnyOf(values) => format!("any({})", values.join(" | ")),
+            };
+            match entry.when.as_ref() {
+                Some(predicate) => format!("{body} when [{}]", predicate.raw),
+                None => body,
+            }
         })
         .collect()
 }

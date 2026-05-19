@@ -1,9 +1,10 @@
-pub(super) const ACID_LIME: (u8, u8, u8) = (171, 255, 67);
-pub(super) const HAZARD_ORANGE: (u8, u8, u8) = (255, 107, 0);
-pub(super) const ELECTRIC_MAGENTA: (u8, u8, u8) = (255, 0, 255);
-pub(super) const BURNT_RUST: (u8, u8, u8) = (135, 48, 3);
-pub(super) const PURE_WHITE: (u8, u8, u8) = (255, 255, 255);
-pub(super) const SIGNAL_YELLOW: (u8, u8, u8) = (255, 255, 0);
+pub(super) const SYNTAX_GREEN: (u8, u8, u8) = (152, 195, 121);
+pub(super) const PEACH_HAZARD: (u8, u8, u8) = (209, 154, 102);
+pub(super) const CORAL_RED: (u8, u8, u8) = (224, 108, 117);
+pub(super) const LAVENDER_VIOLET: (u8, u8, u8) = (198, 120, 221);
+pub(super) const GLACIER_BLUE: (u8, u8, u8) = (97, 175, 239);
+pub(super) const ASH_WHITE: (u8, u8, u8) = (171, 178, 191);
+pub(super) const CHALK_YELLOW: (u8, u8, u8) = (229, 192, 123);
 
 pub(super) const LOGO: &str = include_str!("../../../../assets/ASCIIlogo.txt");
 
@@ -64,6 +65,11 @@ pub(super) const STATE_ROWS: &[HelpRow] = &[
     HelpRow::new("why", "<pkg>", "explain why a package is present"),
     HelpRow::new("rdeps", "<pkg>", "show reverse dependencies"),
     HelpRow::new(
+        "versions",
+        "<repo-or-path>",
+        "list git-backed upstream version candidates",
+    ),
+    HelpRow::new(
         "pin",
         "<pkg>",
         "pin an installed package to its current version",
@@ -72,6 +78,12 @@ pub(super) const STATE_ROWS: &[HelpRow] = &[
     HelpRow::new("hold", "<pkg>", "block upgrades for a package"),
     HelpRow::new("unhold", "<pkg>", "clear an upgrade hold"),
     HelpRow::new("check", "", "show root health, journals, and safety issues"),
+    HelpRow::new("doctor", "", "check bootstrap and release-readiness state"),
+    HelpRow::new(
+        "version",
+        "",
+        "show Elda version, build, and schema details",
+    ),
     HelpRow::new("recover", "", "repair or roll back incomplete transactions"),
     HelpRow::new(
         "rollback",
@@ -97,9 +109,50 @@ pub(super) const STATE_ROWS: &[HelpRow] = &[
 ];
 
 pub(super) const NAMESPACE_ROWS: &[HelpRow] = &[
-    HelpRow::new("rmt add", "<name=url>", "register a remote index"),
     HelpRow::new(
-        "rc add/edit/check/ls/rm",
+        "rmt add",
+        "<name=url>",
+        "register a remote index or interemote",
+    ),
+    HelpRow::new("rmt ls", "", "list configured remotes"),
+    HelpRow::new("rmt info", "<name>", "inspect a configured remote"),
+    HelpRow::new(
+        "rmt trust",
+        "<name>",
+        "inspect remote trust policy and state",
+    ),
+    HelpRow::new(
+        "rmt preview",
+        "<name>",
+        "preview an interemote package catalog",
+    ),
+    HelpRow::new("rmt enable", "<name>", "enable a configured remote"),
+    HelpRow::new("rmt disable", "<name>", "disable a configured remote"),
+    HelpRow::new("rmt set-priority", "<name> <n>", "set remote precedence"),
+    HelpRow::new("rmt rm", "<name>", "remove a configured remote"),
+    HelpRow::new(
+        "config pending/diff/apply/keep",
+        "<path|pkg>",
+        "inspect and resolve protected config sidecars",
+    ),
+    HelpRow::new(
+        "review ls/info/diff/forget",
+        "",
+        "inspect or clear recorded source-definition review stamps",
+    ),
+    HelpRow::new("init", "", "bootstrap Elda config and data directories"),
+    HelpRow::new(
+        "maint check/fix",
+        "[module]",
+        "check or repair recovery, triggers, and profile drift",
+    ),
+    HelpRow::new(
+        "trigger run/diff",
+        "<name>",
+        "run or compare one system trigger (system mode)",
+    ),
+    HelpRow::new(
+        "rc add/edit/check/format/normalize/ls/rm",
         "...",
         "manage local recipes and on-disk install catalog",
     ),
@@ -109,9 +162,19 @@ pub(super) const NAMESPACE_ROWS: &[HelpRow] = &[
         "manage vendor binary recipes",
     ),
     HelpRow::new(
-        "forge search/browse",
+        "forge search/browse/fork",
         "...",
         "discover forge packages and assets",
+    ),
+    HelpRow::new(
+        "git tags/releases",
+        "<repo-or-path>",
+        "inspect tags and release assets with host compatibility detail",
+    ),
+    HelpRow::new(
+        "appimage inspect",
+        "<path>",
+        "read SquashFS metadata from a Type 2 AppImage without executing it",
     ),
     HelpRow::new(
         "pf apply/add/rm/...",
@@ -167,7 +230,12 @@ pub(super) const FLAG_ROWS: &[HelpRow] = &[
         "request live host system mode for this invocation",
     ),
     HelpRow::new("-h, --help", "", "show this help screen"),
-    HelpRow::new("-V, --version", "", "show the current Elda version"),
+    HelpRow::new(
+        "-V, --version",
+        "",
+        "show Elda version, build, and schema details",
+    ),
+    HelpRow::new("version", "", "same detailed version report as -V"),
 ];
 
 pub(super) const EXAMPLES: &[ExampleRow] = &[
@@ -182,6 +250,18 @@ pub(super) const EXAMPLES: &[ExampleRow] = &[
     ExampleRow::new(
         "elda vendor add fsel-bin Mjoyufull/fsel@latest --binary fsel",
         "track a GitHub release binary as a local recipe",
+    ),
+    ExampleRow::new(
+        "elda git tags https://github.com/foo/bar --max-tags 20",
+        "inspect upstream tags and normalized version confidence",
+    ),
+    ExampleRow::new(
+        "elda git releases Mjoyufull/fsel --max-releases 3",
+        "inspect release assets, host compatibility, and recommended payloads",
+    ),
+    ExampleRow::new(
+        "elda appimage inspect ./Foo-x86_64.AppImage",
+        "list embedded desktop, icons, and AppStream paths before packaging",
     ),
     ExampleRow::new(
         "elda pf apply yoka-core --init dinit --foreign-arch i386",

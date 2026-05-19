@@ -28,8 +28,16 @@ pub(crate) struct CiWorkspacePaths {
 
 impl CiWorkspacePaths {
     pub(crate) fn new(layout: &elda_db::StateLayout) -> Self {
+        Self::for_channel(layout, "default")
+    }
+
+    pub(crate) fn for_channel(layout: &elda_db::StateLayout, channel: &str) -> Self {
         let root = layout.data_dir.join("ci");
-        let published_dir = root.join("published");
+        let published_dir = if channel == "default" {
+            root.join("published")
+        } else {
+            root.join(format!("published-{channel}"))
+        };
 
         Self {
             root: root.clone(),
@@ -45,6 +53,10 @@ impl CiWorkspacePaths {
             signing_key_path: root.join("signing-key.bin"),
             published_dir,
         }
+    }
+
+    pub(crate) fn index_zst_path(&self) -> PathBuf {
+        self.published_dir.join("index-v1.json.zst")
     }
 
     pub(crate) fn ensure_exists(&self) -> Result<(), CoreError> {

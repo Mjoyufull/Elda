@@ -7,6 +7,7 @@ use serde_json::Value;
 use super::super::support::*;
 use super::super::*;
 use super::fixtures::{create_system_make_repo, write_system_recipe};
+use crate::CommandReport;
 
 #[test]
 fn system_mode_transactions_record_snapshots_in_reports_and_archived_state() {
@@ -41,16 +42,7 @@ fn system_mode_transactions_record_snapshots_in_reports_and_archived_state() {
     )
     .expect("system install should succeed");
     assert_snapshot_records(
-        install
-            .details
-            .as_ref()
-            .and_then(|details| details.get("installs"))
-            .and_then(|installs| installs.as_array())
-            .and_then(|installs| installs.first())
-            .and_then(|install| install.get("install"))
-            .and_then(|install| install.get("snapshots"))
-            .and_then(|snapshots| snapshots.as_array())
-            .expect("install snapshots should exist"),
+        install_snapshots_from_report(&install).expect("install snapshots should exist"),
     );
 
     let install_state = current_state_id(tempdir.path());
@@ -122,16 +114,7 @@ fn unsupported_snapshot_tools_are_recorded_as_failed_requests() {
     )
     .expect("system install should still succeed");
 
-    let snapshots = install
-        .details
-        .as_ref()
-        .and_then(|details| details.get("installs"))
-        .and_then(|installs| installs.as_array())
-        .and_then(|installs| installs.first())
-        .and_then(|install| install.get("install"))
-        .and_then(|install| install.get("snapshots"))
-        .and_then(|snapshots| snapshots.as_array())
-        .expect("snapshot records should exist");
+    let snapshots = install_snapshots_from_report(&install).expect("snapshot records should exist");
 
     assert_eq!(snapshots.len(), 2);
     assert!(snapshots.iter().all(|snapshot| {
@@ -141,6 +124,18 @@ fn unsupported_snapshot_tools_are_recorded_as_failed_requests() {
                 .and_then(|value| value.as_str())
                 .is_some_and(|error| error.contains("not supported"))
     }));
+}
+
+fn install_snapshots_from_report(report: &CommandReport) -> Option<&Vec<Value>> {
+    report
+        .details
+        .as_ref()?
+        .get("installs")?
+        .as_array()?
+        .first()?
+        .get("install")?
+        .get("snapshots")?
+        .as_array()
 }
 
 fn write_fake_snapper(root: &Path) -> PathBuf {

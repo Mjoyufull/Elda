@@ -20,6 +20,7 @@ pub fn add_remote(remotes_dir: &Path, input: &str) -> Result<RemoteDocument, Rep
             trust: TrustMode::Tofu,
             trusted_keys: Vec::new(),
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 100,
         },
     )
@@ -70,6 +71,16 @@ pub fn load_remote(remotes_dir: &Path, name: &str) -> Result<Option<RemoteDocume
     Ok(list_remotes(remotes_dir)?
         .into_iter()
         .find(|remote| remote.name == name))
+}
+
+pub fn remove_remote(remotes_dir: &Path, name: &str) -> Result<RemoteDocument, RepoError> {
+    let remote = load_remote(remotes_dir, name)?
+        .ok_or_else(|| RepoError::Parse(format!("remote `{name}` is not registered")))?;
+    let path = remotes_dir.join(format!("{}.toml", remote.name));
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    Ok(remote)
 }
 
 fn load_documents<T>(directory: &Path) -> Result<Vec<T>, RepoError>

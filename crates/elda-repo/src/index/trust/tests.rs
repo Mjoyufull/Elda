@@ -35,6 +35,7 @@ fn tofu_sync_accepts_rotated_key_from_signed_metadata_document() {
             trust: TrustMode::Tofu,
             trusted_keys: Vec::new(),
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 100,
         },
     );
@@ -46,6 +47,7 @@ fn tofu_sync_accepts_rotated_key_from_signed_metadata_document() {
             offline: false,
             allow_initial_tofu: true,
             accept_rotated_keys: Vec::new(),
+            ..SyncOptions::default()
         },
     )
     .expect("initial tofu sync should bootstrap trust");
@@ -65,6 +67,7 @@ fn tofu_sync_accepts_rotated_key_from_signed_metadata_document() {
             offline: false,
             allow_initial_tofu: false,
             accept_rotated_keys: Vec::new(),
+            ..SyncOptions::default()
         },
     )
     .expect_err("rotation should require explicit confirmation");
@@ -78,6 +81,7 @@ fn tofu_sync_accepts_rotated_key_from_signed_metadata_document() {
             offline: false,
             allow_initial_tofu: false,
             accept_rotated_keys: vec!["main".to_owned()],
+            ..SyncOptions::default()
         },
     )
     .expect("rotation metadata should authorize the new signing key once accepted");
@@ -118,6 +122,7 @@ fn tofu_sync_rejects_rotated_key_without_authorizing_metadata() {
             trust: TrustMode::Tofu,
             trusted_keys: Vec::new(),
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 100,
         },
     );
@@ -129,6 +134,7 @@ fn tofu_sync_rejects_rotated_key_without_authorizing_metadata() {
             offline: false,
             allow_initial_tofu: true,
             accept_rotated_keys: Vec::new(),
+            ..SyncOptions::default()
         },
     )
     .expect("initial tofu sync should bootstrap trust");
@@ -148,6 +154,7 @@ fn tofu_sync_rejects_rotated_key_without_authorizing_metadata() {
             offline: false,
             allow_initial_tofu: false,
             accept_rotated_keys: vec!["main".to_owned()],
+            ..SyncOptions::default()
         },
     )
     .expect_err("rotation should fail when metadata does not authorize the new key");

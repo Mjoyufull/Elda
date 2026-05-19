@@ -1,9 +1,14 @@
 # Fixtures
 
-Small, readable fixture inputs used as reference material for Elda.
+Small, readable fixture inputs used by tests, docs, and quick manual checks.
 
-Groups:
+- `config/`: lean `/etc/elda` snapshots plus drop-in `remotes.d/`, `caches.d/`, and
+  `extensions.d/` documents (see [`config/README.md`](./config/README.md) for
+  `system-default.toml`, `prefix-source.toml`, `profile-defaults.toml`, and
+  `su-system.toml`).
+- `recipes/`: compact `pkg.lua` fixtures for local recipe, profile, and flag-system checks.
+- `pkgit/`: legacy `pkgit` inputs that Elda imports or preserves as behavior reference.
 
-- `config/`: sample `config.toml` snapshots for docs, parsing, and operator-facing examples
-- `recipes/`: real package-definition fixtures used for manual validation of local and remote install paths
-- `pkgit/`: legacy `pkgit` inputs that Elda imports, translates, or preserves as behavior reference
+For annotated operator examples, use the top-level `examples/` tree. Fixtures
+stay intentionally small so they are easy to copy into temporary roots during
+runtime tests.

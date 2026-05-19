@@ -218,12 +218,68 @@ pub(in crate::tests) fn make_git_repo(repo_dir: &Path) {
 }
 
 pub(in crate::tests) fn all_tools_available(tools: &[&str]) -> bool {
-    tools.iter().all(|tool| {
-        Command::new("sh")
-            .arg("-lc")
-            .arg(format!("command -v {tool} >/dev/null 2>&1"))
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false)
+    tools.iter().all(|tool| match *tool {
+        "zig-build-self-test" => zig_build_self_test(),
+        "nimble-build-self-test" => nimble_build_self_test(),
+        _ => command_exists(tool),
     })
+}
+
+fn command_exists(tool: &str) -> bool {
+    Command::new("sh")
+        .arg("-lc")
+        .arg(format!("command -v {tool} >/dev/null 2>&1"))
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn zig_build_self_test() -> bool {
+    let Ok(tempdir) = tempfile::TempDir::new() else {
+        return false;
+    };
+    let repo = create_git_zig_repo(tempdir.path(), "zig-self-test");
+
+    Command::new("zig")
+        .current_dir(&repo)
+        .args(["build", "install", "-Doptimize=ReleaseSafe", "--prefix"])
+        .arg(tempdir.path().join("prefix"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn nimble_build_self_test() -> bool {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return false;
+    };
+    if !path_allows_writes(&home.join(".nimble"))
+        || !path_allows_writes(&home.join(".cache").join("nim"))
+    {
+        return false;
+    }
+
+    let Ok(tempdir) = tempfile::TempDir::new() else {
+        return false;
+    };
+    let repo = create_git_nimble_repo(tempdir.path(), "nimble-self-test");
+
+    Command::new("nimble")
+        .current_dir(&repo)
+        .args(["build", "-y"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn path_allows_writes(path: &Path) -> bool {
+    if fs::create_dir_all(path).is_err() {
+        return false;
+    }
+    let probe = path.join(".elda-write-probe");
+    let writable = fs::write(&probe, b"probe").is_ok();
+    let _ = fs::remove_file(probe);
+    writable
 }

@@ -9,6 +9,7 @@ mod cmake_build;
 mod error;
 mod git;
 mod go_build;
+mod interbuild;
 mod make_build;
 mod manifest;
 mod meson_build;
@@ -17,6 +18,7 @@ mod object_analysis;
 mod payload_verify;
 mod process;
 mod python_build;
+mod release_trust;
 mod system_metadata;
 mod zig_build;
 
@@ -26,7 +28,9 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use tempfile::TempDir;
 
-use elda_recipe::{DependencyEntry, PackageDefinition, RecipeDocument, load_recipe};
+use elda_recipe::{
+    DependencyBody, DependencyEntry, PackageDefinition, RecipeDocument, load_recipe,
+};
 use elda_types::CrateBoundary;
 
 pub use cache_meta::{
@@ -34,6 +38,11 @@ pub use cache_meta::{
     record_cache_access,
 };
 pub use error::BuildError;
+pub use git::ensure_git_protocol_allowed;
+pub use interbuild::{
+    ArchSourceReport, AurReport, GentooReport, InterbuildReport, LockfileReport, NixMetaReport,
+    XbpsReport,
+};
 pub use manifest::{ManifestEntry, ManifestEntryKind, PackageManifest};
 pub use object_analysis::{ObjectMetadata, SharedLibraryProvide, SharedLibraryRequirement};
 pub use system_metadata::{
@@ -46,7 +55,7 @@ pub const BOUNDARY: CrateBoundary = CrateBoundary::new(
     "Build orchestration, staging roots, and payload assembly.",
 );
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BuildRequest<'a> {
     pub recipe: &'a RecipeDocument,
     pub cache_src_dir: &'a Path,
@@ -56,10 +65,16 @@ pub struct BuildRequest<'a> {
     pub binary_caches: Vec<BinaryCache>,
     pub remote_name: Option<String>,
     pub binary_source_verification: Option<BinarySourceVerification>,
+    pub release_trusted_keys: Vec<String>,
+    pub allowed_git_protocols: Vec<String>,
     pub persisted_source_kind: String,
     pub persisted_source_ref: Option<String>,
     pub variant_id: String,
     pub ad_hoc_git: bool,
+    /// When true, builders that support it attach child stdout/stderr to the terminal (human installs).
+    pub stream_child_output: bool,
+    /// Optional hook for bounded build-tool status lines (ProgressSink inner build frame).
+    pub build_line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +113,7 @@ pub struct BuiltPackage {
     pub manifest_path: PathBuf,
     pub manifest_hash: String,
     pub manifest: PackageManifest,
+    pub interbuild: Option<InterbuildReport>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -138,79 +154,86 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
     let build_root = TempDir::new_in(request.tmp_dir)?;
     let stage_root = build_root.path().join("stage");
     fs::create_dir_all(&stage_root)?;
-    let (repo_commit, repo_commit_unix) = match request.recipe.package.source.kind.as_str() {
-        "git" => {
-            let checkout =
-                git::checkout_git_source(request.recipe, build_root.path(), request.offline)?;
-            let build = match &request.recipe.package.build {
-                Some(build) => Some(build.clone()),
-                None => detect_build_definition(&request.recipe.package, &checkout.source_dir)?,
-            };
+    let (repo_commit, repo_commit_unix, interbuild) =
+        match request.recipe.package.source.kind.as_str() {
+            "git" => {
+                let checkout = git::checkout_git_source(
+                    request.recipe,
+                    build_root.path(),
+                    request.offline,
+                    &request.allowed_git_protocols,
+                )?;
 
-            if request.recipe.package.kind != "meta" && request.recipe.package.kind != "profile" {
-                let build = build.ok_or_else(|| {
-                    BuildError::Unsupported(format!(
-                        "no supported declarative build path was found for `{}`",
-                        request.recipe.package.name
-                    ))
-                })?;
+                // Auto-detect foreign build definitions in the checkout.
+                // If a flake.nix, PKGBUILD, or XBPS template is present,
+                // run the corresponding interbuild parser to extract
+                // metadata. On validation failure, fall back to the
+                // generic git source build.
+                let interbuild_report =
+                    if let Some(kind) = interbuild::detect_interbuild_kind(&checkout.source_dir) {
+                        interbuild::validate_interbuild_in_checkout(
+                            request.recipe,
+                            kind,
+                            &checkout.source_dir,
+                        )
+                        .ok()
+                    } else {
+                        None
+                    };
 
-                match build.system.as_str() {
-                    "cargo" => {
-                        cargo_build::build_with_cargo(&build, &checkout.source_dir, &stage_root)?
-                    }
-                    "cmake" => {
-                        cmake_build::build_with_cmake(&build, &checkout.source_dir, &stage_root)?
-                    }
-                    "meson" => {
-                        meson_build::build_with_meson(&build, &checkout.source_dir, &stage_root)?
-                    }
-                    "make" => {
-                        make_build::build_with_make(&build, &checkout.source_dir, &stage_root)?
-                    }
-                    "go" => go_build::build_with_go(
-                        &build,
-                        &request.recipe.package,
-                        &checkout.source_dir,
-                        &stage_root,
-                    )?,
-                    "zig" => zig_build::build_with_zig(&build, &checkout.source_dir, &stage_root)?,
-                    "python" => {
-                        python_build::build_with_python(&build, &checkout.source_dir, &stage_root)?
-                    }
-                    "nim" | "nimble" => nimble_build::build_with_nimble(
-                        &build,
-                        &request.recipe.package,
-                        &checkout.source_dir,
-                        &stage_root,
-                    )?,
-                    other => {
-                        return Err(BuildError::Unsupported(format!(
-                            "build.system `{other}` is not implemented by the current execution slice"
-                        )));
-                    }
-                }
+                build_source_tree(
+                    request.recipe,
+                    &checkout.source_dir,
+                    &stage_root,
+                    request.stream_child_output,
+                    request.build_line_hook.clone(),
+                )?;
+
+                (
+                    checkout.repo_commit,
+                    checkout.repo_commit_unix,
+                    interbuild_report,
+                )
             }
+            "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template" => {
+                let checkout = interbuild::prepare_interbuild_source(
+                    request.recipe,
+                    build_root.path(),
+                    request.offline,
+                    &request.allowed_git_protocols,
+                )?;
+                build_source_tree(
+                    request.recipe,
+                    &checkout.source_dir,
+                    &stage_root,
+                    request.stream_child_output,
+                    request.build_line_hook.clone(),
+                )?;
 
-            (checkout.repo_commit, checkout.repo_commit_unix)
-        }
-        "url_archive" | "github_release" => {
-            archive::stage_binary_source(
-                request.recipe,
-                request.cache_src_dir,
-                &stage_root,
-                request.offline,
-                &request.binary_caches,
-                request.binary_source_verification.as_ref(),
-            )?;
-            (None, None)
-        }
-        other => {
-            return Err(BuildError::Unsupported(format!(
-                "source.kind `{other}` is not implemented by the current build slice"
-            )));
-        }
-    };
+                (
+                    checkout.checkout.repo_commit,
+                    checkout.checkout.repo_commit_unix,
+                    Some(checkout.report),
+                )
+            }
+            "url_archive" | "github_release" | "release_asset" | "appimage" => {
+                archive::stage_binary_source(
+                    request.recipe,
+                    request.cache_src_dir,
+                    &stage_root,
+                    request.offline,
+                    &request.binary_caches,
+                    request.binary_source_verification.as_ref(),
+                    &request.release_trusted_keys,
+                )?;
+                (None, None, None)
+            }
+            other => {
+                return Err(BuildError::Unsupported(format!(
+                    "source.kind `{other}` is not implemented by the current build slice"
+                )));
+            }
+        };
 
     let manifest = manifest::collect_manifest(&stage_root)?;
     let (manifest_hash, manifest_bytes) = manifest::manifest_hash(&manifest)?;
@@ -260,7 +283,71 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
         manifest_path,
         manifest_hash,
         manifest,
+        interbuild,
     })
+}
+
+fn build_source_tree(
+    recipe: &RecipeDocument,
+    source_dir: &Path,
+    stage_root: &Path,
+    stream_child_output: bool,
+    build_line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+) -> Result<(), BuildError> {
+    if matches!(recipe.package.kind.as_str(), "meta" | "profile") {
+        return Ok(());
+    }
+
+    let build = match &recipe.package.build {
+        Some(build) => Some(build.clone()),
+        None => detect_build_definition(&recipe.package, source_dir)?,
+    }
+    .ok_or_else(|| {
+        BuildError::Unsupported(format!(
+            "no supported declarative build path was found for `{}`",
+            recipe.package.name
+        ))
+    })?;
+
+    match build.system.as_str() {
+        "cargo" => cargo_build::build_with_cargo(
+            &build,
+            source_dir,
+            stage_root,
+            stream_child_output,
+            build_line_hook,
+        ),
+        "cmake" => cmake_build::build_with_cmake(
+            &build,
+            source_dir,
+            stage_root,
+            stream_child_output,
+            build_line_hook,
+        ),
+        "meson" => meson_build::build_with_meson(
+            &build,
+            source_dir,
+            stage_root,
+            stream_child_output,
+            build_line_hook,
+        ),
+        "make" => make_build::build_with_make(
+            &build,
+            source_dir,
+            stage_root,
+            stream_child_output,
+            build_line_hook,
+        ),
+        "go" => go_build::build_with_go(&build, &recipe.package, source_dir, stage_root),
+        "zig" => zig_build::build_with_zig(&build, source_dir, stage_root),
+        "python" => python_build::build_with_python(&build, source_dir, stage_root),
+        "nim" | "nimble" => {
+            nimble_build::build_with_nimble(&build, &recipe.package, source_dir, stage_root)
+        }
+        other => Err(BuildError::Unsupported(format!(
+            "build.system `{other}` is not implemented by the current execution slice"
+        ))),
+    }
 }
 
 fn detect_build_definition(
@@ -298,27 +385,34 @@ fn push_dependency_family(
     entries: &[DependencyEntry],
 ) {
     for entry in entries {
-        match entry {
-            DependencyEntry::Constraint(value) => dependencies.push(PackageDependency {
+        match &entry.body {
+            DependencyBody::Constraint(value) => dependencies.push(PackageDependency {
                 dependency_name: dependency_name_from_constraint(value),
                 dependency_kind: dependency_kind.to_owned(),
-                raw_expr: value.clone(),
+                raw_expr: render_dependency_expr(value, entry),
                 is_weak,
                 provider_group: None,
             }),
-            DependencyEntry::AnyOf(providers) => {
+            DependencyBody::AnyOf(providers) => {
                 let provider_group = providers.join(" | ");
                 for provider in providers {
                     dependencies.push(PackageDependency {
                         dependency_name: dependency_name_from_constraint(provider),
                         dependency_kind: dependency_kind.to_owned(),
-                        raw_expr: format!("any({provider_group})"),
+                        raw_expr: render_dependency_expr(&format!("any({provider_group})"), entry),
                         is_weak,
                         provider_group: Some(provider_group.clone()),
                     });
                 }
             }
         }
+    }
+}
+
+fn render_dependency_expr(body_expr: &str, entry: &DependencyEntry) -> String {
+    match entry.when.as_ref() {
+        Some(predicate) => format!("{body_expr} when [{}]", predicate.raw),
+        None => body_expr.to_owned(),
     }
 }
 

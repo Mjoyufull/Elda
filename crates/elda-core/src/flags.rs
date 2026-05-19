@@ -3,8 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use sha2::{Digest, Sha256};
 
 use crate::app::{AppContext, ParsedInstallRequest};
+use crate::config::FlagsConfig;
 use crate::error::CoreError;
 use elda_recipe::{LuaValue, PackageDefinition};
+use elda_types::NamedConstraint;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedFlagState {
@@ -16,8 +18,42 @@ pub(crate) struct ResolvedFlagState {
     pub(crate) package_flags: BTreeMap<String, bool>,
     pub(crate) cli_flags: BTreeMap<String, bool>,
     pub(crate) effective_flags: BTreeMap<String, bool>,
+    pub(crate) descriptions: BTreeMap<String, String>,
+    pub(crate) cardinality_groups: Vec<CardinalityGroup>,
+    pub(crate) package_flag_layers: Vec<PackageFlagLayer>,
     pub(crate) variant_id: String,
     pub(crate) customized: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CardinalityGroup {
+    pub(crate) kind: CardinalityKind,
+    pub(crate) name: String,
+    pub(crate) members: Vec<String>,
+    pub(crate) selected: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CardinalityKind {
+    OneOf,
+    AtMostOne,
+    AnyOf,
+}
+
+impl CardinalityKind {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            CardinalityKind::OneOf => "one-of",
+            CardinalityKind::AtMostOne => "at-most-one",
+            CardinalityKind::AnyOf => "any-of",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PackageFlagLayer {
+    pub(crate) source: String,
+    pub(crate) flags: BTreeMap<String, bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +62,10 @@ struct PackageFlagPolicy {
     defaults: BTreeMap<String, bool>,
     implies: BTreeMap<String, Vec<String>>,
     conflicts: BTreeMap<String, Vec<String>>,
+    descriptions: BTreeMap<String, String>,
+    one_of: BTreeMap<String, Vec<String>>,
+    at_most_one: BTreeMap<String, Vec<String>>,
+    any_of: BTreeMap<String, Vec<String>>,
 }
 
 impl AppContext {
@@ -39,18 +79,19 @@ impl AppContext {
         let global_flags = self.config.flags.global.clone();
         let profile_flags =
             merge_profile_flags(&self.config.flags.profile, &profile.active_profiles);
-        let package_flags = self
-            .config
-            .flags
-            .package
-            .get(&package.name)
-            .cloned()
-            .unwrap_or_default();
+        let package_flag_layers = collect_package_flag_layers(&self.config.flags, package);
+        let package_flags = merge_layered_flags(&package_flag_layers);
         let cli_flags = request.cli_flag_overrides.clone();
 
         validate_flag_names(&policy.allowed, "global flag", &global_flags)?;
         validate_flag_names(&policy.allowed, "profile flag", &profile_flags)?;
-        validate_flag_names(&policy.allowed, "package flag", &package_flags)?;
+        for layer in &package_flag_layers {
+            validate_flag_names(
+                &policy.allowed,
+                &format!("package flag (`{}`)", layer.source),
+                &layer.flags,
+            )?;
+        }
         validate_flag_names(&policy.allowed, "CLI flag", &cli_flags)?;
 
         let mut effective_flags = normalized_flag_map(&policy.allowed, &policy.defaults);
@@ -60,9 +101,15 @@ impl AppContext {
         apply_flag_overrides(&mut effective_flags, &cli_flags);
         apply_implied_flags(&policy, &mut effective_flags)?;
         validate_flag_conflicts(package, &policy, &effective_flags)?;
+        let cardinality_groups = evaluate_flag_cardinality(package, &policy, &effective_flags)?;
 
         let default_flags = normalized_flag_map(&policy.allowed, &policy.defaults);
-        let variant_id = variant_id_for_flags(&effective_flags);
+        let customized = effective_flags != default_flags;
+        let variant_id = if customized {
+            variant_id_for_flags(&effective_flags)
+        } else {
+            "default".to_owned()
+        };
 
         Ok(ResolvedFlagState {
             active_profiles: profile.active_profiles,
@@ -73,8 +120,11 @@ impl AppContext {
             package_flags,
             cli_flags,
             effective_flags: effective_flags.clone(),
+            descriptions: policy.descriptions,
+            cardinality_groups,
+            package_flag_layers,
             variant_id,
-            customized: effective_flags != default_flags,
+            customized,
         })
     }
 }
@@ -122,17 +172,225 @@ impl PackageFlagPolicy {
         let implies = parse_string_list_table(package.flags_implies.as_ref(), "flags_implies")?;
         let conflicts =
             parse_string_list_table(package.flags_conflicts.as_ref(), "flags_conflicts")?;
+        let descriptions =
+            parse_string_table(package.flags_descriptions.as_ref(), "flags_descriptions")?;
+        let one_of = parse_string_list_table(
+            package.flags_required_one_of.as_ref(),
+            "flags_required_one_of",
+        )?;
+        let at_most_one = parse_string_list_table(
+            package.flags_required_at_most_one.as_ref(),
+            "flags_required_at_most_one",
+        )?;
+        let any_of = parse_string_list_table(
+            package.flags_required_any_of.as_ref(),
+            "flags_required_any_of",
+        )?;
 
         validate_referenced_flags(&allowed, "flags_implies", &implies)?;
         validate_referenced_flags(&allowed, "flags_conflicts", &conflicts)?;
+        validate_cardinality_members(&allowed, "flags_required_one_of", &one_of)?;
+        validate_cardinality_members(&allowed, "flags_required_at_most_one", &at_most_one)?;
+        validate_cardinality_members(&allowed, "flags_required_any_of", &any_of)?;
+        for flag in descriptions.keys() {
+            if !allowed.contains(flag) {
+                return Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
+                    format!("flags_descriptions.{flag} references an undeclared flag"),
+                )));
+            }
+        }
 
         Ok(Self {
             allowed,
             defaults,
             implies,
             conflicts,
+            descriptions,
+            one_of,
+            at_most_one,
+            any_of,
         })
     }
+}
+
+fn parse_string_table(
+    value: Option<&LuaValue>,
+    field: &str,
+) -> Result<BTreeMap<String, String>, CoreError> {
+    let Some(LuaValue::Table(table)) = value else {
+        return Ok(BTreeMap::new());
+    };
+
+    let mut parsed = BTreeMap::new();
+    for (name, value) in table {
+        let LuaValue::String(text) = value else {
+            return Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
+                format!("{field}.{name} must be a string"),
+            )));
+        };
+        parsed.insert(name.clone(), text.clone());
+    }
+
+    Ok(parsed)
+}
+
+fn validate_cardinality_members(
+    allowed: &BTreeSet<String>,
+    field: &str,
+    table: &BTreeMap<String, Vec<String>>,
+) -> Result<(), CoreError> {
+    for (group, members) in table {
+        if members.len() < 2 {
+            return Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
+                format!("{field}.{group} must list at least two flag names"),
+            )));
+        }
+        for member in members {
+            if !allowed.contains(member) {
+                return Err(CoreError::Recipe(elda_recipe::RecipeError::InvalidInput(
+                    format!("{field}.{group} references undeclared flag `{member}`"),
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn evaluate_flag_cardinality(
+    package: &PackageDefinition,
+    policy: &PackageFlagPolicy,
+    effective: &BTreeMap<String, bool>,
+) -> Result<Vec<CardinalityGroup>, CoreError> {
+    let mut groups = Vec::new();
+
+    for (name, members) in &policy.one_of {
+        let selected = members
+            .iter()
+            .filter(|flag| effective.get(*flag).copied().unwrap_or(false))
+            .cloned()
+            .collect::<Vec<_>>();
+        if selected.len() != 1 {
+            return Err(CoreError::Operator(format!(
+                "package `{}` flag group `{name}` requires exactly one of: {} (selected: {})",
+                package.name,
+                members.join(", "),
+                fmt_selected(&selected),
+            )));
+        }
+        groups.push(CardinalityGroup {
+            kind: CardinalityKind::OneOf,
+            name: name.clone(),
+            members: members.clone(),
+            selected,
+        });
+    }
+
+    for (name, members) in &policy.at_most_one {
+        let selected = members
+            .iter()
+            .filter(|flag| effective.get(*flag).copied().unwrap_or(false))
+            .cloned()
+            .collect::<Vec<_>>();
+        if selected.len() > 1 {
+            return Err(CoreError::Operator(format!(
+                "package `{}` flag group `{name}` allows at most one of: {} (selected: {})",
+                package.name,
+                members.join(", "),
+                fmt_selected(&selected),
+            )));
+        }
+        groups.push(CardinalityGroup {
+            kind: CardinalityKind::AtMostOne,
+            name: name.clone(),
+            members: members.clone(),
+            selected,
+        });
+    }
+
+    for (name, members) in &policy.any_of {
+        let selected = members
+            .iter()
+            .filter(|flag| effective.get(*flag).copied().unwrap_or(false))
+            .cloned()
+            .collect::<Vec<_>>();
+        if selected.is_empty() {
+            return Err(CoreError::Operator(format!(
+                "package `{}` flag group `{name}` requires at least one of: {}",
+                package.name,
+                members.join(", "),
+            )));
+        }
+        groups.push(CardinalityGroup {
+            kind: CardinalityKind::AnyOf,
+            name: name.clone(),
+            members: members.clone(),
+            selected,
+        });
+    }
+
+    Ok(groups)
+}
+
+fn fmt_selected(selected: &[String]) -> String {
+    if selected.is_empty() {
+        "none".to_owned()
+    } else {
+        selected.join(", ")
+    }
+}
+
+fn collect_package_flag_layers(
+    config: &FlagsConfig,
+    package: &PackageDefinition,
+) -> Vec<PackageFlagLayer> {
+    let mut layers = Vec::new();
+
+    let mut keys: Vec<&String> = config.package.keys().collect();
+    keys.sort();
+    let mut atom_layers = Vec::new();
+    for key in keys {
+        let flags = config.package.get(key).cloned().unwrap_or_default();
+        if flags.is_empty() {
+            continue;
+        }
+        if key == &package.name {
+            layers.push(PackageFlagLayer {
+                source: package.name.clone(),
+                flags,
+            });
+            continue;
+        }
+        let Ok(constraint) = NamedConstraint::parse_dependency(key) else {
+            continue;
+        };
+        if constraint.name != package.name {
+            continue;
+        }
+        let actual = elda_types::ConstraintVersion::from_parts(
+            package.epoch,
+            package.version.clone(),
+            Some(package.rel),
+        );
+        if constraint.matches_version(&actual) {
+            atom_layers.push(PackageFlagLayer {
+                source: key.clone(),
+                flags,
+            });
+        }
+    }
+
+    layers.extend(atom_layers);
+    layers
+}
+
+fn merge_layered_flags(layers: &[PackageFlagLayer]) -> BTreeMap<String, bool> {
+    let mut merged = BTreeMap::new();
+    for layer in layers {
+        for (flag, enabled) in &layer.flags {
+            merged.insert(flag.clone(), *enabled);
+        }
+    }
+    merged
 }
 
 fn parse_allowed_flags(

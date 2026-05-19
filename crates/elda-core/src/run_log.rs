@@ -279,11 +279,9 @@ fn root_relative_path(root_dir: &Path, configured_dir: &str) -> PathBuf {
 
 fn user_config_home() -> Option<PathBuf> {
     if geteuid().is_root() {
-        if let Some(uid) = env::var_os("SUDO_UID").and_then(|value| {
-            value
-                .to_str()
-                .and_then(|text| text.parse::<u32>().ok())
-        }) && let Some(home) = home_dir_for_uid(uid)
+        if let Some(uid) = env::var_os("SUDO_UID")
+            .and_then(|value| value.to_str().and_then(|text| text.parse::<u32>().ok()))
+            && let Some(home) = home_dir_for_uid(uid)
         {
             return Some(home.join(".config"));
         }
@@ -359,7 +357,7 @@ mod tests {
     use crate::config::Config;
     use crate::{CommandRequest, OutputMode};
 
-    use super::{command_slug, resolve_log_dir, session_log_path, CommandLogSession};
+    use super::{CommandLogSession, command_slug, resolve_log_dir, session_log_path};
 
     #[test]
     fn resolve_log_dir_uses_root_relative_path_for_isolated_roots() {

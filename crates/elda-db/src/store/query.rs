@@ -162,6 +162,19 @@ impl Database {
         )
     }
 
+    pub fn search_package_files(&self, query: &str) -> Result<Vec<PackageFileRecord>, DbError> {
+        let pattern = format!("%{query}%");
+        self.query_file_records(
+            "
+            SELECT pkgname, arch, path, path_kind, sha256, size, mode, link_target, is_conffile
+            FROM package_files
+            WHERE path LIKE ?
+            ORDER BY path ASC, pkgname ASC
+            ",
+            &pattern,
+        )
+    }
+
     pub fn path_owners(&self, path: &str) -> Result<Vec<PackageFileRecord>, DbError> {
         self.query_file_records(
             "

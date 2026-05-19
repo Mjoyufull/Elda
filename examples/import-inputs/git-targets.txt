@@ -1,0 +1,13 @@
+# Plain `<git-url> [ref]` list consumed by `elda i` / `elda a` when piped or
+# splatted via `xargs`. Each non-comment line is one target.
+#
+#   elda i $(grep -v '^#' git-targets.txt)
+#
+# Lines may carry an optional second column with a tag, branch, or revision.
+# Lines without a ref take the configured `[defaults].origin_style` resolution
+# (typically the latest semver tag).
+
+https://github.com/sharkdp/fd                       v10.2.0
+https://github.com/BurntSushi/ripgrep               14.1.1
+https://github.com/yt-dlp/yt-dlp                    2026.04.01
+file:///srv/git/example-internal-tool               main

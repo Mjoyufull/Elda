@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use elda_recipe::{RecipeDocument, ScalarValue};
+use elda_recipe::{RecipeDocument, ScalarValue, SourceDefinition};
 
 use crate::error::BuildError;
 use crate::process::run_command;
@@ -17,16 +17,31 @@ pub fn checkout_git_source(
     recipe: &RecipeDocument,
     work_root: &Path,
     offline: bool,
+    allowed_protocols: &[String],
 ) -> Result<SourceCheckout, BuildError> {
-    let source = &recipe.package.source;
-    if source.kind != "git" {
+    if recipe.package.source.kind != "git" {
         return Err(BuildError::Unsupported(format!(
             "source.kind `{}` is not implemented by the current build slice",
-            source.kind
+            recipe.package.source.kind
         )));
     }
 
+    checkout_source(
+        &recipe.package.source,
+        work_root,
+        offline,
+        allowed_protocols,
+    )
+}
+
+pub fn checkout_source(
+    source: &SourceDefinition,
+    work_root: &Path,
+    offline: bool,
+    allowed_protocols: &[String],
+) -> Result<SourceCheckout, BuildError> {
     let url = string_field(source, "url")?;
+    ensure_git_protocol_allowed(url, allowed_protocols)?;
     if offline && !git_source_is_local(url) {
         return Err(BuildError::Unsupported(format!(
             "offline mode cannot fetch git source `{url}`"
@@ -66,6 +81,50 @@ pub fn checkout_git_source(
     })
 }
 
+pub fn ensure_git_protocol_allowed(
+    location: &str,
+    allowed_protocols: &[String],
+) -> Result<(), BuildError> {
+    let protocol = classify_git_protocol(location);
+    if allowed_protocols
+        .iter()
+        .any(|allowed| allowed.eq_ignore_ascii_case(protocol))
+    {
+        return Ok(());
+    }
+
+    Err(BuildError::Unsupported(format!(
+        "git source `{location}` uses `{protocol}` transport, which is not allowed by [git].allowed_protocols"
+    )))
+}
+
+fn classify_git_protocol(location: &str) -> &'static str {
+    if location.starts_with("file://") || Path::new(location).exists() {
+        return "file";
+    }
+    if location.starts_with("https://") {
+        return "https";
+    }
+    if location.starts_with("http://") {
+        return "http";
+    }
+    if location.starts_with("ssh://") || looks_like_scp_git_url(location) {
+        return "ssh";
+    }
+    if location.starts_with("git://") {
+        return "git";
+    }
+
+    "unknown"
+}
+
+fn looks_like_scp_git_url(location: &str) -> bool {
+    let Some((user_host, path)) = location.split_once(':') else {
+        return false;
+    };
+    !user_host.contains('/') && user_host.contains('@') && !path.is_empty()
+}
+
 fn git_source_is_local(url: &str) -> bool {
     if url.starts_with("file://") {
         return true;
@@ -74,19 +133,42 @@ fn git_source_is_local(url: &str) -> bool {
     Path::new(url).exists()
 }
 
-fn string_field<'a>(
-    source: &'a elda_recipe::SourceDefinition,
-    key: &str,
-) -> Result<&'a str, BuildError> {
+#[cfg(test)]
+mod tests {
+    use super::ensure_git_protocol_allowed;
+
+    fn default_allowed() -> Vec<String> {
+        vec!["https".to_owned(), "ssh".to_owned(), "file".to_owned()]
+    }
+
+    #[test]
+    fn protocol_policy_allows_default_safe_git_transports() {
+        let allowed = default_allowed();
+
+        ensure_git_protocol_allowed("https://example.invalid/repo.git", &allowed)
+            .expect("https should be allowed");
+        ensure_git_protocol_allowed("git@example.invalid:repo.git", &allowed)
+            .expect("ssh scp-like syntax should be allowed");
+        ensure_git_protocol_allowed("file:///tmp/repo.git", &allowed)
+            .expect("file URLs should be allowed");
+    }
+
+    #[test]
+    fn protocol_policy_rejects_insecure_git_transports_by_default() {
+        let allowed = default_allowed();
+
+        assert!(ensure_git_protocol_allowed("http://example.invalid/repo.git", &allowed).is_err());
+        assert!(ensure_git_protocol_allowed("git://example.invalid/repo.git", &allowed).is_err());
+    }
+}
+
+fn string_field<'a>(source: &'a SourceDefinition, key: &str) -> Result<&'a str, BuildError> {
     string_field_optional(source, key).ok_or_else(|| {
         BuildError::Invalid(format!("source.kind `{}` is missing `{key}`", source.kind))
     })
 }
 
-fn string_field_optional<'a>(
-    source: &'a elda_recipe::SourceDefinition,
-    key: &str,
-) -> Option<&'a str> {
+fn string_field_optional<'a>(source: &'a SourceDefinition, key: &str) -> Option<&'a str> {
     match source.fields.get(key) {
         Some(ScalarValue::String(value)) => Some(value.as_str()),
         _ => None,

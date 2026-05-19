@@ -4,6 +4,7 @@ use serde_json::json;
 
 use crate::app::{AppContext, ParsedInstallRequest};
 use crate::error::CoreError;
+use crate::flags::parse_cli_flag_list;
 use crate::{CommandReport, CommandRequest, ExitStatus};
 
 impl AppContext {
@@ -12,11 +13,10 @@ impl AppContext {
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
-        let package_name = request.operands.first().cloned();
+        let (package_name, install_request) = parse_flag_inspect_operands(&request.operands)?;
 
         let details = if let Some(package_name) = package_name.clone() {
-            let resolved =
-                self.resolve_install_target(&package_name, &ParsedInstallRequest::default())?;
+            let resolved = self.resolve_install_target(&package_name, &install_request)?;
             json!({
                 "package": package_name,
                 "selected_lane": resolved.selected_lane,
@@ -54,10 +54,10 @@ impl AppContext {
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
-        let package_name = request.operands.first().cloned();
+        let (package_name, install_request) = parse_flag_inspect_operands(&request.operands)?;
 
         let details = if let Some(package_name) = package_name {
-            package_flag_diff(self, &package_name)?
+            package_flag_diff(self, &package_name, &install_request)?
         } else {
             installed_flag_drift(self)?
         };
@@ -76,8 +76,53 @@ impl AppContext {
     }
 }
 
-fn package_flag_diff(app: &AppContext, package_name: &str) -> Result<serde_json::Value, CoreError> {
-    let resolved = app.resolve_install_target(package_name, &ParsedInstallRequest::default())?;
+fn parse_flag_inspect_operands(
+    operands: &[String],
+) -> Result<(Option<String>, ParsedInstallRequest), CoreError> {
+    let mut package_name = None;
+    let mut cli_flag_overrides = BTreeMap::new();
+    let mut iter = operands.iter();
+    while let Some(operand) = iter.next() {
+        match operand.as_str() {
+            "--use" => {
+                let value = iter.next().ok_or_else(|| {
+                    CoreError::Operator("`--use` requires one comma-delimited flag list".to_owned())
+                })?;
+                cli_flag_overrides.extend(parse_cli_flag_list(value)?);
+            }
+            _ if operand.starts_with("--use=") => {
+                cli_flag_overrides
+                    .extend(parse_cli_flag_list(operand.trim_start_matches("--use="))?);
+            }
+            _ if operand.starts_with("--") => {
+                return Err(CoreError::Operator(format!(
+                    "flag inspection does not support operand `{operand}`"
+                )));
+            }
+            _ => {
+                if package_name.is_some() {
+                    return Err(CoreError::Operator(
+                        "flag inspection accepts at most one package name".to_owned(),
+                    ));
+                }
+                package_name = Some(operand.clone());
+            }
+        }
+    }
+
+    let install_request = ParsedInstallRequest {
+        cli_flag_overrides,
+        ..ParsedInstallRequest::default()
+    };
+    Ok((package_name, install_request))
+}
+
+fn package_flag_diff(
+    app: &AppContext,
+    package_name: &str,
+    install_request: &ParsedInstallRequest,
+) -> Result<serde_json::Value, CoreError> {
+    let resolved = app.resolve_install_target(package_name, install_request)?;
     let installed = app.database.installed_package(package_name)?;
 
     Ok(json!({
@@ -134,6 +179,28 @@ fn installed_flag_drift(app: &AppContext) -> Result<serde_json::Value, CoreError
 }
 
 fn flag_state_json(state: &crate::flags::ResolvedFlagState) -> serde_json::Value {
+    let cardinality = state
+        .cardinality_groups
+        .iter()
+        .map(|group| {
+            json!({
+                "kind": group.kind.label(),
+                "name": group.name,
+                "members": group.members,
+                "selected": group.selected,
+            })
+        })
+        .collect::<Vec<_>>();
+    let package_flag_layers = state
+        .package_flag_layers
+        .iter()
+        .map(|layer| {
+            json!({
+                "source": layer.source,
+                "flags": layer.flags,
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "active_profiles": state.active_profiles,
         "allowed_flags": state.allowed_flags,
@@ -141,8 +208,11 @@ fn flag_state_json(state: &crate::flags::ResolvedFlagState) -> serde_json::Value
         "global_flags": state.global_flags,
         "profile_flags": state.profile_flags,
         "package_flags": state.package_flags,
+        "package_flag_layers": package_flag_layers,
         "cli_flags": state.cli_flags,
         "effective_flags": state.effective_flags,
+        "descriptions": state.descriptions,
+        "cardinality_groups": cardinality,
         "variant_id": state.variant_id,
         "customized": state.customized,
     })

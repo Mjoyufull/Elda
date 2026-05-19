@@ -17,15 +17,17 @@ pub fn add_vendor_recipe(
     source: &str,
     binary: Option<&str>,
     asset: Option<&str>,
+    replace: bool,
 ) -> Result<VendorRecipeReport, RecipeError> {
     fs::create_dir_all(recipes_dir)?;
     let resolved = resolve_vendor_source(source, binary, asset, package_name)?;
-    write_vendor_recipe(recipes_dir, package_name, resolved)
+    write_vendor_recipe(recipes_dir, package_name, resolved, replace)
 }
 
 pub fn import_vendor_source(
     recipes_dir: &Path,
     input_path: &Path,
+    replace: bool,
 ) -> Result<VendorImportReport, RecipeError> {
     let content = fs::read_to_string(input_path)?;
     let format = input_format(input_path);
@@ -34,7 +36,7 @@ pub fn import_vendor_source(
         let lock = serde_json::from_str::<VendorLockFile>(&content)?;
         lock.entries
             .into_iter()
-            .map(|entry| add_vendor_recipe_from_lock(recipes_dir, entry))
+            .map(|entry| add_vendor_recipe_from_lock(recipes_dir, entry, replace))
             .collect::<Result<Vec<_>, _>>()?
     } else {
         content
@@ -49,6 +51,7 @@ pub fn import_vendor_source(
                     &parsed.source,
                     parsed.binary.as_deref(),
                     parsed.asset.as_deref(),
+                    replace,
                 )
             })
             .collect::<Result<Vec<_>, _>>()?
@@ -98,6 +101,7 @@ pub fn export_vendor_source(
 fn add_vendor_recipe_from_lock(
     recipes_dir: &Path,
     entry: VendorLockEntry,
+    replace: bool,
 ) -> Result<VendorRecipeReport, RecipeError> {
     let resolved = match entry.source_kind.as_str() {
         "url_archive" => ResolvedVendorSource::UrlArchive {
@@ -128,7 +132,7 @@ fn add_vendor_recipe_from_lock(
             )));
         }
     };
-    write_vendor_recipe(recipes_dir, &entry.package_name, resolved)
+    write_vendor_recipe(recipes_dir, &entry.package_name, resolved, replace)
 }
 
 fn lock_entry_from_recipe(
@@ -185,13 +189,18 @@ fn write_vendor_recipe(
     recipes_dir: &Path,
     package_name: &str,
     resolved: ResolvedVendorSource,
+    replace: bool,
 ) -> Result<VendorRecipeReport, RecipeError> {
     let recipe_dir = recipes_dir.join(package_name);
+    let pkg_lua_path = recipe_dir.join("pkg.lua");
+    if pkg_lua_path.exists() && !replace {
+        return Err(RecipeError::InvalidInput(format!(
+            "metadata for `{package_name}` already exists; pass `--replace` to overwrite it"
+        )));
+    }
+
     fs::create_dir_all(&recipe_dir)?;
-    fs::write(
-        recipe_dir.join("pkg.lua"),
-        render_vendor_pkg_lua(package_name, &resolved),
-    )?;
+    fs::write(pkg_lua_path, render_vendor_pkg_lua(package_name, &resolved))?;
 
     Ok(VendorRecipeReport {
         package_name: package_name.to_owned(),

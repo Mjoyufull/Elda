@@ -8,8 +8,8 @@ use crate::{CommandReport, CommandRequest, ExitStatus, OutputMode};
 
 use super::policy::profile_policy_json;
 use super::selection_plan::{
-    profile_anchors_to_remove, profile_selection_plan_json, remove_profile_anchors,
-    validate_profile_apply_plan,
+    ProfileSelectionPlanJsonInput, profile_anchors_to_remove, profile_selection_plan_json,
+    remove_profile_anchors, validate_profile_apply_plan,
 };
 use super::selection_request::{
     ParsedProfileSelectionRequest, ensure_active_profiles_exist, next_foreign_arches,
@@ -141,9 +141,17 @@ impl AppContext {
             targets: active_profiles.clone(),
             hard_lane: None,
             preferred_lane: None,
+            source_option: None,
+            source_strategy: None,
+            git_ref: None,
+            git_source_refs: Default::default(),
+            git_ref_overrides: Default::default(),
             cli_flag_overrides: Default::default(),
+            replace: false,
+            exclude: Vec::new(),
+            provider_choices: Default::default(),
         };
-        let install_plan = self.plan_install_targets(&install_request)?;
+        let install_plan = self.plan_install_targets(&install_request, None)?;
         validate_profile_apply_plan(&install_plan)?;
         self.validate_install_conflicts(&install_plan)?;
         let removed_profile_anchors = profile_anchors_to_remove(
@@ -186,21 +194,21 @@ impl AppContext {
                     desired.active_profiles.len()
                 ),
                 details: Some(json!({
-                    "plan": profile_selection_plan_json(
+                    "plan": profile_selection_plan_json(ProfileSelectionPlanJsonInput {
                         plan_kind,
-                        &current,
-                        &desired,
-                        &declared_policy,
-                        &install_plan,
-                        &removed_profile_anchors,
-                        &provider_reconciliation,
-                        &runtime_view,
-                    ),
+                        current: &current,
+                        desired: &desired,
+                        declared_policy: &declared_policy,
+                        install_plan: &install_plan,
+                        removed_profile_anchors: &removed_profile_anchors,
+                        provider_reconciliation: &provider_reconciliation,
+                        runtime_view: &runtime_view,
+                    }),
                 })),
             });
         }
 
-        let installs = self.apply_install_plan(&install_plan, request.offline, request.output_mode)?;
+        let installs = self.apply_install_plan(&install_plan, &request)?;
         for action in install_plan
             .iter()
             .filter(|action| action.install_reason == "explicit")

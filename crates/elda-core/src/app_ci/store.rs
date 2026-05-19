@@ -48,7 +48,7 @@ pub(super) fn load_submissions(
     workspace: &CiWorkspacePaths,
 ) -> Result<Vec<CiSubmissionRecord>, CoreError> {
     let mut submissions = list_json_records::<CiSubmissionRecord>(&workspace.submissions_dir)?;
-    submissions.sort_by(|left, right| left.updated_at.cmp(&right.updated_at));
+    submissions.sort_by_key(|submission| submission.updated_at);
     Ok(submissions)
 }
 

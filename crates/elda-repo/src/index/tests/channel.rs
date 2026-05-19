@@ -30,6 +30,7 @@ fn sync_filters_remote_snapshot_to_selected_channel() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![super::fixture_key_fingerprint()],
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 100,
         },
     );
@@ -69,6 +70,7 @@ fn offline_sync_rejects_cached_snapshot_for_different_channel() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![super::fixture_key_fingerprint()],
             allow_stale: true,
+            exclude: Vec::new(),
             priority: 100,
         },
     );
@@ -89,6 +91,7 @@ fn offline_sync_rejects_cached_snapshot_for_different_channel() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![super::fixture_key_fingerprint()],
             allow_stale: true,
+            exclude: Vec::new(),
             priority: 100,
         },
     );
@@ -103,6 +106,7 @@ fn offline_sync_rejects_cached_snapshot_for_different_channel() {
             offline: true,
             allow_initial_tofu: false,
             accept_rotated_keys: Vec::new(),
+            ..SyncOptions::default()
         },
     )
     .expect_err("offline sync should reject the wrong cached channel");

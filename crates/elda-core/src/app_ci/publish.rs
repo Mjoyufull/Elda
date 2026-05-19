@@ -30,6 +30,7 @@ pub(crate) fn publish_workspace(
     workspace: &CiWorkspacePaths,
     plan: &PlannedCiWork,
     submission_id: &str,
+    channel: &str,
 ) -> Result<PublishedWorkspace, CoreError> {
     workspace.ensure_exists()?;
 
@@ -48,7 +49,7 @@ pub(crate) fn publish_workspace(
     let mut published = Vec::new();
     for package in &plan.packages {
         let resolved = resolve_publish_target(app, &package.package_name)?;
-        let built = app.build_resolved_target(&resolved, false)?;
+        let built = app.build_resolved_target(&resolved, false, false, None)?;
         let payload_name = built
             .package
             .payload_path
@@ -118,6 +119,7 @@ pub(crate) fn publish_workspace(
         &published,
         submission_id,
         repo_commit.clone(),
+        channel,
     )?;
     let index_signature = sign_bytes(&signing_key, &fs::read(&workspace.index_path)?);
     write_signature_envelope(&signing_key, &workspace.signature_path, &index_signature)?;
@@ -148,7 +150,15 @@ pub(crate) fn resolve_publish_target(
         targets: vec![package_name.to_owned()],
         hard_lane,
         preferred_lane: Some(InstallPreference::Binary),
+        source_option: None,
+        source_strategy: None,
+        git_ref: None,
+        git_source_refs: Default::default(),
+        git_ref_overrides: Default::default(),
         cli_flag_overrides: BTreeMap::new(),
+        replace: false,
+        exclude: Vec::new(),
+        provider_choices: BTreeMap::new(),
     };
 
     app.select_install_lane(
@@ -227,6 +237,7 @@ fn write_index_document(
     published: &[PublishedPackageRecord],
     submission_id: &str,
     repo_commit: Option<String>,
+    channel: &str,
 ) -> Result<(), CoreError> {
     #[derive(Debug, Serialize)]
     struct IndexEnvelope {
@@ -236,7 +247,7 @@ fn write_index_document(
     #[derive(Debug, Serialize)]
     struct IndexRecord {
         pkgname: String,
-        channel: &'static str,
+        channel: String,
         asset_url: String,
         sha256: String,
         size: u64,
@@ -261,7 +272,7 @@ fn write_index_document(
                 .join("pkg.lua");
             Ok(IndexRecord {
                 pkgname: package.pkgname.clone(),
-                channel: "stable",
+                channel: channel.to_owned(),
                 asset_url: format!("file://{}", package.payload_path.display()),
                 sha256: package.payload_sha256.clone(),
                 size: fs::metadata(&package.payload_path)?.len(),

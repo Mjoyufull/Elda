@@ -3,6 +3,41 @@ use clap::{CommandFactory, Parser};
 use super::Cli;
 
 #[test]
+fn no_stream_global_flag_round_trips_into_command_request() {
+    let request = Cli::parse_from(["elda", "--no-stream", "--json", "i", "foot"])
+        .command_request()
+        .expect("request should exist");
+
+    assert!(request.no_stream);
+    assert_eq!(request.command_path, vec!["i"]);
+}
+
+#[test]
+fn doctor_round_trips_into_command_request() {
+    let request = Cli::parse_from(["elda", "doctor"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["doctor"]);
+    assert!(request.operands.is_empty());
+}
+
+#[test]
+fn review_commands_round_trip_into_command_request() {
+    let list = Cli::parse_from(["elda", "review", "ls"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(list.command_path, vec!["review", "ls"]);
+
+    let diff = Cli::parse_from(["elda", "review", "diff", "demo"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(diff.command_path, vec!["review", "diff"]);
+    assert_eq!(diff.operands[0], "demo");
+    assert!(diff.operands.contains(&"--kind".to_owned()));
+}
+
+#[test]
 fn install_preference_flags_round_trip_into_command_request() {
     let cli = Cli::parse_from([
         "elda",
@@ -25,14 +60,29 @@ fn install_preference_flags_round_trip_into_command_request() {
 }
 
 #[test]
-fn upgrade_refresh_weak_deps_flag_round_trips_into_command_request() {
-    let cli = Cli::parse_from(["elda", "u", "mesa", "--refresh-weak-deps"]);
+fn install_exclude_tail_round_trips_into_command_request() {
+    let cli = Cli::parse_from([
+        "elda",
+        "i",
+        "metapkg",
+        "--prefer-source",
+        "--exclude",
+        "firefox",
+        "vlc",
+        "foot",
+    ]);
     let request = cli.command_request().expect("request should exist");
-
-    assert_eq!(request.command_path, vec!["u"]);
+    assert_eq!(request.command_path, vec!["i"]);
     assert_eq!(
         request.operands,
-        vec!["mesa".to_owned(), "--refresh-weak-deps".to_owned()]
+        vec![
+            "metapkg",
+            "--prefer-source",
+            "--exclude",
+            "firefox",
+            "vlc",
+            "foot",
+        ]
     );
 }
 
@@ -154,11 +204,22 @@ fn profile_edit_commands_round_trip_into_command_request() {
 
 #[test]
 fn recipe_add_kind_round_trips_into_command_request() {
-    let cli = Cli::parse_from(["elda", "rc", "add", "yoka-core", "--kind", "profile"]);
+    let cli = Cli::parse_from([
+        "elda",
+        "rc",
+        "add",
+        "yoka-core",
+        "--kind",
+        "profile",
+        "--replace",
+    ]);
     let request = cli.command_request().expect("request should exist");
 
     assert_eq!(request.command_path, vec!["rc", "add"]);
-    assert_eq!(request.operands, vec!["yoka-core", "--kind", "profile"]);
+    assert_eq!(
+        request.operands,
+        vec!["yoka-core", "--kind", "profile", "--replace"]
+    );
 }
 
 #[test]
@@ -173,6 +234,7 @@ fn vendor_add_args_round_trip_into_command_request() {
         "demo",
         "--asset",
         "demo.tar.gz",
+        "--replace",
     ]);
     let request = cli.command_request().expect("request should exist");
 
@@ -186,8 +248,104 @@ fn vendor_add_args_round_trip_into_command_request() {
             "demo",
             "--asset",
             "demo.tar.gz",
+            "--replace",
         ]
     );
+}
+
+#[test]
+fn vendor_import_replace_round_trips_into_command_request() {
+    let request = Cli::parse_from(["elda", "vendor", "import", "vendor.lock", "--replace"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["vendor", "import"]);
+    assert_eq!(request.operands, vec!["vendor.lock", "--replace"]);
+}
+
+#[test]
+fn ls_filter_flags_round_trip_into_command_request() {
+    let request = Cli::parse_from(["elda", "ls", "--explicit", "--source-kind", "git"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["ls"]);
+    assert_eq!(request.operands, vec!["--explicit", "--source-kind", "git"]);
+}
+
+#[test]
+fn files_search_round_trip_into_command_request() {
+    let request = Cli::parse_from(["elda", "files", "search", "bin/demo"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["files", "search"]);
+    assert_eq!(request.operands, vec!["bin/demo"]);
+}
+
+#[test]
+fn trigger_commands_round_trip_into_command_request() {
+    let list = Cli::parse_from(["elda", "trigger", "ls"])
+        .command_request()
+        .expect("request should exist");
+    let info = Cli::parse_from(["elda", "trigger", "info", "ldconfig"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(list.command_path, vec!["trigger", "ls"]);
+    assert!(list.operands.is_empty());
+    assert_eq!(info.command_path, vec!["trigger", "info"]);
+    assert_eq!(info.operands, vec!["ldconfig"]);
+}
+
+#[test]
+fn config_pending_round_trip_into_command_request() {
+    let request = Cli::parse_from(["elda", "config", "pending"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["config", "pending"]);
+    assert!(request.operands.is_empty());
+}
+
+#[test]
+fn rc_show_round_trip_into_command_request() {
+    let request = Cli::parse_from(["elda", "rc", "show", "demo"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["rc", "show"]);
+    assert_eq!(request.operands, vec!["demo"]);
+}
+
+#[test]
+fn rc_diff_round_trip_into_command_request() {
+    let request = Cli::parse_from(["elda", "rc", "diff", "demo"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["rc", "diff"]);
+    assert_eq!(request.operands, vec!["demo"]);
+}
+
+#[test]
+fn rc_publish_ready_round_trip_into_command_request() {
+    let request = Cli::parse_from(["elda", "rc", "publish-ready", "demo"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["rc", "publish-ready"]);
+    assert_eq!(request.operands, vec!["demo"]);
+}
+
+#[test]
+fn sync_targets_round_trip_into_command_request() {
+    let request = Cli::parse_from(["elda", "sync", "main", "testing"])
+        .command_request()
+        .expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["sync"]);
+    assert_eq!(request.operands, vec!["main", "testing"]);
 }
 
 #[test]
@@ -207,7 +365,15 @@ fn remote_add_trust_args_round_trip_into_command_request() {
         "https://example.invalid/index.toml.sig",
         "--metadata-url",
         "https://example.invalid/remote-metadata-v1.toml",
+        "--packages-url",
+        "https://example.invalid/packages.git",
+        "--channel",
+        "stable-7d",
         "--allow-stale",
+        "--replace",
+        "--exclude",
+        "firefox",
+        "vlc",
     ]);
     let request = cli.command_request().expect("request should exist");
 
@@ -226,9 +392,86 @@ fn remote_add_trust_args_round_trip_into_command_request() {
             "https://example.invalid/index.toml.sig",
             "--metadata-url",
             "https://example.invalid/remote-metadata-v1.toml",
+            "--packages-url",
+            "https://example.invalid/packages.git",
+            "--channel",
+            "stable-7d",
             "--allow-stale",
+            "--replace",
+            "--exclude",
+            "firefox",
+            "vlc",
         ]
     );
+}
+
+#[test]
+fn remote_info_and_preview_round_trip_into_command_request() {
+    let info = Cli::parse_from(["elda", "rmt", "info", "heather"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(info.command_path, vec!["rmt", "info"]);
+    assert_eq!(info.operands, vec!["heather"]);
+
+    let preview = Cli::parse_from(["elda", "rmt", "preview", "heather"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(preview.command_path, vec!["rmt", "preview"]);
+    assert_eq!(preview.operands, vec!["heather"]);
+
+    let trust = Cli::parse_from(["elda", "rmt", "trust", "heather"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(trust.command_path, vec!["rmt", "trust"]);
+    assert_eq!(trust.operands, vec!["heather"]);
+}
+
+#[test]
+fn remote_management_commands_round_trip_into_command_request() {
+    let list = Cli::parse_from(["elda", "rmt", "list"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(list.command_path, vec!["rmt", "ls"]);
+    assert!(list.operands.is_empty());
+
+    let enable = Cli::parse_from(["elda", "rmt", "enable", "main"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(enable.command_path, vec!["rmt", "enable"]);
+    assert_eq!(enable.operands, vec!["main"]);
+
+    let disable = Cli::parse_from(["elda", "rmt", "disable", "main"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(disable.command_path, vec!["rmt", "disable"]);
+    assert_eq!(disable.operands, vec!["main"]);
+
+    let priority = Cli::parse_from(["elda", "rmt", "set-priority", "main", "10"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(priority.command_path, vec!["rmt", "set-priority"]);
+    assert_eq!(priority.operands, vec!["main", "10"]);
+}
+
+#[test]
+fn config_merge_commands_round_trip_into_command_request() {
+    let diff = Cli::parse_from(["elda", "config", "diff", "/etc/example.conf"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(diff.command_path, vec!["config", "diff"]);
+    assert_eq!(diff.operands, vec!["/etc/example.conf"]);
+
+    let apply = Cli::parse_from(["elda", "config", "apply", "example"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(apply.command_path, vec!["config", "apply"]);
+    assert_eq!(apply.operands, vec!["example"]);
+
+    let keep = Cli::parse_from(["elda", "config", "keep", "example"])
+        .command_request()
+        .expect("request should exist");
+    assert_eq!(keep.command_path, vec!["config", "keep"]);
+    assert_eq!(keep.operands, vec!["example"]);
 }
 
 #[test]
@@ -257,6 +500,14 @@ fn search_interactive_flag_round_trips_into_command_request() {
 
     assert_eq!(request.command_path, vec!["search"]);
     assert_eq!(request.operands, vec!["fsel", "--interactive"]);
+}
+
+#[test]
+fn appimage_inspect_round_trips_into_command_request() {
+    let cli = Cli::parse_from(["elda", "appimage", "inspect", "/tmp/demo.AppImage"]);
+    let request = cli.command_request().expect("request should exist");
+    assert_eq!(request.command_path, vec!["appimage", "inspect"]);
+    assert_eq!(request.operands, vec!["/tmp/demo.AppImage".to_owned()]);
 }
 
 #[test]
@@ -290,6 +541,7 @@ fn root_help_contains_canonical_namespaces() {
         "downgrade",
         "diff",
         "check",
+        "doctor",
         "recover",
         "rollback",
         "fix-triggers",
@@ -299,6 +551,8 @@ fn root_help_contains_canonical_namespaces() {
         "ci",
         "vendor",
         "forge",
+        "git",
+        "appimage",
         "pf",
         "fl",
         "mg",
@@ -310,6 +564,35 @@ fn root_help_contains_canonical_namespaces() {
     ] {
         assert!(names.contains(&expected));
     }
+}
+
+#[test]
+fn list_alias_routes_to_ls_command_path() {
+    let cli = Cli::parse_from(["elda", "list"]);
+    let request = cli.command_request().expect("request should exist");
+    assert_eq!(request.command_path, vec!["ls"]);
+    assert!(request.operands.is_empty());
+}
+
+#[test]
+fn rc_list_alias_routes_to_rc_ls_command_path() {
+    let cli = Cli::parse_from(["elda", "rc", "list"]);
+    let request = cli.command_request().expect("request should exist");
+    assert_eq!(request.command_path, vec!["rc", "ls"]);
+}
+
+#[test]
+fn cache_list_alias_routes_to_cache_ls_command_path() {
+    let cli = Cli::parse_from(["elda", "cache", "list"]);
+    let request = cli.command_request().expect("request should exist");
+    assert_eq!(request.command_path, vec!["cache", "ls"]);
+}
+
+#[test]
+fn ext_list_alias_routes_to_ext_ls_command_path() {
+    let cli = Cli::parse_from(["elda", "ext", "list"]);
+    let request = cli.command_request().expect("request should exist");
+    assert_eq!(request.command_path, vec!["ext", "ls"]);
 }
 
 #[test]

@@ -27,17 +27,10 @@ pkg = {
   replaces = {},
 
   conffiles = {},
-  sysusers = {},
-  tmpfiles = {},
-  alternatives = {},
-  hooks = {},
-
-  flags_default = {},
-  flags_allowed = {},
-  flags_implies = {},
-  flags_conflicts = {},
-
-  subpackages = {},
+  -- Empty `{}` is treated as a wrong-shape value by the validator. Leave
+  -- optional families (`sysusers`, `tmpfiles`, `alternatives`, `hooks`,
+  -- `provider_assets`, `flags_*`, `subpackages`) off when there is nothing
+  -- to declare.
 
   profile = {
     native_arch = "amd64",

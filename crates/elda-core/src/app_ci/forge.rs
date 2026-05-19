@@ -1,4 +1,5 @@
 use std::fs;
+use std::process::Command;
 
 use serde_json::json;
 
@@ -20,6 +21,9 @@ pub(crate) fn handle_forge_namespace(
         }
         [namespace, command] if namespace == "forge" && command == "browse" => {
             app.handle_forge_browse(request)
+        }
+        [namespace, command] if namespace == "forge" && command == "fork" => {
+            app.handle_forge_fork(request)
         }
         _ => Err(CoreError::Operator("unsupported forge request".to_owned())),
     }
@@ -68,6 +72,65 @@ impl AppContext {
             dry_run: request.dry_run,
             summary: format!("found {} forge match(es).", results.len()),
             details: Some(json!({ "query": query, "results": results })),
+        })
+    }
+
+    fn handle_forge_fork(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
+        let repo = request.operands.first().ok_or_else(|| {
+            CoreError::Operator(
+                "forge fork requires `<owner/repo>` or a forge repository URL".to_owned(),
+            )
+        })?;
+        let repo = repo.clone();
+        if request.dry_run {
+            return Ok(CommandReport {
+                area: "forge",
+                status: "planned",
+                exit_status: ExitStatus::Success,
+                command_path: request.command_path,
+                operands: request.operands,
+                output_mode: request.output_mode,
+                dry_run: true,
+                summary: format!("would fork `{repo}` through the GitHub CLI (`gh repo fork`)."),
+                details: Some(json!({
+                    "repo": repo,
+                    "forked": false,
+                    "tool": "gh",
+                })),
+            });
+        }
+        let output = Command::new("gh")
+            .args(["repo", "fork", &repo, "--json", "nameWithOwner,url"])
+            .output()
+            .map_err(|error| {
+                CoreError::Operator(format!("forge fork requires `gh` on PATH: {error}"))
+            })?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(CoreError::Operator(format!(
+                "gh repo fork failed for `{repo}`: {}",
+                stderr.trim()
+            )));
+        }
+        let details: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap_or_else(
+            |_| json!({ "raw": String::from_utf8_lossy(&output.stdout).to_string() }),
+        );
+
+        Ok(CommandReport {
+            area: "forge",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: false,
+            summary: format!("forked `{repo}`."),
+            details: Some(json!({
+                "repo": repo,
+                "forked": true,
+                "tool": "gh",
+                "result": details,
+            })),
         })
     }
 

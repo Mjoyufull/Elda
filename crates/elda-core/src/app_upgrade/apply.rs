@@ -2,14 +2,18 @@ use serde::Serialize;
 
 use super::*;
 
+use crate::{CommandRequest, OutputMode};
+
 impl AppContext {
     pub(crate) fn apply_upgrade_plan(
         &self,
         actions: &[PlannedUpgradeAction],
-        offline: bool,
+        request: &CommandRequest,
     ) -> Result<Vec<serde_json::Value>, CoreError> {
         let mut upgrades = Vec::new();
         let mutation_policy = self.mutation_policy();
+        let offline = request.offline;
+        let stream_child_output = request.output_mode == OutputMode::Human && !request.no_stream;
 
         for action in actions {
             let decision = self.upgrade_decision(action)?;
@@ -17,7 +21,8 @@ impl AppContext {
                 continue;
             }
 
-            let mut built = self.build_resolved_target(&action.resolved, offline)?;
+            let mut built =
+                self.build_resolved_target(&action.resolved, offline, stream_child_output, None)?;
             built.package.dependencies = Self::planned_dependency_records(&action.dependencies);
             let mut replaced = Vec::new();
             for package_name in &action.replaced_packages {

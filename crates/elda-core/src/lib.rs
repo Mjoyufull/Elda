@@ -1,38 +1,76 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod app_appimage;
 mod app_ci;
+mod app_config_queue;
+mod app_confirm;
+mod app_doctor;
+mod app_ext;
+mod app_failure;
 mod app_flags;
 mod app_fs;
+mod app_git;
+mod app_host;
+mod app_init;
 mod app_install;
+mod app_maint;
+mod app_metadata_add;
+mod app_migration;
 mod app_model;
+mod app_mutation_gate;
 mod app_parse;
 mod app_policy;
 mod app_profile;
+mod app_publish;
 mod app_recipe;
+mod app_recipe_metadata;
+mod app_recipe_show;
 mod app_render;
-mod recipe_catalog;
+mod app_render_appimage;
 mod app_render_ci;
+mod app_render_extended;
+mod app_render_git;
+mod app_render_host;
+mod app_render_install;
+mod app_render_migration;
+mod app_render_misc;
+mod app_render_state;
 mod app_render_support;
+mod app_render_tree;
 mod app_repo;
+mod app_review;
+mod app_review_memory;
 mod app_state;
 mod app_upgrade;
+mod app_vendor;
+mod app_version;
 mod cache_policy;
 mod config;
 mod editor;
 mod error;
 mod flags;
+mod host_config;
 mod privilege;
+mod progress;
+mod progress_live;
+mod progress_live_json;
+mod recipe_catalog;
 mod run_log;
+mod version;
 
 pub use app::run_from_root;
+pub use app_failure::{process_exit_code, report_frontend_failure, report_runtime_failure};
 pub use app_render::render_human;
 pub use config::process_root_dir;
 pub use elda_types::{CommandReport, CrateBoundary, ExitStatus, NamespaceSpec, OutputMode};
 pub use error::CoreError;
 pub use privilege::{PrivilegeProvider, PrivilegeRequest};
+pub use version::{cli_long_version, cli_version_line, version_details};
 
 const ROOT_COMMANDS: &[&str] = &[
+    "a",
+    "add",
     "i",
     "ig",
     "ib",
@@ -47,6 +85,7 @@ const ROOT_COMMANDS: &[&str] = &[
     "reverify",
     "why",
     "rdeps",
+    "versions",
     "pin",
     "unpin",
     "hold",
@@ -55,6 +94,9 @@ const ROOT_COMMANDS: &[&str] = &[
     "downgrade",
     "diff",
     "check",
+    "doctor",
+    "version",
+    "init",
     "recover",
     "rollback",
     "fix-triggers",
@@ -63,14 +105,61 @@ const ROOT_COMMANDS: &[&str] = &[
 
 const CLI_NAMESPACES: &[NamespaceSpec] = &[
     NamespaceSpec::new("(root)", ROOT_COMMANDS),
-    NamespaceSpec::new("rmt", &["add"]),
-    NamespaceSpec::new("rc", &["add", "edit", "check", "ls", "rm"]),
+    NamespaceSpec::new(
+        "rmt",
+        &[
+            "add",
+            "add-from-bundle",
+            "ls",
+            "info",
+            "preview",
+            "trust",
+            "enable",
+            "disable",
+            "set-priority",
+            "rm",
+        ],
+    ),
+    NamespaceSpec::new(
+        "host",
+        &[
+            "scan-tree",
+            "test-tree",
+            "diff-tree",
+            "push-recipes",
+            "client-bundle",
+            "init-ci",
+            "doctor",
+            "status",
+            "link",
+            "print-cache-config",
+        ],
+    ),
+    NamespaceSpec::new(
+        "publish",
+        &["plan", "run", "finalize", "diff", "promote", "sign"],
+    ),
+    NamespaceSpec::new(
+        "rc",
+        &[
+            "add",
+            "show",
+            "diff",
+            "publish-ready",
+            "edit",
+            "check",
+            "ls",
+            "rm",
+        ],
+    ),
     NamespaceSpec::new(
         "ci",
         &["sub", "run", "status", "pr", "retry", "logs", "batch"],
     ),
     NamespaceSpec::new("vendor", &["add", "import", "export"]),
     NamespaceSpec::new("forge", &["search", "browse"]),
+    NamespaceSpec::new("git", &["tags", "releases"]),
+    NamespaceSpec::new("appimage", &["inspect"]),
     NamespaceSpec::new(
         "pf",
         &[
@@ -87,6 +176,10 @@ const CLI_NAMESPACES: &[NamespaceSpec] = &[
     ),
     NamespaceSpec::new("fl", &["check", "diff"]),
     NamespaceSpec::new("mg", &["from", "lock", "unlock"]),
+    NamespaceSpec::new("review", &["ls", "info", "forget", "diff"]),
+    NamespaceSpec::new("maint", &["check", "fix"]),
+    NamespaceSpec::new("trigger", &["ls", "info", "run", "diff"]),
+    NamespaceSpec::new("config", &["pending", "diff", "apply", "keep"]),
     NamespaceSpec::new("state", &["show", "export", "import"]),
     NamespaceSpec::new("cache", &["add", "ls"]),
     NamespaceSpec::new("daemon", &["run", "status", "refresh"]),
@@ -115,7 +208,8 @@ const WORKSPACE_BOUNDARIES: &[CrateBoundary] = &[
         "elda-fetch",
         "HTTP fetch, cache access, and checksum plumbing.",
     ),
-    CrateBoundary::new("elda-git", "Git source fetch and inspection."),
+    elda_git::BOUNDARY,
+    elda_appimage::BOUNDARY,
     CrateBoundary::new(
         "elda-recipe",
         "Recipe loading, validation, and legacy import.",
@@ -150,6 +244,7 @@ pub struct CommandRequest {
     pub offline: bool,
     pub log_level: Option<u8>,
     pub accept_rotated_keys: Vec<String>,
+    pub no_stream: bool,
 }
 
 impl CommandRequest {
@@ -169,6 +264,7 @@ impl CommandRequest {
             offline: false,
             log_level: None,
             accept_rotated_keys: Vec::new(),
+            no_stream: false,
         }
     }
 
@@ -193,6 +289,12 @@ impl CommandRequest {
     #[must_use]
     pub fn with_accepted_rotated_keys(mut self, accept_rotated_keys: Vec<String>) -> Self {
         self.accept_rotated_keys = accept_rotated_keys;
+        self
+    }
+
+    #[must_use]
+    pub fn with_no_stream(mut self, no_stream: bool) -> Self {
+        self.no_stream = no_stream;
         self
     }
 }

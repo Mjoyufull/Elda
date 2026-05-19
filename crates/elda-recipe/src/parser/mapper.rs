@@ -58,6 +58,10 @@ pub(super) fn map_package_definition(
         flags_allowed: get_optional_value(&root, "flags_allowed"),
         flags_implies: get_optional_value(&root, "flags_implies"),
         flags_conflicts: get_optional_value(&root, "flags_conflicts"),
+        flags_descriptions: get_optional_value(&root, "flags_descriptions"),
+        flags_required_one_of: get_optional_value(&root, "flags_required_one_of"),
+        flags_required_at_most_one: get_optional_value(&root, "flags_required_at_most_one"),
+        flags_required_any_of: get_optional_value(&root, "flags_required_any_of"),
         subpackages: get_optional_value(&root, "subpackages"),
         profile: get_optional_table(&root, "profile")?
             .map(map_profile_policy)
@@ -189,6 +193,7 @@ fn map_github_release_asset_definition(
     Ok(GitHubReleaseAssetDefinition {
         asset: get_required_string(&asset, "asset")?,
         sha256: get_required_string(&asset, "sha256")?,
+        signature: get_optional_string(&asset, "signature")?,
         binary: get_optional_string(&asset, "binary")?,
         strip_components: get_optional_integer(&asset, "strip_components")?,
         subdir: get_optional_string(&asset, "subdir")?,

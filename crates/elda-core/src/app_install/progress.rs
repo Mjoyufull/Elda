@@ -1,9 +1,12 @@
+mod interbuild;
+
 use serde_json::json;
 
 use crate::app::PlannedInstallAction;
 use elda_build::BuiltPackage;
 use elda_db::InstallationMode;
 use elda_install::{InstallReport, SnapshotRecord};
+use interbuild::{interbuild_parse_detail, interbuild_translate_detail};
 
 #[derive(Debug, Clone, Copy)]
 enum ProgressStatus {
@@ -132,7 +135,24 @@ fn install_progress_steps(
                 Some(source_build_detail(action)),
             ));
         }
-        "url_archive" | "github_release" => {
+        "nix_flake" | "gentoo_overlay" => {
+            steps.push(progress_step(
+                "parse-interbuild-source",
+                status,
+                Some(interbuild_parse_detail(action)),
+            ));
+            steps.push(progress_step(
+                "translate-interbuild-source",
+                status,
+                Some(interbuild_translate_detail(action)),
+            ));
+            steps.push(progress_step(
+                "build-source",
+                status,
+                Some(source_build_detail(action)),
+            ));
+        }
+        "url_archive" | "github_release" | "release_asset" | "appimage" => {
             steps.push(progress_step(
                 "fetch-binary",
                 status,

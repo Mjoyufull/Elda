@@ -42,9 +42,11 @@ impl AppContext {
             )));
         }
 
-        for reverse in self
+        if let Some(reverse) = self
             .database
             .reverse_dependencies(&replaced.pkgname, false)?
+            .into_iter()
+            .next()
         {
             return Err(CoreError::Operator(format!(
                 "package `{}` cannot replace `{}` because installed package `{}` depends on `{}`",

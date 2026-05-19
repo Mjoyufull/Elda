@@ -148,6 +148,210 @@ pkg = {
 }
 
 #[test]
+fn conditional_dependency_when_predicate_is_parsed() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let recipe_dir = tempdir.path().join("flagged");
+    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+    fs::write(
+        recipe_dir.join("pkg.lua"),
+        r#"
+pkg = {
+  name = "flagged",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "normal",
+  source = { kind = "git", url = "https://example.invalid/flagged.git", branch = "main" },
+  depends = {
+    "openssl>=3",
+    { name = "wayland-protocols", when = "+wayland" },
+    { any = { "gtk3", "gtk4" }, when = "+gtk,-headless" },
+  },
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+  flags_default = { wayland = false, gtk = false, headless = false },
+  flags_allowed = { wayland = true, gtk = true, headless = true },
+}
+"#,
+    )
+    .expect("pkg.lua should be written");
+
+    let report = check_local_recipes(tempdir.path(), None).expect("check should succeed");
+    assert!(
+        report.issues.is_empty(),
+        "expected no issues, got: {:?}",
+        report.issues
+    );
+    let document = report.recipes[0]
+        .document
+        .as_ref()
+        .expect("recipe should parse");
+    let depends = &document.package.depends;
+    assert_eq!(depends.len(), 3);
+    assert!(depends[0].when.is_none());
+    assert_eq!(
+        depends[1]
+            .when
+            .as_ref()
+            .map(|predicate| predicate.atoms.len()),
+        Some(1)
+    );
+    assert_eq!(
+        depends[2]
+            .when
+            .as_ref()
+            .map(|predicate| predicate.atoms.len()),
+        Some(2)
+    );
+}
+
+#[test]
+fn when_predicate_referencing_undeclared_flag_is_reported() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let recipe_dir = tempdir.path().join("missing-flag");
+    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+    fs::write(
+        recipe_dir.join("pkg.lua"),
+        r#"
+pkg = {
+  name = "missing-flag",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "normal",
+  source = { kind = "git", url = "https://example.invalid/missing-flag.git", branch = "main" },
+  depends = { { name = "wayland-protocols", when = "+wayland" } },
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+  flags_allowed = { gtk = true },
+  flags_default = { gtk = false },
+}
+"#,
+    )
+    .expect("pkg.lua should be written");
+
+    let report = check_local_recipes(tempdir.path(), None).expect("check should succeed");
+    assert!(report.issues.iter().any(|issue| {
+        issue.severity == IssueSeverity::Error
+            && issue.message.contains("references undeclared flag")
+    }));
+}
+
+#[test]
+fn flag_descriptions_and_cardinality_tables_parse() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let recipe_dir = tempdir.path().join("flag-meta");
+    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+    fs::write(
+        recipe_dir.join("pkg.lua"),
+        r#"
+pkg = {
+  name = "flag-meta",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "normal",
+  source = { kind = "git", url = "https://example.invalid/flag-meta.git", branch = "main" },
+  depends = {},
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+  flags_default = { wayland = true, x11 = false, intel = false, nvidia = false, radeon = false },
+  flags_allowed = { wayland = true, x11 = true, intel = true, nvidia = true, radeon = true },
+  flags_descriptions = {
+    wayland = "Build the Wayland surface backend",
+    x11 = "Build the legacy X11 surface backend",
+  },
+  flags_required_one_of = { gpu = { "intel", "nvidia", "radeon" } },
+}
+"#,
+    )
+    .expect("pkg.lua should be written");
+
+    let report = check_local_recipes(tempdir.path(), None).expect("check should succeed");
+    assert!(
+        report.issues.is_empty(),
+        "expected clean parse, got: {:?}",
+        report.issues
+    );
+    let document = report.recipes[0]
+        .document
+        .as_ref()
+        .expect("recipe should parse");
+    assert!(document.package.flags_descriptions.is_some());
+    assert!(document.package.flags_required_one_of.is_some());
+}
+
+#[test]
+fn cardinality_table_with_single_member_is_reported() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let recipe_dir = tempdir.path().join("bad-cardinality");
+    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+    fs::write(
+        recipe_dir.join("pkg.lua"),
+        r#"
+pkg = {
+  name = "bad-cardinality",
+  epoch = 0,
+  version = "1.0.0",
+  rel = 1,
+  arch = { "amd64" },
+  kind = "normal",
+  source = { kind = "git", url = "https://example.invalid/bad-cardinality.git", branch = "main" },
+  depends = {},
+  makedepends = {},
+  checkdepends = {},
+  recommends = {},
+  suggests = {},
+  supplements = {},
+  enhances = {},
+  provides = {},
+  conflicts = {},
+  replaces = {},
+  conffiles = {},
+  flags_allowed = { wayland = true },
+  flags_required_one_of = { surface = { "wayland" } },
+}
+"#,
+    )
+    .expect("pkg.lua should be written");
+
+    let report = check_local_recipes(tempdir.path(), None).expect("check should succeed");
+    assert!(report.issues.iter().any(|issue| {
+        issue.severity == IssueSeverity::Error
+            && issue
+                .message
+                .contains("must contain at least two flag names")
+    }));
+}
+
+#[test]
 fn invalid_provide_constraint_is_reported() {
     let tempdir = TempDir::new().expect("tempdir should exist");
     let recipe_dir = tempdir.path().join("broken-provide");
@@ -188,132 +392,5 @@ pkg = {
     assert!(report.issues.iter().any(|issue| {
         issue.severity == IssueSeverity::Error
             && issue.message.contains("provides contains invalid provide")
-    }));
-}
-
-#[test]
-fn github_release_assets_parse_and_validate_for_matching_arches() {
-    let tempdir = TempDir::new().expect("tempdir should exist");
-    let recipe_dir = tempdir.path().join("fsel");
-    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
-    fs::write(
-        recipe_dir.join("pkg.lua"),
-        r#"
-pkg = {
-  name = "fsel",
-  epoch = 0,
-  version = "1.0.0",
-  rel = 1,
-  arch = { "amd64", "arm64" },
-  kind = "normal",
-  source = {
-    kind = "github_release",
-    repo = "Mjoyufull/fsel",
-    tag = "v1.0.0",
-    assets = {
-      amd64 = {
-        asset = "fsel-x86_64-unknown-linux-gnu.tar.xz",
-        sha256 = "abc123",
-        binary = "fsel",
-      },
-      arm64 = {
-        asset = "fsel-aarch64-unknown-linux-gnu.tar.xz",
-        sha256 = "def456",
-        binary = "fsel",
-      },
-    },
-  },
-  depends = {},
-  makedepends = {},
-  checkdepends = {},
-  recommends = {},
-  suggests = {},
-  supplements = {},
-  enhances = {},
-  provides = {},
-  conflicts = {},
-  replaces = {},
-  conffiles = {},
-}
-"#,
-    )
-    .expect("pkg.lua should be written");
-
-    let report = check_local_recipes(tempdir.path(), None).expect("check should succeed");
-
-    assert!(report.issues.is_empty());
-    let document = report.recipes[0]
-        .document
-        .as_ref()
-        .expect("recipe should parse");
-    assert_eq!(
-        document
-            .package
-            .source
-            .github_release_assets
-            .get("amd64")
-            .map(|asset| asset.asset.as_str()),
-        Some("fsel-x86_64-unknown-linux-gnu.tar.xz")
-    );
-    assert_eq!(
-        document
-            .package
-            .source
-            .github_release_assets
-            .get("arm64")
-            .map(|asset| asset.sha256.as_str()),
-        Some("def456")
-    );
-}
-
-#[test]
-fn github_release_assets_require_entries_for_each_package_arch() {
-    let tempdir = TempDir::new().expect("tempdir should exist");
-    let recipe_dir = tempdir.path().join("broken-release");
-    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
-    fs::write(
-        recipe_dir.join("pkg.lua"),
-        r#"
-pkg = {
-  name = "broken-release",
-  epoch = 0,
-  version = "1.0.0",
-  rel = 1,
-  arch = { "amd64", "arm64" },
-  kind = "normal",
-  source = {
-    kind = "github_release",
-    repo = "Mjoyufull/fsel",
-    tag = "v1.0.0",
-    assets = {
-      amd64 = {
-        asset = "fsel-x86_64-unknown-linux-gnu.tar.xz",
-        sha256 = "abc123",
-      },
-    },
-  },
-  depends = {},
-  makedepends = {},
-  checkdepends = {},
-  recommends = {},
-  suggests = {},
-  supplements = {},
-  enhances = {},
-  provides = {},
-  conflicts = {},
-  replaces = {},
-  conffiles = {},
-}
-"#,
-    )
-    .expect("pkg.lua should be written");
-
-    let report = check_local_recipes(tempdir.path(), None).expect("check should succeed");
-
-    assert!(report.issues.iter().any(|issue| {
-        issue.severity == IssueSeverity::Error
-            && issue
-                .message
-                .contains("missing an `assets.arm64` entry for package arch `arm64`")
     }));
 }

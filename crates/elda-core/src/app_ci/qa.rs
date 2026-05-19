@@ -94,7 +94,7 @@ fn handle_qa_build(
     let mut built = Vec::new();
     for package in &plan.packages {
         let resolved = resolve_publish_target(app, &package.package_name)?;
-        let build = app.build_resolved_target(&resolved, false)?;
+        let build = app.build_resolved_target(&resolved, false, false, None)?;
         built.push(json!({
             "pkgname": build.package.package_name,
             "payload_path": build.package.payload_path,
@@ -223,8 +223,8 @@ fn handle_qa_repro(
         .ok_or_else(|| CoreError::Operator("qa repro requires one package name".to_owned()))?;
     let package = package.clone();
     let resolved = resolve_publish_target(app, &package)?;
-    let first = app.build_resolved_target(&resolved, false)?;
-    let second = app.build_resolved_target(&resolved, false)?;
+    let first = app.build_resolved_target(&resolved, false, false, None)?;
+    let second = app.build_resolved_target(&resolved, false, false, None)?;
     let reproducible = first.package.payload_sha256 == second.package.payload_sha256
         && first.package.manifest_hash == second.package.manifest_hash;
 

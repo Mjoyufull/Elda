@@ -67,6 +67,7 @@ fn synced_binary_install_records_repo_binary_source_kind() {
             trust: TrustMode::Pinned,
             trusted_keys: vec![fixture_remote_key_fingerprint()],
             allow_stale: false,
+            exclude: Vec::new(),
             priority: 100,
         },
     )

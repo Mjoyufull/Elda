@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::app::{AppContext, BuiltInstallTarget, ParsedInstallRequest, ResolvedInstallTarget};
@@ -6,16 +7,24 @@ use crate::error::CoreError;
 use crate::flags::parse_cli_flag_list;
 use elda_build::{BuildRequest, build_recipe};
 use elda_recipe::{
-    SOURCE_LANE_BINARY, SOURCE_LANE_SOURCE, SourceDefinition, add_recipe, is_git_like_target,
-    load_recipe,
+    GitRefKind, GitRefRequest, ImportOptions, SOURCE_LANE_BINARY, SOURCE_LANE_SOURCE,
+    SourceDefinition, add_recipe_with_options, is_git_like_target, load_recipe,
 };
 use elda_repo::{RepoError, list_remotes, load_remote_payload_trust, resolve_package};
+
+#[derive(Debug, Clone)]
+pub(crate) enum ResolutionReport {
+    Single(Box<ResolvedInstallTarget>),
+    Bulk(elda_recipe::SnapshotImportReport),
+}
 
 impl AppContext {
     pub(crate) fn build_resolved_target(
         &self,
         resolved: &ResolvedInstallTarget,
         offline: bool,
+        stream_child_output: bool,
+        build_line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
     ) -> Result<BuiltInstallTarget, CoreError> {
         let materialized_recipe = resolved
             .remote_recipe_source
@@ -38,10 +47,14 @@ impl AppContext {
             binary_caches: self.configured_binary_caches()?,
             remote_name: resolved.remote_name.clone(),
             binary_source_verification: resolved.binary_source_verification.clone(),
+            release_trusted_keys: self.configured_release_trusted_keys(),
+            allowed_git_protocols: self.config.git.allowed_protocols.clone(),
             persisted_source_kind: resolved.persisted_source_kind.clone(),
             persisted_source_ref: resolved.source_ref.clone(),
             variant_id: resolved.flag_state.variant_id.clone(),
             ad_hoc_git: resolved.ad_hoc_git,
+            stream_child_output,
+            build_line_hook,
         })?;
 
         Ok(BuiltInstallTarget {
@@ -50,26 +63,44 @@ impl AppContext {
         })
     }
 
-    pub(crate) fn resolve_install_target(
+    pub(crate) fn resolve_any_install_target(
         &self,
         target: &str,
         request: &ParsedInstallRequest,
-    ) -> Result<ResolvedInstallTarget, CoreError> {
+    ) -> Result<ResolutionReport, CoreError> {
         let recipes_dir = &self.database.layout().recipes_dir;
+
+        let requested_target = target;
+        let target = request
+            .git_source_refs
+            .get(requested_target)
+            .map(String::as_str)
+            .unwrap_or(requested_target);
 
         if recipes_dir.join(target).join("pkg.lua").is_file() {
             let recipe = load_recipe(recipes_dir, target)?;
-            return self.select_install_lane(
-                target,
-                recipe,
-                request,
-                Some(recipes_dir.join(target).display().to_string()),
-            );
+            return self
+                .select_install_lane(
+                    target,
+                    recipe,
+                    request,
+                    Some(recipes_dir.join(target).display().to_string()),
+                )
+                .map(Box::new)
+                .map(ResolutionReport::Single);
         }
 
         let path = Path::new(target);
         if path.exists() {
-            let report = add_recipe(recipes_dir, target, None)?;
+            let report = match add_recipe_with_options(
+                recipes_dir,
+                target,
+                None,
+                &self.metadata_import_options(request),
+            )? {
+                elda_recipe::ImportResult::Single(r) => r,
+                elda_recipe::ImportResult::Bulk(b) => return Ok(ResolutionReport::Bulk(b)),
+            };
             let recipe = load_recipe(recipes_dir, &report.recipe_name)?;
             let mut resolved = self.select_install_lane(
                 target,
@@ -78,18 +109,39 @@ impl AppContext {
                 Some(path.display().to_string()),
             )?;
             apply_generated_recipe_report(&mut resolved, &report);
-            return Ok(resolved);
+            return Ok(ResolutionReport::Single(Box::new(resolved)));
         }
 
         if is_git_like_target(target) {
-            let report = add_recipe(recipes_dir, target, None)?;
+            let report = match add_recipe_with_options(
+                recipes_dir,
+                target,
+                None,
+                &self.metadata_import_options(request),
+            )? {
+                elda_recipe::ImportResult::Single(r) => r,
+                elda_recipe::ImportResult::Bulk(b) => return Ok(ResolutionReport::Bulk(b)),
+            };
             let recipe = load_recipe(recipes_dir, &report.recipe_name)?;
             let mut resolved =
                 self.select_install_lane(target, recipe, request, Some(target.to_owned()))?;
-            resolved.ad_hoc_git = true;
-            resolved.persisted_source_kind = "git".to_owned();
+            resolved.ad_hoc_git = resolved.selected_source_kind == "git";
+            apply_ad_hoc_git_ref_override(&mut resolved, request, requested_target, target);
+            if resolved.ad_hoc_git {
+                resolved.source_ref = Some(ad_hoc_git_source_ref(target, request));
+                resolved.ad_hoc_git_moving = resolved
+                    .source_ref
+                    .as_ref()
+                    .map(|value| parse_ad_hoc_git_source_ref(value).moving)
+                    .unwrap_or(false);
+            }
+            resolved.persisted_source_kind = if resolved.selected_source_kind == "git" {
+                "git".to_owned()
+            } else {
+                Self::persisted_source_kind(&resolved.selected_source_kind, None, false)
+            };
             apply_generated_recipe_report(&mut resolved, &report);
-            return Ok(resolved);
+            return Ok(ResolutionReport::Single(Box::new(resolved)));
         }
 
         match resolve_package(&self.repo_snapshot_path(), target) {
@@ -107,13 +159,14 @@ impl AppContext {
                 resolved.remote_name = Some(package.remote_name.clone());
                 if !matches!(
                     resolved.selected_source_kind.as_str(),
-                    "url_archive" | "github_release"
-                ) {
+                    "url_archive" | "github_release" | "release_asset" | "appimage"
+                ) && package.source_kind.as_deref() != Some("interemote")
+                {
                     resolved.remote_recipe_source = Some(self.remote_recipe_source(&package)?);
                 }
                 if matches!(
                     resolved.selected_source_kind.as_str(),
-                    "url_archive" | "github_release"
+                    "url_archive" | "github_release" | "release_asset" | "appimage"
                 ) {
                     let payload_trust = load_remote_payload_trust(
                         &self.repo_snapshot_path(),
@@ -122,7 +175,7 @@ impl AppContext {
                     self.apply_remote_snapshot_metadata(&mut resolved, &package, &payload_trust)?;
                 }
 
-                Ok(resolved)
+                Ok(ResolutionReport::Single(Box::new(resolved)))
             }
             Ok(None) | Err(RepoError::SnapshotMissing) => {
                 let remotes = list_remotes(&self.database.layout().remotes_dir)?;
@@ -140,6 +193,19 @@ impl AppContext {
                 )))
             }
             Err(error) => Err(CoreError::Repo(error)),
+        }
+    }
+
+    pub(crate) fn resolve_install_target(
+        &self,
+        target: &str,
+        request: &ParsedInstallRequest,
+    ) -> Result<ResolvedInstallTarget, CoreError> {
+        match self.resolve_any_install_target(target, request)? {
+            ResolutionReport::Single(resolved) => Ok(*resolved),
+            ResolutionReport::Bulk(_) => Err(CoreError::Operator(format!(
+                "target `{target}` is a bulk metadata snapshot; this command only supports single recipes"
+            ))),
         }
     }
 
@@ -191,9 +257,16 @@ impl AppContext {
             _ => None,
         };
         let mut preferred_lane = None;
-        let mut cli_flag_overrides = std::collections::BTreeMap::new();
+        let mut source_option = None;
+        let mut source_strategy = None;
+        let mut git_ref = None;
+        let git_source_refs = BTreeMap::new();
+        let mut cli_flag_overrides = BTreeMap::new();
+        let mut replace = false;
+        let mut exclude = Vec::new();
+        let mut provider_choices = BTreeMap::new();
         let mut targets = Vec::new();
-        let mut operands = request.operands.iter();
+        let mut operands = request.operands.iter().peekable();
 
         while let Some(operand) = operands.next() {
             match operand.as_str() {
@@ -223,6 +296,36 @@ impl AppContext {
                     }
                     preferred_lane = Some(InstallPreference::Binary);
                 }
+                "--source-option" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--source-option` requires a 1-based index".to_owned())
+                    })?;
+                    source_option = Some(parse_source_option_index(value)?);
+                }
+                "--strategy" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--strategy` requires one strategy name".to_owned())
+                    })?;
+                    source_strategy = Some(parse_source_strategy(value)?);
+                }
+                "--to-branch" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--to-branch` requires one branch name".to_owned())
+                    })?;
+                    set_git_ref(&mut git_ref, GitRefKind::Branch, value)?;
+                }
+                "--to-tag" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--to-tag` requires one tag name".to_owned())
+                    })?;
+                    set_git_ref(&mut git_ref, GitRefKind::Tag, value)?;
+                }
+                "--to-rev" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--to-rev` requires one revision".to_owned())
+                    })?;
+                    set_git_ref(&mut git_ref, GitRefKind::Rev, value)?;
+                }
                 "--use" => {
                     let value = operands.next().ok_or_else(|| {
                         CoreError::Operator(
@@ -231,9 +334,82 @@ impl AppContext {
                     })?;
                     cli_flag_overrides.extend(parse_cli_flag_list(value)?);
                 }
+                "--provider" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator("`--provider` requires `virtual=package`".to_owned())
+                    })?;
+                    let (virtual_name, provider) =
+                        super::provider_choice::parse_provider_assignment(value)?;
+                    provider_choices.insert(virtual_name, provider);
+                }
+                "--replace" => {
+                    replace = true;
+                }
+                "--exclude" => {
+                    let mut count = 0usize;
+                    while let Some(rest) = operands.next() {
+                        if rest.starts_with("--") {
+                            return Err(CoreError::Operator(format!(
+                                "`--exclude` consumes all trailing package names; place other flags before `--exclude` (unexpected `{rest}`)"
+                            )));
+                        }
+                        count += 1;
+                        crate::app_parse::append_exclude_from_piece(rest, &mut exclude);
+                    }
+                    if count == 0 {
+                        return Err(CoreError::Operator(
+                            "`--exclude` requires at least one package name".to_owned(),
+                        ));
+                    }
+                    break;
+                }
+                _ if operand.starts_with("--source-option=") => {
+                    source_option = Some(parse_source_option_index(
+                        operand.trim_start_matches("--source-option="),
+                    )?);
+                }
+                _ if operand.starts_with("--strategy=") => {
+                    source_strategy = Some(parse_source_strategy(
+                        operand.trim_start_matches("--strategy="),
+                    )?);
+                }
+                _ if operand.starts_with("--to-branch=") => {
+                    set_git_ref(
+                        &mut git_ref,
+                        GitRefKind::Branch,
+                        operand.trim_start_matches("--to-branch="),
+                    )?;
+                }
+                _ if operand.starts_with("--to-tag=") => {
+                    set_git_ref(
+                        &mut git_ref,
+                        GitRefKind::Tag,
+                        operand.trim_start_matches("--to-tag="),
+                    )?;
+                }
+                _ if operand.starts_with("--to-rev=") => {
+                    set_git_ref(
+                        &mut git_ref,
+                        GitRefKind::Rev,
+                        operand.trim_start_matches("--to-rev="),
+                    )?;
+                }
                 _ if operand.starts_with("--use=") => {
                     cli_flag_overrides
                         .extend(parse_cli_flag_list(operand.trim_start_matches("--use="))?);
+                }
+                _ if operand.starts_with("--exclude=") => {
+                    crate::app_parse::append_exclude_from_piece(
+                        operand.trim_start_matches("--exclude="),
+                        &mut exclude,
+                    );
+                }
+                _ if operand.starts_with("--provider=") => {
+                    let (virtual_name, provider) =
+                        super::provider_choice::parse_provider_assignment(
+                            operand.trim_start_matches("--provider="),
+                        )?;
+                    provider_choices.insert(virtual_name, provider);
                 }
                 _ => targets.push(operand.clone()),
             }
@@ -243,8 +419,47 @@ impl AppContext {
             targets,
             hard_lane,
             preferred_lane,
+            source_option,
+            source_strategy,
+            git_ref,
+            git_source_refs,
+            git_ref_overrides: BTreeMap::new(),
             cli_flag_overrides,
+            replace,
+            exclude,
+            provider_choices,
         })
+    }
+
+    fn metadata_import_options(&self, request: &ParsedInstallRequest) -> ImportOptions {
+        ImportOptions {
+            strategy_priority: self.metadata_strategy_priority(request),
+            release_binary_format_priority: self
+                .config
+                .metadata
+                .release_binary_format_priority
+                .clone(),
+            selected_source_option: request.source_option,
+            git_ref: self.metadata_git_ref_for_target(request),
+            replace: request.replace,
+            exclude: request.exclude.clone(),
+        }
+    }
+
+    fn metadata_git_ref_for_target(&self, request: &ParsedInstallRequest) -> Option<GitRefRequest> {
+        let target = request.targets.first()?;
+        request
+            .git_ref_overrides
+            .get(target)
+            .cloned()
+            .or_else(|| request.git_ref.clone())
+    }
+
+    fn metadata_strategy_priority(&self, request: &ParsedInstallRequest) -> Vec<String> {
+        if let Some(strategy) = &request.source_strategy {
+            return prioritized_strategy(&self.config.metadata.link_strategy_priority, strategy);
+        }
+        self.config.metadata.link_strategy_priority.clone()
     }
 
     pub(crate) fn dependency_install_request(
@@ -255,7 +470,15 @@ impl AppContext {
             targets: Vec::new(),
             hard_lane: None,
             preferred_lane: request.hard_lane.or(request.preferred_lane),
+            source_option: None,
+            source_strategy: None,
+            git_ref: None,
+            git_source_refs: BTreeMap::new(),
+            git_ref_overrides: BTreeMap::new(),
             cli_flag_overrides: request.cli_flag_overrides.clone(),
+            replace: false,
+            exclude: Vec::new(),
+            provider_choices: request.provider_choices.clone(),
         }
     }
 
@@ -338,8 +561,11 @@ impl AppContext {
             remote_recipe_source: None,
             binary_source_verification: None,
             ad_hoc_git: false,
+            ad_hoc_git_moving: false,
             generated_recipe_name: None,
             generated_recipe_dir: None,
+            source_options: Vec::new(),
+            selected_source_option: None,
         })
     }
 
@@ -352,11 +578,17 @@ impl AppContext {
 
         match selected_source_kind {
             "git" => "local_recipe".to_owned(),
-            "nix_flake" | "gentoo_overlay" => "interbuild".to_owned(),
-            "url_archive" | "github_release" if remote_backed && !customized_variant => {
+            "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template" => {
+                "interbuild".to_owned()
+            }
+            "url_archive" | "github_release" | "release_asset" | "appimage"
+                if remote_backed && !customized_variant =>
+            {
                 "repo_binary".to_owned()
             }
-            "url_archive" | "github_release" => "local_recipe".to_owned(),
+            "url_archive" | "github_release" | "release_asset" | "appimage" => {
+                "local_recipe".to_owned()
+            }
             other => other.to_owned(),
         }
     }
@@ -380,10 +612,164 @@ fn apply_generated_recipe_report(
     resolved: &mut ResolvedInstallTarget,
     report: &elda_recipe::ImportReport,
 ) {
+    resolved.source_options = report.source_options.clone();
+    resolved.selected_source_option = report.selected_source_option.clone();
+
     if !report.generated_pkg_lua && !report.generated_build_lua {
         return;
     }
 
     resolved.generated_recipe_name = Some(report.recipe_name.clone());
     resolved.generated_recipe_dir = Some(report.recipe_dir.clone());
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ParsedAdHocGitSourceRef {
+    pub(crate) target: String,
+    pub(crate) git_ref: Option<GitRefRequest>,
+    pub(crate) moving: bool,
+}
+
+pub(crate) fn parse_ad_hoc_git_source_ref(value: &str) -> ParsedAdHocGitSourceRef {
+    let Some((target, suffix)) = value.rsplit_once('#') else {
+        return ParsedAdHocGitSourceRef {
+            target: value.to_owned(),
+            git_ref: None,
+            moving: true,
+        };
+    };
+    let Some((kind, ref_value)) = suffix.split_once(':') else {
+        return ParsedAdHocGitSourceRef {
+            target: value.to_owned(),
+            git_ref: None,
+            moving: true,
+        };
+    };
+    let kind = match kind {
+        "branch" => GitRefKind::Branch,
+        "tag" => GitRefKind::Tag,
+        "rev" => GitRefKind::Rev,
+        _ => {
+            return ParsedAdHocGitSourceRef {
+                target: value.to_owned(),
+                git_ref: None,
+                moving: true,
+            };
+        }
+    };
+    ParsedAdHocGitSourceRef {
+        target: target.to_owned(),
+        git_ref: Some(GitRefRequest {
+            kind,
+            value: ref_value.to_owned(),
+        }),
+        moving: kind == GitRefKind::Branch,
+    }
+}
+
+pub(crate) fn ad_hoc_git_source_ref(target: &str, request: &ParsedInstallRequest) -> String {
+    let git_ref = request
+        .git_ref_overrides
+        .get(target)
+        .or(request.git_ref.as_ref());
+    let Some(git_ref) = git_ref else {
+        return target.to_owned();
+    };
+    let prefix = match git_ref.kind {
+        GitRefKind::Branch => "branch",
+        GitRefKind::Tag => "tag",
+        GitRefKind::Rev => "rev",
+    };
+    format!("{target}#{prefix}:{}", git_ref.value)
+}
+
+pub(crate) fn set_git_ref(
+    git_ref: &mut Option<GitRefRequest>,
+    kind: GitRefKind,
+    value: &str,
+) -> Result<(), CoreError> {
+    if git_ref.is_some() {
+        return Err(CoreError::Operator(
+            "git ref selectors are mutually exclusive".to_owned(),
+        ));
+    }
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(CoreError::Operator(
+            "git ref selectors do not accept empty values".to_owned(),
+        ));
+    }
+    *git_ref = Some(GitRefRequest {
+        kind,
+        value: value.to_owned(),
+    });
+    Ok(())
+}
+
+fn parse_source_option_index(value: &str) -> Result<usize, CoreError> {
+    let index = value.parse::<usize>().map_err(|_| {
+        CoreError::Operator(format!(
+            "`--source-option` requires a positive integer, got `{value}`"
+        ))
+    })?;
+    if index == 0 {
+        return Err(CoreError::Operator(
+            "`--source-option` uses 1-based indexes".to_owned(),
+        ));
+    }
+    Ok(index)
+}
+
+fn parse_source_strategy(value: &str) -> Result<String, CoreError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(CoreError::Operator(
+            "`--strategy` does not accept an empty value".to_owned(),
+        ));
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn prioritized_strategy(priority: &[String], selected: &str) -> Vec<String> {
+    let mut ordered = vec![selected.to_owned()];
+    ordered.extend(
+        priority
+            .iter()
+            .filter(|item| item.as_str() != selected)
+            .cloned(),
+    );
+    ordered
+}
+
+fn apply_ad_hoc_git_ref_override(
+    resolved: &mut ResolvedInstallTarget,
+    request: &ParsedInstallRequest,
+    requested_target: &str,
+    source_target: &str,
+) {
+    if resolved.selected_source_kind != "git" {
+        return;
+    }
+
+    let git_ref = request
+        .git_ref_overrides
+        .get(requested_target)
+        .or_else(|| request.git_ref_overrides.get(source_target))
+        .or(request.git_ref.as_ref());
+    let Some(git_ref) = git_ref else {
+        return;
+    };
+
+    resolved.recipe.package.source.fields.remove("branch");
+    resolved.recipe.package.source.fields.remove("tag");
+    resolved.recipe.package.source.fields.remove("rev");
+    let key = match git_ref.kind {
+        GitRefKind::Branch => "branch",
+        GitRefKind::Tag => "tag",
+        GitRefKind::Rev => "rev",
+    };
+    resolved.recipe.package.source.fields.insert(
+        key.to_owned(),
+        elda_recipe::ScalarValue::String(git_ref.value.clone()),
+    );
 }

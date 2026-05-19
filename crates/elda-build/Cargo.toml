@@ -8,10 +8,14 @@ license.workspace = true
 [dependencies]
 base64.workspace = true
 ed25519-dalek.workspace = true
+elda-appimage = { path = "../elda-appimage" }
 elda-recipe = { path = "../elda-recipe" }
 elda-types = { path = "../elda-types" }
 flate2 = "1.1.4"
 goblin = "0.10.3"
+liblzma = { version = "0.4.6", default-features = false, features = ["parallel"] }
+rnix = "0.14.0"
+rowan = "0.16.1"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -20,7 +24,6 @@ tempfile.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 ureq = "2.12.1"
-xz2 = "0.1.7"
 zstd.workspace = true
 
 [lints]

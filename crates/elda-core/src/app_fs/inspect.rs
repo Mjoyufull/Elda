@@ -12,7 +12,11 @@ impl AppContext {
         Ok(CommandReport {
             area: "verify",
             status: if failed { "verify-failed" } else { "ok" },
-            exit_status: ExitStatus::Success,
+            exit_status: if failed {
+                ExitStatus::OperatorFailure
+            } else {
+                ExitStatus::Success
+            },
             command_path: request.command_path,
             operands: request.operands,
             output_mode: request.output_mode,
@@ -98,6 +102,40 @@ impl AppContext {
         })
     }
 
+    pub(crate) fn handle_file_search(
+        &self,
+        request: CommandRequest,
+    ) -> Result<CommandReport, CoreError> {
+        self.database.bootstrap()?;
+        let query = request
+            .operands
+            .first()
+            .ok_or_else(|| CoreError::Operator("files search requires one query".to_owned()))?
+            .trim()
+            .to_owned();
+        if query.is_empty() {
+            return Err(CoreError::Operator(
+                "files search does not accept an empty query".to_owned(),
+            ));
+        }
+        let matches = self.database.search_package_files(&query)?;
+
+        Ok(CommandReport {
+            area: "state",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: request.dry_run,
+            summary: format!(
+                "found {} installed managed path(s) matching `{query}`.",
+                matches.len()
+            ),
+            details: Some(json!({ "query": query, "matches": matches })),
+        })
+    }
+
     pub(crate) fn handle_file_owner(
         &self,
         request: CommandRequest,
@@ -132,10 +170,18 @@ impl AppContext {
             targets: Vec::new(),
             hard_lane: None,
             preferred_lane: None,
+            source_option: None,
+            source_strategy: None,
+            git_ref: None,
+            git_source_refs: Default::default(),
+            git_ref_overrides: Default::default(),
             cli_flag_overrides: Default::default(),
+            replace: false,
+            exclude: Vec::new(),
+            provider_choices: Default::default(),
         });
         let resolved = self.resolve_install_target(&package_name, &request_shape)?;
-        let built = self.build_resolved_target(&resolved, request.offline)?;
+        let built = self.build_resolved_target(&resolved, request.offline, false, None)?;
         let installed = self.ensure_installed(&package_name)?;
         let current = self.database.package_files(&package_name)?;
         let current_by_path = current

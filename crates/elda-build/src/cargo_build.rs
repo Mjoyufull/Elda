@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -10,7 +11,7 @@ use serde::Deserialize;
 use elda_recipe::{BuildDefinition, PackageDefinition};
 
 use crate::error::BuildError;
-use crate::process::run_command;
+use crate::process::{command_failure_message, run_command, run_command_streamed};
 
 pub fn detect_cargo_build(
     package: &PackageDefinition,
@@ -32,12 +33,10 @@ pub fn build_with_cargo(
     build: &BuildDefinition,
     source_dir: &Path,
     stage_root: &Path,
+    stream_output: bool,
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<(), BuildError> {
-    let bins = if build.bins.is_empty() {
-        cargo_bins(source_dir)?.unwrap_or_default()
-    } else {
-        build.bins.clone()
-    };
+    let bins = resolve_cargo_bins(build, source_dir)?;
     let runner = cargo_runner(source_dir)?;
 
     let mut build_command = runner.command();
@@ -51,7 +50,16 @@ pub fn build_with_cargo(
     for bin in &bins {
         build_command.args(["--bin", bin]);
     }
-    run_command("cargo", build_command, "building cargo project")?;
+    if stream_output {
+        run_command_streamed(
+            "cargo",
+            build_command,
+            "building cargo project",
+            line_hook.clone(),
+        )?;
+    } else {
+        run_command("cargo", build_command, "building cargo project")?;
+    }
 
     if build.tests {
         let mut test_command = runner.command();
@@ -62,7 +70,11 @@ pub fn build_with_cargo(
             test_command.arg("--features");
             test_command.arg(build.features.join(","));
         }
-        run_command("cargo", test_command, "running cargo tests")?;
+        if stream_output {
+            run_command_streamed("cargo", test_command, "running cargo tests", line_hook)?;
+        } else {
+            run_command("cargo", test_command, "running cargo tests")?;
+        }
     }
 
     let target_dir = target_directory(source_dir)?;
@@ -86,27 +98,128 @@ pub fn build_with_cargo(
     Ok(())
 }
 
-fn cargo_bins(source_dir: &Path) -> Result<Option<Vec<String>>, BuildError> {
-    let metadata = cargo_metadata(source_dir)?;
-    let mut bins = metadata
-        .packages
-        .into_iter()
-        .find(|package| package.manifest_path == source_dir.join("Cargo.toml"))
-        .map(|package| {
-            package
-                .targets
-                .into_iter()
-                .filter(|target| target.kind.iter().any(|kind| kind == "bin"))
-                .map(|target| target.name)
-                .collect::<Vec<_>>()
+fn resolve_cargo_bins(
+    build: &BuildDefinition,
+    source_dir: &Path,
+) -> Result<Vec<String>, BuildError> {
+    let detected = cargo_bins(source_dir)?.unwrap_or_default();
+    if build.bins.is_empty() || detected.is_empty() {
+        return Ok(if build.bins.is_empty() {
+            detected
+        } else {
+            build.bins.clone()
         });
-
-    if let Some(values) = &mut bins {
-        values.sort();
-        values.dedup();
     }
 
-    Ok(bins.filter(|values| !values.is_empty()))
+    build
+        .bins
+        .iter()
+        .map(|requested| resolve_cargo_bin_name(requested, &detected))
+        .collect()
+}
+
+fn resolve_cargo_bin_name(requested: &str, detected: &[String]) -> Result<String, BuildError> {
+    if detected.iter().any(|name| name == requested) {
+        return Ok(requested.to_owned());
+    }
+
+    let matches = detected
+        .iter()
+        .filter(|name| name.eq_ignore_ascii_case(requested))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [name] => Ok((*name).clone()),
+        [] => Err(BuildError::Invalid(format!(
+            "cargo binary target `{requested}` was requested, but Cargo.toml exposes {}",
+            detected.join(", ")
+        ))),
+        _ => Err(BuildError::Invalid(format!(
+            "cargo binary target `{requested}` is ambiguous; Cargo.toml exposes {}",
+            detected.join(", ")
+        ))),
+    }
+}
+
+fn workspace_manifest_path(source_dir: &Path) -> PathBuf {
+    source_dir.join("Cargo.toml")
+}
+
+fn collect_package_bins(package: &CargoPackage) -> Vec<String> {
+    package
+        .targets
+        .iter()
+        .filter(|target| target.kind.iter().any(|kind| kind == "bin"))
+        .map(|target| target.name.clone())
+        .collect()
+}
+
+fn sorted_unique_bins(mut names: Vec<String>) -> Vec<String> {
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn package_is_workspace_root(package: &CargoPackage, source_dir: &Path) -> bool {
+    let expected = workspace_manifest_path(source_dir);
+    package.manifest_path == expected
+        || match (
+            package.manifest_path.canonicalize(),
+            expected.canonicalize(),
+        ) {
+            (Ok(lhs), Ok(rhs)) => lhs == rhs,
+            _ => false,
+        }
+}
+
+fn cargo_bins(source_dir: &Path) -> Result<Option<Vec<String>>, BuildError> {
+    let metadata = cargo_metadata(source_dir)?;
+
+    // Non-virtual workspace / single crate: bins live on the root package.
+    if let Some(root_package) = metadata
+        .packages
+        .iter()
+        .find(|package| package_is_workspace_root(package, source_dir))
+    {
+        let names = collect_package_bins(root_package);
+        if !names.is_empty() {
+            return Ok(Some(sorted_unique_bins(names)));
+        }
+    }
+
+    // Virtual workspace (root Cargo.toml has `[workspace]` only): there is no root package in
+    // `cargo metadata` output (see Cargo book / `workspace_members`). Collect bin targets from
+    // default members — same selection `cargo build` at the workspace root uses.
+    let member_ids: Vec<&str> = if !metadata.workspace_default_members.is_empty() {
+        metadata
+            .workspace_default_members
+            .iter()
+            .map(String::as_str)
+            .collect()
+    } else {
+        metadata
+            .workspace_members
+            .iter()
+            .map(String::as_str)
+            .collect()
+    };
+
+    if member_ids.is_empty() {
+        return Ok(None);
+    }
+
+    let member_set: HashSet<&str> = member_ids.into_iter().collect();
+    let names: Vec<String> = metadata
+        .packages
+        .iter()
+        .filter(|package| member_set.contains(package.id.as_str()))
+        .flat_map(|package| collect_package_bins(package))
+        .collect();
+
+    if names.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(sorted_unique_bins(names)))
 }
 
 fn target_directory(source_dir: &Path) -> Result<PathBuf, BuildError> {
@@ -174,13 +287,7 @@ fn cargo_output(
         } else {
             format!("{context} via `{}`", runner.description)
         },
-        stderr: if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            "command exited with a non-zero status".to_owned()
-        },
+        stderr: command_failure_message("cargo", &stderr, &stdout),
     })
 }
 
@@ -414,10 +521,15 @@ impl CargoRunner {
 struct CargoMetadata {
     packages: Vec<CargoPackage>,
     target_directory: PathBuf,
+    #[serde(default)]
+    workspace_members: Vec<String>,
+    #[serde(default)]
+    workspace_default_members: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct CargoPackage {
+    id: String,
     manifest_path: PathBuf,
     targets: Vec<CargoTarget>,
 }
@@ -530,5 +642,15 @@ mod tests {
         };
 
         assert!(missing_rustup_default(&error));
+    }
+
+    #[test]
+    fn resolves_requested_cargo_bin_case_insensitively() {
+        let detected = vec!["cutty".to_owned()];
+
+        assert_eq!(
+            resolve_cargo_bin_name("CuTTY", &detected).expect("bin should resolve"),
+            "cutty"
+        );
     }
 }

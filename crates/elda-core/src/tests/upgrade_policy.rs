@@ -227,6 +227,22 @@ fn install_replaces_installed_package_from_same_origin() {
     )
     .expect("alpha install should succeed");
 
+    let dry_run = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["beta-tool".to_owned()],
+            OutputMode::Human,
+            true,
+        ),
+    )
+    .expect("replacement install dry run should succeed");
+    let rendered = crate::render_human(&dry_run);
+    assert!(
+        rendered.contains("replaces alpha-tool"),
+        "human install plan should name replaced packages:\n{rendered}"
+    );
+
     run_from_root(
         tempdir.path(),
         CommandRequest::new(

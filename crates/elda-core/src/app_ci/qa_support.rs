@@ -69,7 +69,7 @@ pub(super) fn latest_published_package(
 ) -> Result<Option<PublishedPackageRecord>, CoreError> {
     let workspace = CiWorkspacePaths::new(app.database.layout());
     let mut submissions = list_json_records::<CiSubmissionRecord>(&workspace.submissions_dir)?;
-    submissions.sort_by(|left, right| left.updated_at.cmp(&right.updated_at));
+    submissions.sort_by_key(|submission| submission.updated_at);
 
     Ok(submissions.into_iter().rev().find_map(|submission| {
         submission

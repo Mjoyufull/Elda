@@ -11,6 +11,9 @@ impl AppContext {
         self.database.bootstrap()?;
         let parsed = self.parse_downgrade_request(&request)?;
         let installed = self.ensure_installed(&parsed.package)?;
+        if parsed.git_ref.is_some() {
+            return self.handle_git_source_downgrade(request, parsed, installed);
+        }
         let current_version = PackageVersion::from_str(&installed_version(&installed))
             .map_err(|error| CoreError::Operator(error.to_string()))?;
         let candidate = self.select_downgrade_candidate(&installed, &current_version, &parsed)?;
@@ -72,6 +75,125 @@ impl AppContext {
                 "installed_version": installed_version(&installed),
                 "candidate": candidate,
                 "install": report,
+            })),
+        })
+    }
+
+    fn handle_git_source_downgrade(
+        &self,
+        request: CommandRequest,
+        parsed: crate::app::ParsedDowngradeRequest,
+        installed: elda_db::InstalledPackageDetails,
+    ) -> Result<CommandReport, CoreError> {
+        if installed.source_kind != "git" {
+            return Err(CoreError::Operator(format!(
+                "source-ref downgrade requires an installed ad hoc git package, got `{}` from `{}`",
+                installed.pkgname, installed.source_kind
+            )));
+        }
+        if installed.held {
+            return Err(CoreError::Operator(format!(
+                "cannot downgrade `{}` while it is held; clear the hold first",
+                installed.pkgname
+            )));
+        }
+        if installed.pinned_version.is_some() {
+            return Err(CoreError::Operator(format!(
+                "cannot source-ref downgrade `{}` while it is version-pinned; clear the pin first",
+                installed.pkgname
+            )));
+        }
+        let Some(source_ref) = installed.source_ref.clone() else {
+            return Err(CoreError::Operator(format!(
+                "installed git package `{}` has no persisted source ref",
+                installed.pkgname
+            )));
+        };
+        let Some(git_ref) = parsed.git_ref.clone() else {
+            return Err(CoreError::Operator(
+                "source-ref downgrade requires `--to-tag` or `--to-rev`".to_owned(),
+            ));
+        };
+        if matches!(git_ref.kind, elda_recipe::GitRefKind::Branch) {
+            return Err(CoreError::Operator(
+                "source-ref downgrade accepts `--to-tag` or `--to-rev`, not moving branches"
+                    .to_owned(),
+            ));
+        }
+
+        let parsed_ref = crate::app_install::parse_ad_hoc_git_source_ref(&source_ref);
+        let mut install_request = ParsedInstallRequest {
+            targets: vec![installed.pkgname.clone()],
+            ..Default::default()
+        };
+        install_request
+            .git_source_refs
+            .insert(installed.pkgname.clone(), parsed_ref.target.clone());
+        install_request
+            .git_ref_overrides
+            .insert(installed.pkgname.clone(), git_ref.clone());
+        install_request
+            .git_ref_overrides
+            .insert(parsed_ref.target.clone(), git_ref);
+
+        let mut plan = self.plan_upgrade_targets(
+            std::slice::from_ref(&installed.pkgname),
+            &install_request,
+            false,
+            false,
+            Some(&request),
+        )?;
+        self.populate_ad_hoc_candidate_commits(&mut plan, request.offline)?;
+        self.validate_upgrade_conflicts(&plan)?;
+        self.validate_upgrade_coherence(&plan)?;
+        let actions = plan
+            .iter()
+            .map(Self::upgrade_action_json)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if request.dry_run {
+            return Ok(CommandReport {
+                area: "plan",
+                status: "planned",
+                exit_status: ExitStatus::Success,
+                command_path: request.command_path,
+                operands: request.operands,
+                output_mode: request.output_mode,
+                dry_run: request.dry_run,
+                summary: format!(
+                    "planned source-ref downgrade of `{}` from {}.",
+                    installed.pkgname,
+                    installed_version(&installed),
+                ),
+                details: Some(json!({
+                    "plan": {
+                        "kind": "source-ref-downgrade",
+                        "actions": actions,
+                    },
+                })),
+            });
+        }
+
+        let upgrades = self.apply_upgrade_plan(&plan, &request)?;
+        Ok(CommandReport {
+            area: "downgrade",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: request.dry_run,
+            summary: format!(
+                "source-ref downgraded `{}` from {}.",
+                installed.pkgname,
+                installed_version(&installed),
+            ),
+            details: Some(json!({
+                "kind": "source-ref-downgrade",
+                "package": installed.pkgname,
+                "installed_version": installed_version(&installed),
+                "actions": actions,
+                "upgrades": upgrades,
             })),
         })
     }

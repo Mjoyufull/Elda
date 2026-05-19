@@ -31,10 +31,10 @@ pub use rollback::{recover_pending_transactions, rollback_plan, rollback_state};
 pub use snapshot::SnapshotRecord;
 pub use system_backend::{
     ActivationBackendStatus, BootStatusReport, PendingTriggerRecord, ProfileInitReconciliation,
-    SystemBackendStatus, TriggerRepairReport, load_applied_profile_init,
-    load_installed_system_metadata, load_system_backend_status, pending_triggers,
-    plan_profile_init_reconciliation, reconcile_profile_init, reconcile_provider_assets,
-    repair_triggers,
+    SystemBackendStatus, TriggerDetailReport, TriggerInspectionReport, TriggerRepairReport,
+    inspect_trigger, inspect_triggers, load_applied_profile_init, load_installed_system_metadata,
+    load_system_backend_status, pending_triggers, plan_profile_init_reconciliation,
+    reconcile_profile_init, reconcile_provider_assets, repair_triggers, run_named_trigger,
 };
 pub use verify::{VerifyIssue, VerifyIssueKind, VerifyReport, verify_packages};
 

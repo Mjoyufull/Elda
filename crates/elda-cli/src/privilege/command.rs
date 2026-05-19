@@ -18,6 +18,7 @@ pub fn reexec_with_provider(request: &PrivilegeRequest) -> anyhow::Result<()> {
 
     let resolved = resolve_provider(request, env::var_os("PATH"))?;
     report_provider_fallback(request, &resolved);
+    eprintln!("{}", render_privilege_frame(request, &resolved));
 
     let current_exe = env::current_exe()?;
     let forwarded_args = env::args_os().skip(1).collect::<Vec<_>>();
@@ -32,6 +33,29 @@ pub fn reexec_with_provider(request: &PrivilegeRequest) -> anyhow::Result<()> {
 
     let error = command.exec();
     Err(error.into())
+}
+
+pub(super) fn render_privilege_frame(
+    request: &PrivilegeRequest,
+    resolved: &ResolvedProvider,
+) -> String {
+    let requested = provider_label(request.provider);
+    let selected = provider_label(resolved.effective);
+    let prompt = if request.interactive {
+        "provider may prompt for credentials"
+    } else {
+        "non-interactive; provider must not prompt"
+    };
+    let env_policy = if request.preserve_env {
+        "preserve selected environment"
+    } else {
+        "drop caller environment"
+    };
+
+    format!(
+        "┌─ Privilege Escalation\n├─ Provider\n│  requested: {requested}\n│  selected:  {selected}\n│  binary:    {}\n│\n├─ Policy\n│  prompt:    {prompt}\n│  env:       {env_policy}\n└─ Continuing through `{selected}`",
+        resolved.binary_path.display()
+    )
 }
 
 fn report_provider_fallback(request: &PrivilegeRequest, resolved: &ResolvedProvider) {

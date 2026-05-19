@@ -38,6 +38,29 @@ fn install_keeps_preexisting_conffile_and_writes_eldanew() {
             .expect("eldanew file should be readable"),
         "packaged = v1\n"
     );
+
+    let pending = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["config".to_owned(), "pending".to_owned()],
+            Vec::new(),
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("config pending should succeed");
+    assert!(
+        pending
+            .details
+            .as_ref()
+            .and_then(|details| details.get("config"))
+            .and_then(|config| config.get("pending"))
+            .and_then(|pending| pending.as_array())
+            .is_some_and(|pending| pending.iter().any(|record| {
+                record.get("path").and_then(|path| path.as_str()) == Some("/etc/conf-tool.conf")
+                    && record.get("state").and_then(|state| state.as_str()) == Some("merge-new")
+            }))
+    );
 }
 
 #[test]

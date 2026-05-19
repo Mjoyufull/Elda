@@ -1,3 +1,4 @@
+use serde::Serialize;
 use serde_json::json;
 use std::fs;
 
@@ -10,7 +11,9 @@ use elda_repo::list_remotes;
 impl AppContext {
     pub(crate) fn handle_ls(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
-        let packages = self.database.list_installed_packages()?;
+        let mut packages = self.database.list_installed_packages()?;
+        let filters = parse_list_filters(&request.operands)?;
+        apply_list_filters(&mut packages, &filters);
 
         Ok(CommandReport {
             area: "state",
@@ -21,7 +24,7 @@ impl AppContext {
             output_mode: request.output_mode,
             dry_run: request.dry_run,
             summary: format!("listed {} installed package(s).", packages.len()),
-            details: Some(json!({ "packages": packages })),
+            details: Some(json!({ "packages": packages, "filters": filters })),
         })
     }
 
@@ -84,7 +87,11 @@ impl AppContext {
             } else {
                 "issues"
             },
-            exit_status: ExitStatus::Success,
+            exit_status: if report.issues.is_empty() {
+                ExitStatus::Success
+            } else {
+                ExitStatus::OperatorFailure
+            },
             command_path: request.command_path,
             operands: request.operands,
             output_mode: request.output_mode,
@@ -210,11 +217,19 @@ impl AppContext {
                 targets: document.world.clone(),
                 hard_lane: None,
                 preferred_lane: None,
+                source_option: None,
+                source_strategy: None,
+                git_ref: None,
+                git_source_refs: Default::default(),
+                git_ref_overrides: Default::default(),
                 cli_flag_overrides: Default::default(),
+                replace: false,
+                exclude: Vec::new(),
+                provider_choices: Default::default(),
             };
-            let plan = self.plan_install_targets(&install_request)?;
+            let plan = self.plan_install_targets(&install_request, None)?;
             self.validate_install_conflicts(&plan)?;
-            self.apply_install_plan(&plan, request.offline, request.output_mode)?;
+            self.apply_install_plan(&plan, &request)?;
         }
 
         Ok(CommandReport {
@@ -244,14 +259,18 @@ impl AppContext {
         CommandReport {
             area: "command",
             status: "unsupported",
-            exit_status: ExitStatus::Success,
+            exit_status: ExitStatus::OperatorFailure,
             command_path: request.command_path,
             operands: request.operands,
             output_mode: request.output_mode,
             dry_run: request.dry_run,
             summary: "this command exists in the CLI surface but is not implemented yet."
                 .to_owned(),
-            details: Some(json!({ "implemented": false })),
+            details: Some(json!({
+                "implemented": false,
+                "blocked": true,
+                "action": "use `elda --help` to pick a supported command, or treat this namespace as release-blocked until it has a real handler"
+            })),
         }
     }
 
@@ -271,6 +290,61 @@ impl AppContext {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+struct ListFilters {
+    explicit: bool,
+    deps: bool,
+    held: bool,
+    pinned: bool,
+    source_kind: Option<String>,
+}
+
+fn parse_list_filters(operands: &[String]) -> Result<ListFilters, CoreError> {
+    let mut filters = ListFilters::default();
+    let mut iter = operands.iter();
+    while let Some(operand) = iter.next() {
+        match operand.as_str() {
+            "--explicit" => filters.explicit = true,
+            "--deps" => filters.deps = true,
+            "--held" => filters.held = true,
+            "--pinned" => filters.pinned = true,
+            "--source-kind" => {
+                let value = iter.next().ok_or_else(|| {
+                    CoreError::Operator("ls --source-kind requires a value".to_owned())
+                })?;
+                filters.source_kind = Some(value.clone());
+            }
+            other if other.starts_with("--source-kind=") => {
+                filters.source_kind = Some(other.trim_start_matches("--source-kind=").to_owned());
+            }
+            other => {
+                return Err(CoreError::Operator(format!(
+                    "unexpected ls operand or flag `{other}`"
+                )));
+            }
+        }
+    }
+    if filters.explicit && filters.deps {
+        return Err(CoreError::Operator(
+            "ls --explicit and --deps cannot be combined".to_owned(),
+        ));
+    }
+    Ok(filters)
+}
+
+fn apply_list_filters(packages: &mut Vec<elda_db::InstalledPackageRecord>, filters: &ListFilters) {
+    packages.retain(|package| {
+        (!filters.explicit || package.install_reason == "explicit")
+            && (!filters.deps || package.install_reason == "dep")
+            && (!filters.held || package.held)
+            && (!filters.pinned || package.pinned_version.is_some())
+            && filters
+                .source_kind
+                .as_ref()
+                .is_none_or(|kind| package.source_kind == *kind)
+    });
 }
 
 fn installation_mode_name(mode: elda_db::InstallationMode) -> &'static str {

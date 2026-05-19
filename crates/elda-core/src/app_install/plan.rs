@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::CommandRequest;
 use crate::app::{AppContext, ParsedInstallRequest, PlannedInstallAction};
 use crate::app_parse::dependency_name_from_constraint;
 use crate::error::CoreError;
@@ -8,8 +9,9 @@ impl AppContext {
     pub(crate) fn plan_install_targets(
         &self,
         request: &ParsedInstallRequest,
+        command: Option<&CommandRequest>,
     ) -> Result<Vec<PlannedInstallAction>, CoreError> {
-        let solved = self.solve_install_request(request)?;
+        let solved = self.solve_install_request(request, command)?;
         let explicit_targets = solved.explicit_targets.iter().fold(
             BTreeMap::<String, String>::new(),
             |mut targets, (target, package_name)| {

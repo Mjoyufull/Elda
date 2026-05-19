@@ -25,6 +25,7 @@ fn vendor_add_from_local_binary_writes_url_archive_recipe() {
         &binary.to_string_lossy(),
         None,
         None,
+        false,
     )
     .expect("vendor add should succeed");
     let pkg_lua =
@@ -46,7 +47,7 @@ fn vendor_manifest_import_and_json_export_round_trip() {
         .expect("manifest should be written");
 
     let import_report =
-        import_vendor_source(&recipes_dir, &manifest).expect("vendor import should succeed");
+        import_vendor_source(&recipes_dir, &manifest, false).expect("vendor import should succeed");
     assert_eq!(import_report.packages.len(), 1);
 
     let lock_path = tempdir.path().join("vendor.lock.json");
@@ -118,4 +119,58 @@ fn asset(name: &str) -> GitHubReleaseAsset {
         name: name.to_owned(),
         browser_download_url: format!("https://example.invalid/{name}"),
     }
+}
+
+#[test]
+fn vendor_add_requires_replace_for_existing_metadata() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let recipes_dir = tempdir.path().join("recipes");
+    let recipe_dir = recipes_dir.join("demo-bin");
+    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+    fs::write(recipe_dir.join("pkg.lua"), "pkg = { name = \"kept\" }\n")
+        .expect("existing metadata should be written");
+    let binary = tempdir.path().join("demo-bin");
+    fs::write(&binary, "#!/bin/sh\necho demo\n").expect("binary should be written");
+
+    let error = add_vendor_recipe(
+        &recipes_dir,
+        "demo-bin",
+        &binary.to_string_lossy(),
+        None,
+        None,
+        false,
+    )
+    .expect_err("vendor add should not overwrite metadata without replace");
+
+    assert!(error.to_string().contains("--replace"));
+    assert_eq!(
+        fs::read_to_string(recipe_dir.join("pkg.lua")).expect("pkg.lua should read"),
+        "pkg = { name = \"kept\" }\n"
+    );
+}
+
+#[test]
+fn vendor_add_replace_overwrites_existing_metadata() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let recipes_dir = tempdir.path().join("recipes");
+    let recipe_dir = recipes_dir.join("demo-bin");
+    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+    fs::write(recipe_dir.join("pkg.lua"), "pkg = { name = \"kept\" }\n")
+        .expect("existing metadata should be written");
+    let binary = tempdir.path().join("demo-bin");
+    fs::write(&binary, "#!/bin/sh\necho demo\n").expect("binary should be written");
+
+    add_vendor_recipe(
+        &recipes_dir,
+        "demo-bin",
+        &binary.to_string_lossy(),
+        None,
+        None,
+        true,
+    )
+    .expect("vendor add replace should overwrite metadata");
+
+    let pkg_lua = fs::read_to_string(recipe_dir.join("pkg.lua")).expect("pkg.lua should read");
+    assert!(pkg_lua.contains("kind = \"url_archive\""));
+    assert!(!pkg_lua.contains("kept"));
 }

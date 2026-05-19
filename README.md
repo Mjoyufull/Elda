@@ -1,128 +1,260 @@
+<div align="center">
+
 <img align="center" src="https://raw.githubusercontent.com/Mjoyufull/Elda/refs/heads/dev/assets/eldaasciidark.png#gh-dark-mode-only">
 <img align="center" src="https://raw.githubusercontent.com/Mjoyufull/Elda/refs/heads/dev/assets/eldaascii.png#gh-light-mode-only">
 
-<p align="center"><i>Elda universality in your choices</i></p>
+<p><i>Elda universality in your choices</i></p>
 
-<br><br>
-<br>
-Elda is a Unix-first, Linux-first package manager built to replace the split between "system package manager", "install from git", "vendor binary downloader", "foreign repo bridge", and "migration tool" with one coherent package manager.
+[![language: Rust](https://img.shields.io/badge/language-Rust-red.svg?style=flat-square)](https://www.rust-lang.org/)
+[![repository](https://img.shields.io/badge/repo-Mjoyufull%2FElda-blue?style=flat-square)](https://github.com/Mjoyufull/Elda)
 
-It uses a binary-first, git-capable, CI-native model built around explicit package state, staged payloads, recorded ownership, deterministic verification, and recoverable transactions.
 </div>
 
-## About
+Elda is a Unix-first, Linux-first package manager by Rikona
+([@Mjoyufull](https://github.com/Mjoyufull)). It is built to replace the split
+between a system package manager, direct git installer, vendor binary downloader,
+foreign repository bridge, and migration tool with one coherent package-manager
+state model.
 
-Elda keeps the part people actually like from lightweight git-first tools: install something directly, keep the CLI simple, and do not force a maintainer workflow on every user action.
+Elda uses explicit package metadata, signed remotes, staged payloads, recorded
+ownership, deterministic verification, recoverable transactions, and source or
+binary lanes under one package identity.
 
-The difference is that Elda does not stop at "clone repo, run build script, copy some files." It treats direct git installs, maintained `pkg.lua` recipes, published binary releases, foreign repositories, meta packages, adopted systems, and machine-shape profiles as parts of the same package manager with the same state model.
+## Status
 
-That means:
+Elda is active development software. The current runtime has a real local and
+disposable-root package-manager slice, including source builds, binary lanes,
+remotes, cache lookup, verification, rollback, profiles, bounded interbuilds,
+local CI/forge tooling, and migration/adoption groundwork. It is not yet a final
+live-system replacement release.
 
-- one package identity model
-- one dependency model
-- one install database
-- one manifest and verification model
-- one transaction and rollback story
-- one CLI surface
+For exact behavior and implementation status, read:
 
-## Feature Checklist
-check [checklist](./checklist.md) for the dev checklist
-### Package acquisition
+- [SPEC.md](./SPEC.md) - behavior contract
+- [USAGE.md](./USAGE.md) - operator workflows and examples
+- [phase.md](./phase.md) - implementation ledger and phase status
+- [checklist.md](./checklist.md) - development tracker
+- [eldaforgehosting/](./eldaforgehosting/README.md) - native forge, remote, cache, and publish hosting
 
-- [x] Install maintained packages with `elda i`.
-- [x] Force source or binary lanes with `elda ig`, `elda ib`, `--prefer-source`, and `--prefer-binary`.
-- [x] Keep one package identity even when a package ships both source and binary acquisition lanes.
-- [x] Install directly from git URLs instead of requiring a curated package first.
-- [x] Pull release binaries from `url_archive` and `github_release` sources.
-- [x] Import one-off vendor binaries without turning them into a second-class workflow.
-- [x] Treat packaged binaries, direct git installs, vendor binaries, foreign repos, and adopted packages as one package-manager domain instead of separate tools.
+## Building Elda
 
-### Package definitions
+### What you need
 
-- [x] Use `pkg.lua` as the main package-definition format.
-- [x] Keep `build.lua` optional for the packages that genuinely need imperative logic.
-- [x] Support one maintained definition for both source and binary lanes.
-- [x] Model dependencies, weak dependencies, provides, conflicts, replaces, flags, conffiles, hooks, `sysusers`, `tmpfiles`, and alternatives in package metadata.
-- [x] Support normal packages, meta packages, and profile packages as first-class package kinds.
-- [x] Support split-package output from one staged build.
-- [x] Preserve legacy `pkgit` import as a compatibility lane instead of making it the long-term runtime model.
+| Requirement | Notes |
+| --- | --- |
+| **Rust** | **1.94 or newer** (`rust-version` in the workspace `Cargo.toml`). Install with [rustup](https://rustup.rs/). |
+| **Cargo** | Ships with rustup. |
+| **C toolchain** | `gcc` or `clang`, plus `make`, for native Rust dependency builds (`liblzma`, `zstd`, etc.). |
+| **pkg-config** | Used when linking system libraries for compression crates. |
+| **libzstd** | Development headers for the `zstd` crate (`libzstd-dev`, `zstd` on Arch). |
+| **liblzma** | Development headers for `liblzma` in `elda-build` (`liblzma-dev`, `xz` on Arch). |
+| **git** | Required to clone the repo; also used heavily by the test suite. |
 
-### Build and payload model
+Elda does **not** need CMake, Meson, Go, Zig, Nimble, or other build tools on the **host that compiles Elda**. Those are only needed on machines where you **build packages through Elda** (source-lane recipes).
 
-- [x] Stage every build into a controlled package root instead of copying files from a live checkout.
-- [x] Emit canonical `.pkg.tar.zst` payloads plus manifests, signatures, SBOMs, and attestations.
-- [x] Use declarative common-case build definitions for systems like Cargo, CMake, Meson, Go, Zig, Python, and Make.
-- [x] Keep build isolation explicit through host, isolated, and remote build backends.
-- [x] Run post-stage analysis for manifests, shared-library metadata, split allocation, and verification data.
-- [x] Publish the same payload shape from local builds and CI builds.
+Example distro packages:
 
-### Dependency and solver behavior
+```sh
+# Arch Linux
+sudo pacman -S --needed base-devel git rust pkgconf zstd xz
 
-- [x] Use canonical `epoch:pkgver-pkgrel` ordering.
-- [x] Resolve against synced snapshots instead of guessing from live repos.
-- [x] Treat hard deps, weak deps, provider choice, pinning, and holds as part of one solver model.
-- [x] Expose `why`, `rdeps`, `pin`, `unpin`, `hold`, `unhold`, `downgrade`, and `autoremove` as normal operator tools.
-- [x] Refuse resolver-broken partial upgrades.
-- [x] Keep exact package names, versioned dependencies, virtual provides, and multiarch identities explicit.
+# Debian / Ubuntu
+sudo apt install build-essential git pkg-config libzstd-dev liblzma-dev
+# Then install Rust 1.94+ with rustup if the distro rustc is too old.
+```
 
-### Installed state and safety
+### Build and install the binary
 
-- [x] Record installed state in SQLite instead of using cloned repositories as the database.
-- [x] Track path ownership per package and per manifest entry.
-- [x] Verify files, symlinks, metadata, and conffiles against recorded state.
-- [x] Journal install, remove, upgrade, and repair operations.
-- [x] Support explicit `recover` and backend-aware `rollback`.
-- [x] Handle conffiles deterministically with `*.eldanew` and `*.eldasave` semantics.
-- [x] Keep one global mutation lock so package mutations stay transactional.
-- [x] Fail loudly on unmanaged path collisions and unsafe ownership takeover.
+```sh
+git clone https://github.com/Mjoyufull/Elda
+cd Elda
+cargo build --release
+```
 
-### Machine shape and system management
+Run from the workspace while developing:
 
-- [x] Treat profiles as first-class install targets instead of external setup scripts.
-- [x] Apply base machine shape with `pf apply`.
-- [x] Report active profile anchors, provider families, pending handlers, and activation class with `pf show`.
-- [x] Track world anchors, base packages, dependency packages, and adopted packages explicitly.
-- [x] Export and import desired machine shape with `state show`, `state export`, and `state import`.
-- [x] Support explicit init-provider, multilib, and machine-policy transitions as typed system changes.
-- [x] Keep prefix mode and system mode under the same conceptual package manager.
+```sh
+cargo build
+./target/debug/elda --help
+```
 
-### Remotes, caches, trust, and offline behavior
+Install the binary somewhere on your PATH when you are ready to use it outside
+the checkout:
 
-- [x] Register remotes and caches explicitly instead of hiding them in ad hoc repo lists.
-- [x] Keep metadata remotes separate from payload caches.
-- [x] Sync into verified snapshots with `elda sync`.
-- [x] Support multiple remotes, multiple caches, priorities, and freshness policy.
-- [x] Support pinned keys or explicit TOFU bootstrap for remotes.
-- [x] Prefer caches for payload delivery while keeping metadata authoritative from remotes.
-- [x] Allow offline operation against verified snapshots and cached payloads by policy.
+```sh
+install -Dm0755 target/release/elda ~/.local/bin/elda
+```
 
-### Foreign packages and migration
+## Quick Usage
 
-- [x] Support interbuild frontends such as `nix_flake` and `gentoo_overlay` in git mode.
-- [x] Support interepo adapters that translate foreign repositories into native Elda metadata.
-- [x] Install translated foreign packages through the same resolver and transaction engine as native packages.
-- [x] Adopt whole systems with `mg from <pm>`.
-- [x] Adopt individual packages with `adopt --from <pm> <pkg>`.
-- [x] Preserve provenance for adopted packages instead of pretending they were native from the start.
-- [x] Support coexist, warn, and lock modes for migration away from another package manager.
+```sh
+# Inspect the CLI (see also examples/ and USAGE.md)
+elda --help
+elda i --help
+elda rmt add --help
 
-### CI, forge, and publishing
+# Register a native remote and sync (illustrative URLs and keys—not a real remote)
+elda rmt add yoka-main=https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst \
+  --trust pinned \
+  --trusted-key ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344 \
+  --packages-url https://github.com/Mjoyufull/Elda.git
+elda sync
 
-- [x] Use PR/MR-first submission instead of hidden upload magic.
-- [x] Submit maintained packages with `ci sub` and `ci run`.
-- [x] Model package-definition repos, build DAGs, lock records, and topological build layers explicitly.
-- [x] Publish binaries, manifests, signatures, SBOMs, attestations, and index updates from CI.
-- [x] Default normal installs to the published binary lane when one exists.
-- [x] Keep forge discovery separate from the solver with `forge search` and `forge browse`.
-- [x] Support stack or batch submission for large desktop and platform closures.
+# Search and install
+elda search fsel
+elda i fsel
+elda ig fsel      # force source lane
+elda ib fsel      # force binary lane
 
-### Ops, QA, and extensions
+# Add local metadata without overwriting existing metadata
+elda a https://github.com/Mjoyufull/fsel
+elda a https://github.com/Mjoyufull/fsel --replace
 
-- [x] Expose `check`, `verify`, `reverify`, `fix-triggers`, and `diff` as normal maintenance commands.
-- [x] Expose daemon control with `daemon run`, `daemon status`, and `daemon refresh`.
-- [x] Support QA entrypoints such as `qa lint`, `qa build`, `qa smoke`, `qa stack`, `qa repro`, and `qa diff`.
-- [x] Keep the extension model bounded, explicit, and capability-scoped.
-- [x] Support activation backends, build backends, object analyzers, boot backends, interepo adapters, migration adapters, and provider migrators without letting plugins redefine package-manager semantics.
+# Dynamic interemote: --exclude must come at the END of the flag list; it consumes
+# all trailing package names (spaces or comma-separated tokens).
+elda rmt add heather-overlay=https://github.com/heather7283/heather7283-overlay --exclude firefox vlc
+elda rmt add other-overlay=https://example.invalid/overlay.git --exclude firefox, vlc
+elda rmt preview heather-overlay
+elda sync heather-overlay
+
+# Inspect state and bootstrap health
+elda doctor
+elda ls
+elda info fsel
+elda files fsel
+elda files owner /usr/bin/fsel
+elda verify fsel
+```
+
+For the full operator guide, use [USAGE.md](./USAGE.md). For hosting native indexes, forges, and caches end to end, see [eldaforgehosting/](./eldaforgehosting/README.md).
+
+> [!WARNING]
+> **Documentation examples:** URLs, remote names, signing keys, and third-party repository names used in this repository’s docs are **strictly illustrative** (e.g., example remotes and keys are not real) unless you recognize them as your own infrastructure. Replace them with your real index URLs, `packages_url`, trust material, and cache bases.
+
+> [!TIP]
+> **`examples/`:** The [examples/](./examples/) tree is the **primary** and most important place to learn real `pkg.lua` layouts, profile snippets, import inputs, and annotated `config.toml` fragments. Use it as your primary reference for available features.
+
+## Dependencies
+
+### Workspace crates
+
+The Cargo workspace (`Cargo.toml`) builds these members:
+
+| Crate | Role |
+| --- | --- |
+| `elda-cli` | `elda` binary, CLI parsing, help rendering, privilege re-exec |
+| `elda-core` | Command dispatch, install/upgrade solver, human output, config |
+| `elda-build` | Source/binary fetch, build systems, payload staging |
+| `elda-install` | Transactions, activation, rollback, system backend |
+| `elda-db` | SQLite installed-state database |
+| `elda-recipe` | `pkg.lua` parse/validate/import/format |
+| `elda-repo` | Remote indexes, sync, interemotes, trust |
+| `elda-git` | Tag/release inspection (GitHub, GitLab, Gitea, …) |
+| `elda-appimage` | AppImage inspect and staging helpers |
+| `elda-populate` | Cache seeding / maintained-remote mirroring |
+| `elda-linux` | Linux backend selection and trigger metadata |
+| `elda-types` | Shared types and boundaries |
+| `elda-fetch`, `elda-ext`, `elda-unix` | Reserved boundaries (minimal today) |
+| `xtask` | Internal maintenance tasks |
+
+### Rust libraries (Cargo)
+
+Shared workspace dependencies:
+
+| Crate | Used for |
+| --- | --- |
+| `anyhow` | CLI error context (`elda-cli`) |
+| `clap` | CLI parsing |
+| `serde` / `serde_json` | Reports, manifests, metadata |
+| `toml` | `config.toml`, remote documents |
+| `rusqlite` (bundled SQLite) | Installed-state DB |
+| `pubgrub` | Install/upgrade dependency solver |
+| `rustix` | Filesystem and process helpers |
+| `sha2`, `base64`, `ed25519-dalek` | Checksums and release/index trust |
+| `ureq` | HTTP(S) fetch for remotes and release assets |
+| `zstd`, `tar`, `flate2` | Payload archives and compression |
+| `regex` | Remote/index parsing |
+| `tempfile`, `fs4` | Temp dirs and file locking |
+| `thiserror` | Typed errors |
+| `anstyle`, `spinners` | Terminal styling and live progress |
+
+Additional dependencies outside the workspace table:
+
+| Crate | Crate(s) | Used for |
+| --- | --- | --- |
+| `liblzma` | `elda-build` | `.xz` archive extraction |
+| `goblin` | `elda-build`, `elda-appimage` | ELF / object inspection |
+| `rnix`, `rowan` | `elda-recipe`, `elda-build` | Nix flake parsing (interbuild) |
+| `backhand` | `elda-appimage` | AppImage payload access |
+
+### Host programs (runtime, by feature)
+
+These are **not** required to compile Elda. Install them when you use the matching recipe lane or command.
+
+| Program | When Elda needs it |
+| --- | --- |
+| `git` | Git sources, `packages_url` remotes, interemotes, `elda git *`, CI publish, metadata import |
+| `cargo`, `rustc` | Recipes with `build.system = "cargo"` |
+| `cmake`, `ctest` | CMake recipes |
+| `meson` (and usually **Ninja**, via Meson) | Meson recipes |
+| `make` | Makefile recipes |
+| `go` | Go recipes |
+| `python3` | Python `setup.py` / wheel staging recipes |
+| `zig` | Zig recipes |
+| `nimble` | Nim/Nimble recipes |
+| `bash` | Bounded AUR/XBPS interbuild shell parsing |
+| `gh` | `elda forge fork` (GitHub CLI) |
+| `diff`, `less` (or `$PAGER` / `$ELDA_PAGER`) | Review diffs and `rc edit` |
+| `doas`, `sudo`, `run0`, or `su` | Live host `/usr` mode privilege escalation (one on `PATH`, or configure `[privilege].provider`) |
+| `snapper` | Optional Btrfs snapshot hooks when configured |
+
+Network access is required for `elda sync`, remote binary lanes, and release-asset fetch unless you use `--offline` with a verified local cache/snapshot.
+
+## What Works Today
+
+- `pkg.lua` recipes with source lanes, binary lanes, flags, weak deps, providers,
+  conflicts, replaces, conffiles, hooks, `sysusers`, `tmpfiles`, alternatives,
+  provider assets, meta packages, profile packages, and split package metadata.
+- Source installs from git and local recipes, with build support for Cargo,
+  CMake, Meson, Make, Go, Python, Zig, and Nimble in the current slice.
+- Binary installs from URL archives, GitHub release assets, provider-neutral
+  release assets, GPKG, AppImage, and vendor-generated recipes.
+- Signed native remotes, explicit TOFU/pinned trust, channel-aware sync,
+  source-capable `packages_url` remotes, cache-first payload lookup, offline
+  verified snapshot use, and dynamic Gentoo/XBPS interemotes.
+- Solver-backed install, remove, upgrade, downgrade, pin, hold, weak dependency,
+  provider, conflict, and replacement handling.
+- SQLite installed-state DB, file ownership, manifests, verification, recovery,
+  conffile handling, prefix rollback, and the first disposable `/usr` backend.
+- Profiles and machine shape through `pf`, state export/import, trigger
+  inspection, config queue resolution, and system-provider asset visibility.
+- Local native CI/forge workflows through `ci`, `forge`, `qa`, and local publish
+  artifacts.
+- Bounded interbuilds for Nix flakes, Gentoo overlays, AUR PKGBUILDs, and XBPS
+  templates without invoking foreign package-manager CLIs in the parser path.
+- Adoption/migration groundwork for pacman, apt/dpkg, apk, xbps, and portage
+  installed-state import.
+
+## Configuration
+
+The sample config is [config.toml](./config.toml). Annotated examples live under
+[examples/config](./examples/config) (including
+[host.d/yoka.toml.example](./examples/config/host.d/yoka.toml.example) for
+maintainers), and lean fixtures live under [fixtures/config](./fixtures/config).
+
+Runtime paths:
+
+```text
+/etc/elda/config.toml
+/etc/elda/remotes.d/*.toml
+/etc/elda/caches.d/*.toml
+/etc/elda/extensions.d/*.toml
+/etc/elda/host.d/*.toml
+/etc/elda/recipes/<pkgname>/pkg.lua
+```
+
+The [su/config.toml](./su/config.toml) file is a copyable `/etc/elda/config.toml`
+example for hosts that use `su` as the privilege provider.
 
 ## Package Definition Example
 
@@ -164,6 +296,7 @@ pkg = {
   tmpfiles = {},
   alternatives = {},
   hooks = {},
+  provider_assets = {},
   flags_default = {},
   flags_allowed = {},
   flags_implies = {},
@@ -172,43 +305,28 @@ pkg = {
 }
 ```
 
-## Configuration At A Glance
+More complete package examples are in [examples/recipes](./examples/recipes). Annotated configuration and fixture-style samples live under [examples/config](./examples/config).
 
-```toml
-[defaults]
-remote = "yoka-main"
-cache_policy = "prefer"
-origin_style = "tag"
-install_preference = "binary"
-build_fallback = "local"
-build_mode = "isolated"
-activation = "auto"
-prefix = "/usr"
-allow_system_mode = false
-snapshot_tool = "snapper"
-install_recommends = true
-refresh_weak_deps = false
+## Documentation
 
-[privilege]
-provider = "auto"
-interactive = true
+- [SPEC.md](./SPEC.md) - product/runtime behavior contract
+- [USAGE.md](./USAGE.md) - operator workflows and CLI examples
+- [eldaforgehosting/](./eldaforgehosting/README.md) - native forge, remote, index, cache, and publish hosting
+- [phase.md](./phase.md) - implementation order and current status
+- [checklist.md](./checklist.md) - development tracker
+- [man/elda.1](./man/elda.1) - man page source
+- [examples/](./examples/) - recipes, config samples, and import fixtures
 
-[profile]
-base = "yoka-core"
-native_arch = "amd64"
-foreign_arches = ["i386"]
-init = "dinit"
+Report the running build with `elda -V` or `elda version` (release **0.1.49-Sumomo**).
 
-[submission]
-mode = "pr"
-auto_open = true
+## Development
 
-[daemon]
-refresh = "30m"
-notify_upgrades = true
+```sh
+cargo fmt --check
+cargo test --workspace
+cargo build
 ```
 
-## Docs
+The full workspace test suite expects **git** on `PATH` and may invoke **zig**, **nimble**, **make**, and **sh** for build-system integration tests. You do not need every host build tool unless you run tests or installs that exercise that lane.
 
-- `USAGE.md` covers the command-line flows.
-- `eldaforgehosting.md` covers operator-side native forge, index, and cache hosting.
+Follow [CODE_STANDARDS.md](./CODE_STANDARDS.md) when changing Rust code.

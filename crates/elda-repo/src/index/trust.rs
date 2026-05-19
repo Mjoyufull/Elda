@@ -73,7 +73,7 @@ pub(super) fn verify_remote_signature(
             if tofu_rotation_possible(trust_state)
                 && verify_tofu_remote(remote, trust_state, &verified.fingerprint, options).is_err()
             {
-                verify_tofu_rotation(remote, trust_state, &verified.fingerprint, &options)?;
+                verify_tofu_rotation(remote, trust_state, &verified.fingerprint, options)?;
             } else {
                 verify_tofu_remote(remote, trust_state, &verified.fingerprint, options)?;
             }

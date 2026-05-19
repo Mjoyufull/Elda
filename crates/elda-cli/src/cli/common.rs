@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use clap::{Args, Subcommand};
+use clap::Args;
 
 #[derive(Debug, Args)]
 #[command(group(
@@ -21,6 +21,47 @@ pub(super) struct InstallArgs {
     )]
     pub(super) use_flags: Vec<String>,
     #[arg(
+        long = "source-option",
+        value_name = "N",
+        help = "Select one ranked source option from list-options output"
+    )]
+    pub(super) source_option: Option<usize>,
+    #[arg(
+        long = "strategy",
+        value_name = "NAME",
+        help = "Prefer one metadata strategy for link detection"
+    )]
+    pub(super) strategy: Option<String>,
+    #[arg(
+        long = "to-branch",
+        value_name = "BRANCH",
+        help = "Use one git branch for ad hoc git metadata"
+    )]
+    pub(super) to_branch: Option<String>,
+    #[arg(
+        long = "to-tag",
+        value_name = "TAG",
+        help = "Use one git tag for ad hoc git metadata"
+    )]
+    pub(super) to_tag: Option<String>,
+    #[arg(
+        long = "to-rev",
+        value_name = "REV",
+        help = "Use one exact git revision for ad hoc git metadata"
+    )]
+    pub(super) to_rev: Option<String>,
+    #[arg(
+        long = "pick-tag",
+        help = "Interactively choose a git tag before planning the install"
+    )]
+    pub(super) pick_tag: bool,
+    #[arg(
+        long = "provider",
+        value_name = "VIRTUAL=PACKAGE",
+        help = "Resolve one ambiguous virtual provider explicitly"
+    )]
+    pub(super) provider: Vec<String>,
+    #[arg(
         long = "prefer-source",
         help = "Prefer the source lane when normal selection applies"
     )]
@@ -30,6 +71,15 @@ pub(super) struct InstallArgs {
         help = "Prefer the binary lane when normal selection applies"
     )]
     pub(super) prefer_binary: bool,
+    #[arg(long, help = "Replace existing local recipes during bulk import")]
+    pub(super) replace: bool,
+    #[arg(
+        long,
+        num_args = 1..,
+        value_name = "PKG",
+        help = "Exclude packages from bulk import/replace; must appear after other flags. Each value may be comma-separated; additional tokens name more packages"
+    )]
+    pub(super) exclude: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -91,6 +141,34 @@ pub(super) struct UpgradeArgs {
         help = "Allow newly introduced weak dependencies during upgrade"
     )]
     pub(super) refresh_weak_deps: bool,
+    #[arg(
+        long = "rebuild-variant-drift",
+        help = "Rebuild installed packages whose effective flag variant differs from the resolved one"
+    )]
+    pub(super) rebuild_variant_drift: bool,
+    #[arg(
+        long = "to-branch",
+        value_name = "BRANCH",
+        help = "Move selected ad hoc git package(s) to one branch"
+    )]
+    pub(super) to_branch: Option<String>,
+    #[arg(
+        long = "to-tag",
+        value_name = "TAG",
+        help = "Move selected ad hoc git package(s) to one tag"
+    )]
+    pub(super) to_tag: Option<String>,
+    #[arg(
+        long = "to-rev",
+        value_name = "REV",
+        help = "Move selected ad hoc git package(s) to one exact revision"
+    )]
+    pub(super) to_rev: Option<String>,
+    #[arg(
+        long = "pick-tag",
+        help = "Interactively choose a git tag before planning the upgrade"
+    )]
+    pub(super) pick_tag: bool,
 }
 
 #[derive(Debug, Args)]
@@ -125,25 +203,21 @@ pub(super) struct PackageArg {
     pub(super) package: String,
 }
 
-#[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
-pub(super) struct FilesArgs {
-    #[arg(value_name = "PKG")]
-    pub(super) package: Option<String>,
-    #[command(subcommand)]
-    pub(super) command: Option<FilesSubcommand>,
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum FilesSubcommand {
-    #[command(about = "Show which installed package owns a managed path")]
-    Owner(FilesOwnerArgs),
-}
-
-#[derive(Debug, Args)]
-pub(super) struct FilesOwnerArgs {
-    #[arg(help = "Absolute managed path")]
-    pub(super) path: PathBuf,
+#[derive(Debug, Args, Default)]
+pub(super) struct ListArgs {
+    #[arg(long, help = "Show only explicitly requested packages")]
+    pub(super) explicit: bool,
+    #[arg(long, help = "Show only dependency packages")]
+    pub(super) deps: bool,
+    #[arg(long, help = "Show only held packages")]
+    pub(super) held: bool,
+    #[arg(long, help = "Show only pinned packages")]
+    pub(super) pinned: bool,
+    #[arg(
+        long = "source-kind",
+        help = "Show only packages with this source kind"
+    )]
+    pub(super) source_kind: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -176,8 +250,20 @@ pub(super) struct AdoptArgs {
 pub(super) struct DowngradeArgs {
     #[arg(help = "Installed package name")]
     pub(super) package: String,
-    #[arg(help = "Optional older version to request explicitly")]
+    #[arg(help = "Optional older archived version to request explicitly")]
     pub(super) version: Option<String>,
+    #[arg(
+        long = "to-tag",
+        value_name = "TAG",
+        help = "Rebuild an ad hoc git package from one older tag"
+    )]
+    pub(super) to_tag: Option<String>,
+    #[arg(
+        long = "to-rev",
+        value_name = "REV",
+        help = "Rebuild an ad hoc git package from one exact revision"
+    )]
+    pub(super) to_rev: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -204,12 +290,16 @@ pub(super) struct VendorAddArgs {
     pub(super) binary: Option<String>,
     #[arg(long, help = "Explicit release asset name when detection is ambiguous")]
     pub(super) asset: Option<String>,
+    #[arg(long, help = "Replace existing vendor recipe metadata")]
+    pub(super) replace: bool,
 }
 
 #[derive(Debug, Args)]
 pub(super) struct VendorImportArgs {
     #[arg(help = "Manifest or lock path")]
     pub(super) path: PathBuf,
+    #[arg(long, help = "Replace existing vendor recipe metadata")]
+    pub(super) replace: bool,
 }
 
 #[derive(Debug, Args)]

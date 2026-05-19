@@ -7,7 +7,8 @@ use crate::editor::open_path_in_editor;
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
 use elda_recipe::{
-    add_recipe, add_vendor_recipe, check_local_recipes, export_vendor_source, import_vendor_source,
+    ImportOptions, add_recipe_with_options, check_local_recipes, format_recipe_file,
+    normalize_recipe_file, write_formatted_recipe,
 };
 
 impl AppContext {
@@ -15,12 +16,29 @@ impl AppContext {
         &self,
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
-        let (target, recipe_kind) = parse_recipe_add_request(&request)?;
-        let report = add_recipe(
+        let (target, recipe_kind, replace) = parse_recipe_add_request(&request)?;
+        let report = match add_recipe_with_options(
             &self.database.layout().recipes_dir,
             &target,
             recipe_kind.as_deref(),
-        )?;
+            &ImportOptions {
+                strategy_priority: self.config.metadata.link_strategy_priority.clone(),
+                release_binary_format_priority: self
+                    .config
+                    .metadata
+                    .release_binary_format_priority
+                    .clone(),
+                replace,
+                ..ImportOptions::default()
+            },
+        )? {
+            elda_recipe::ImportResult::Single(r) => r,
+            elda_recipe::ImportResult::Bulk(_) => {
+                return Err(CoreError::Operator(
+                    "Bulk import via `rc add` is not supported. Use `elda add <url>`".to_owned(),
+                ));
+            }
+        };
 
         Ok(CommandReport {
             area: "recipe",
@@ -39,13 +57,24 @@ impl AppContext {
         &self,
         request: CommandRequest,
     ) -> Result<CommandReport, CoreError> {
-        let target = request.operands.first().map(String::as_str);
+        let strict = request.operands.iter().any(|operand| operand == "--strict");
+        let target = request
+            .operands
+            .iter()
+            .find(|operand| !operand.starts_with("--"))
+            .map(String::as_str);
         let report = check_local_recipes(&self.database.layout().recipes_dir, target)?;
-        let status = if report
+        let has_errors = report
             .issues
             .iter()
-            .any(|issue| issue.severity == elda_recipe::IssueSeverity::Error)
-        {
+            .any(|issue| issue.severity == elda_recipe::IssueSeverity::Error);
+        let has_warnings = report
+            .issues
+            .iter()
+            .any(|issue| issue.severity == elda_recipe::IssueSeverity::Warning);
+        let status = if has_errors {
+            "invalid"
+        } else if strict && has_warnings {
             "invalid"
         } else {
             "ok"
@@ -54,13 +83,21 @@ impl AppContext {
         Ok(CommandReport {
             area: "recipe",
             status,
-            exit_status: ExitStatus::Success,
+            exit_status: if has_errors || (strict && has_warnings) {
+                ExitStatus::OperatorFailure
+            } else {
+                ExitStatus::Success
+            },
             command_path: request.command_path,
             operands: request.operands,
             output_mode: request.output_mode,
             dry_run: request.dry_run,
-            summary: format!("checked {} local recipe(s).", report.recipes.len()),
-            details: Some(json!({ "check": report })),
+            summary: format!(
+                "checked {} local recipe(s){}.",
+                report.recipes.len(),
+                if strict { " with --strict" } else { "" }
+            ),
+            details: Some(json!({ "check": report, "strict": strict })),
         })
     }
 
@@ -128,7 +165,8 @@ impl AppContext {
         self.database.bootstrap()?;
         let recipes_dir = self.database.layout().recipes_dir.clone();
         let local_entries = crate::recipe_catalog::list_local_recipe_entries(&recipes_dir)?;
-        let synced_entries = crate::recipe_catalog::list_synced_pkg_entries(&self.repo_snapshot_path())?;
+        let synced_entries =
+            crate::recipe_catalog::list_synced_pkg_entries(&self.repo_snapshot_path())?;
         let local = local_entries
             .iter()
             .map(|entry| entry.pkgname.clone())
@@ -159,6 +197,71 @@ impl AppContext {
                     "local_entries": local_entries,
                     "synced_entries": synced_entries,
                 }
+            })),
+        })
+    }
+
+    pub(crate) fn handle_recipe_format(
+        &self,
+        request: CommandRequest,
+    ) -> Result<CommandReport, CoreError> {
+        let package = recipe_target_from_request(&request, "rc format")?;
+        let pkg_lua =
+            recipe_directory(&self.database.layout().recipes_dir, &package)?.join("pkg.lua");
+        if request.dry_run {
+            return Ok(planned_recipe_rewrite_report(
+                &request, &package, &pkg_lua, "format",
+            ));
+        }
+        let formatted = format_recipe_file(&pkg_lua).map_err(CoreError::from)?;
+        write_formatted_recipe(&pkg_lua, &formatted).map_err(CoreError::from)?;
+        Ok(CommandReport {
+            area: "recipe",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: false,
+            summary: format!("formatted local recipe `{package}`."),
+            details: Some(json!({
+                "package": package,
+                "path": pkg_lua.display().to_string(),
+                "action": "format",
+            })),
+        })
+    }
+
+    pub(crate) fn handle_recipe_normalize(
+        &self,
+        request: CommandRequest,
+    ) -> Result<CommandReport, CoreError> {
+        let package = recipe_target_from_request(&request, "rc normalize")?;
+        let pkg_lua =
+            recipe_directory(&self.database.layout().recipes_dir, &package)?.join("pkg.lua");
+        if request.dry_run {
+            return Ok(planned_recipe_rewrite_report(
+                &request,
+                &package,
+                &pkg_lua,
+                "normalize",
+            ));
+        }
+        let normalized = normalize_recipe_file(&pkg_lua).map_err(CoreError::from)?;
+        write_formatted_recipe(&pkg_lua, &normalized).map_err(CoreError::from)?;
+        Ok(CommandReport {
+            area: "recipe",
+            status: "ok",
+            exit_status: ExitStatus::Success,
+            command_path: request.command_path,
+            operands: request.operands,
+            output_mode: request.output_mode,
+            dry_run: false,
+            summary: format!("normalized local recipe `{package}`."),
+            details: Some(json!({
+                "package": package,
+                "path": pkg_lua.display().to_string(),
+                "action": "normalize",
             })),
         })
     }
@@ -239,88 +342,40 @@ impl AppContext {
             })),
         })
     }
+}
 
-    pub(crate) fn handle_vendor_add(
-        &self,
-        request: CommandRequest,
-    ) -> Result<CommandReport, CoreError> {
-        let parsed = self.parse_vendor_add_request(&request)?;
-        let report = add_vendor_recipe(
-            &self.database.layout().recipes_dir,
-            &parsed.package_name,
-            &parsed.source,
-            parsed.binary.as_deref(),
-            parsed.asset.as_deref(),
-        )?;
+fn recipe_target_from_request(
+    request: &CommandRequest,
+    command: &str,
+) -> Result<String, CoreError> {
+    request
+        .operands
+        .first()
+        .cloned()
+        .filter(|name| !name.starts_with("--"))
+        .ok_or_else(|| CoreError::Operator(format!("{command} requires one package name")))
+}
 
-        Ok(CommandReport {
-            area: "vendor",
-            status: "ok",
-            exit_status: ExitStatus::Success,
-            command_path: request.command_path,
-            operands: request.operands,
-            output_mode: request.output_mode,
-            dry_run: request.dry_run,
-            summary: format!("wrote vendor recipe `{}`.", report.package_name),
-            details: Some(json!({ "vendor": report })),
-        })
-    }
-
-    pub(crate) fn handle_vendor_import(
-        &self,
-        request: CommandRequest,
-    ) -> Result<CommandReport, CoreError> {
-        let input_path = request.operands.first().ok_or_else(|| {
-            CoreError::Operator("vendor import requires a manifest path".to_owned())
-        })?;
-        let report =
-            import_vendor_source(&self.database.layout().recipes_dir, Path::new(input_path))?;
-
-        Ok(CommandReport {
-            area: "vendor",
-            status: "ok",
-            exit_status: ExitStatus::Success,
-            command_path: request.command_path,
-            operands: request.operands,
-            output_mode: request.output_mode,
-            dry_run: request.dry_run,
-            summary: format!("imported {} vendor recipe(s).", report.packages.len()),
-            details: Some(json!({ "import": report })),
-        })
-    }
-
-    pub(crate) fn handle_vendor_export(
-        &self,
-        request: CommandRequest,
-    ) -> Result<CommandReport, CoreError> {
-        let (output_path, package_names) = request.operands.split_first().ok_or_else(|| {
-            CoreError::Operator(
-                "vendor export requires an output path and package names".to_owned(),
-            )
-        })?;
-        if package_names.is_empty() {
-            return Err(CoreError::Operator(
-                "vendor export requires at least one package name".to_owned(),
-            ));
-        }
-
-        let report = export_vendor_source(
-            &self.database.layout().recipes_dir,
-            Path::new(output_path),
-            package_names,
-        )?;
-
-        Ok(CommandReport {
-            area: "vendor",
-            status: "ok",
-            exit_status: ExitStatus::Success,
-            command_path: request.command_path,
-            operands: request.operands,
-            output_mode: request.output_mode,
-            dry_run: request.dry_run,
-            summary: format!("exported {} vendor recipe(s).", report.packages.len()),
-            details: Some(json!({ "export": report })),
-        })
+fn planned_recipe_rewrite_report(
+    request: &CommandRequest,
+    package: &str,
+    pkg_lua: &Path,
+    action: &str,
+) -> CommandReport {
+    CommandReport {
+        area: "recipe",
+        status: "planned",
+        exit_status: ExitStatus::Success,
+        command_path: request.command_path.clone(),
+        operands: request.operands.clone(),
+        output_mode: request.output_mode,
+        dry_run: true,
+        summary: format!("would {action} local recipe `{package}`."),
+        details: Some(json!({
+            "package": package,
+            "path": pkg_lua.display().to_string(),
+            "action": action,
+        })),
     }
 }
 
@@ -344,13 +399,14 @@ fn recipe_directory(recipes_dir: &Path, recipe_name: &str) -> Result<PathBuf, Co
 
 fn parse_recipe_add_request(
     request: &CommandRequest,
-) -> Result<(String, Option<String>), CoreError> {
+) -> Result<(String, Option<String>, bool), CoreError> {
     let mut operands = request.operands.iter();
     let target = operands
         .next()
         .cloned()
         .ok_or_else(|| CoreError::Operator("rc add requires one input".to_owned()))?;
     let mut recipe_kind = None;
+    let mut replace = false;
 
     while let Some(operand) = operands.next() {
         match operand.as_str() {
@@ -369,6 +425,9 @@ fn parse_recipe_add_request(
                     ));
                 }
             }
+            "--replace" => {
+                replace = true;
+            }
             other => {
                 return Err(CoreError::Operator(format!(
                     "unexpected `rc add` operand or flag `{other}`"
@@ -377,13 +436,11 @@ fn parse_recipe_add_request(
         }
     }
 
-    Ok((target, recipe_kind))
+    Ok((target, recipe_kind, replace))
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::recipe_directory;
 
     #[test]
@@ -411,6 +468,6 @@ mod tests {
         let resolved =
             recipe_directory(tempdir.path(), "example").expect("recipe directory should resolve");
 
-        assert_eq!(resolved, PathBuf::from(recipe_dir));
+        assert_eq!(resolved, recipe_dir);
     }
 }

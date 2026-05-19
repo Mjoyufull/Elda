@@ -1,14 +1,11 @@
 # Elda — Specification
-**Version:** 0.1.0
-**Date:** 2026-03-31
+**Version:** 0.1.49-Sumomo
+**Date:** 2026-05-18
 **Status:** Draft
-**Plan Reference:** ../phase.md, ../pkgitfork.md
-**Standards:** ../CODE_STANDARDS.md, ../PLANNING_STANDARDS.md
+**Standards:** CODE_STANDARDS.md
 
-Plan-reference note:
-- `../pkgitfork.md` is fork-direction and operator-model context
-- `../phase.md` is a maintained status/implementation ledger for what has landed and what is still missing
-- neither reference file overrides runtime behavior defined in this specification
+Implementation status for shipped vs planned behavior is tracked in `phase.md`. That ledger does
+not override runtime behavior defined in this specification.
 
 ## 2. Overview
 Elda is a Unix-first, Linux-first system package manager written in Rust. It is a hard fork and clean rewrite of `pkgit` under the name Elda.
@@ -31,6 +28,7 @@ Elda is one conceptual package manager across supported Unix targets. Identity, 
 
 ### 3.2 Out of Scope
 - The Nix store model, Nix evaluator model, and NixOS system model.
+- **NixOS as an Elda system-management host:** when the runtime detects NixOS (for example `/etc/NIXOS`), Elda refuses system PM operations and directs operators who need ad hoc git-prefix installs to [pkgit](https://git.symlinx.net/pkgit/about/). Nixpkgs **binary/interepo consumption on normal FHS distros** remains in scope; copying NixOS module-generated `/etc` into static files is not.
 - macOS and Windows as implementation or delivery targets.
 - An async-first core runtime.
 - General Portage emulation or arbitrary Nix evaluation as a normal package-maintenance path.
@@ -156,10 +154,29 @@ pkg = {
   flags_allowed = {},
   flags_implies = {},
   flags_conflicts = {},
+  flags_descriptions = {},
+  flags_required_one_of = {},
+  flags_required_at_most_one = {},
+  flags_required_any_of = {},
 
   subpackages = {},
 }
 ```
+
+Conditional dependency entries can appear in any dependency family alongside plain string
+constraints:
+
+```lua
+depends = {
+  "shared-runtime",
+  { name = "wayland-runtime", when = "+wayland" },
+  { name = "x11-runtime",     when = "+x11" },
+  { any = { "media-codecs", "media-codecs-free" }, when = "+media,-headless" },
+}
+```
+
+The `when` predicate gates the dependency against the resolved effective flag set as defined in
+§7.3. Cardinality groups (§7.2) are validated after implies/conflicts close.
 
 Architecture labels in `pkg.lua` use Elda's canonical names:
 - `amd64`
@@ -206,7 +223,7 @@ Multi-lane form:
 Lane rules:
 - at least one lane must exist
 - `source.lanes.source` should use build-from-source kinds such as `git`, `nix_flake`, or `gentoo_overlay`
-- `source.lanes.binary` should use prebuilt-asset kinds such as `url_archive` or `github_release`
+- `source.lanes.binary` should use prebuilt-asset kinds such as `url_archive`, `github_release`, `release_asset`, or `appimage`
 - separate `foo` / `foo-bin` package names are for genuinely different packages or policy, not merely different acquisition lanes of the same package
 
 Supported source-kind contracts:
@@ -214,6 +231,8 @@ Supported source-kind contracts:
 | --- | --- | --- |
 | `url_archive` | `url`, `sha256` | Direct vendor or upstream archive fetch. Optional fields may describe archive stripping, binary selection, file renames, or subdirectory selection. |
 | `github_release` | `repo`, `tag` or `release = "latest"`, `asset`, `sha256` | GitHub release-backed binary/vendor source selected by repo/tag/asset. It accepts the same extraction-selection fields as `url_archive`. |
+| `release_asset` | `provider`, `repo`, `tag` or `release = "latest"`, `asset`, `sha256`; optional `host` | Provider-neutral forge release binary (GitLab, Gitea, Forgejo, SourceHut, `direct`, etc.) using the same asset/checksum and multi-arch `assets = { … }` authoring rules as `github_release` where applicable. |
+| `appimage` | `binary`, `sha256`, and either direct `url` **or** release-style fields (`repo`, `tag` or `release`, `asset`, optional `provider`, optional `host`; multi-arch `assets = { … }` like `github_release`) | **Type 2** AppImage passthrough: checksum-verified payload stored under `usr/lib/elda/appimages/<pkgname>/<epoch:pkgver-pkgrel>/payload/`, stable launcher as `usr/bin/<binary>` → symlink to that payload. Desktop integration (`.desktop`, icons, `usr/share/metainfo`) is staged by **reading the embedded SquashFS only** (no execution of the AppImage runtime). Optional `integration = "none"` skips that integration; omitting `integration` or `integration = "desktop"` enables it. Does not use archive strip/subdir/rename fields. |
 | `git` | `url`, one of `rev` / `tag` / `branch` | Normal git-source recipe. Declarative metadata plus optional `build.lua` define how the checkout is staged. Optional fields may restrict `subdir`, shallow fetch depth, or submodule behavior. |
 | `nix_flake` | `url`; optional `rev`, `lockfile`, `installable` | Git-backed interbuild source normalized through the `nix_flake` contract in §12.1. Persisted install provenance becomes `source_kind = interbuild`. |
 | `gentoo_overlay` | `url`, `package`; optional `rev`, `binhost`, `use` | Git-backed interbuild source normalized through the `gentoo_overlay` contract in §12.2. Persisted install provenance becomes `source_kind = interbuild`. |
@@ -223,7 +242,7 @@ Supported source-kind contracts:
 Shared optional extraction fields for `url_archive` and `github_release`:
 - `strip_components`
 - `subdir`
-- `binary`
+- `binary` (Required for binary selection inside archives; CLI metadata generation detects when this is missing and surfaces it in the review gate)
 - `rename`
 
 Arch-specific `github_release` authoring:
@@ -232,6 +251,8 @@ Arch-specific `github_release` authoring:
 - each per-arch asset entry must provide `asset` and `sha256`
 - `binary`, `strip_components`, `subdir`, and `rename` may be set per asset entry; the top-level fields act as defaults when present
 - published metadata must already be resolved to the selected architecture asset and checksum; remote install must not depend on runtime asset guessing
+
+AppImage and git-release metadata selection (ad hoc `elda a` / `elda add` / generated binary lanes): automatic choice among forge release payloads respects `[metadata].release_binary_format_priority` in config. When that list is empty, the implementation uses a default ordering that prefers archives and distro-native packages over `app-image`. When the list is **non-empty**, any format omitted from it (including `app-image`) is excluded from automatic selection. Automatic selection only considers payloads classified as host-compatible for the current machine (`native-exact` / `native-partial`) using filename heuristics; ambiguous or undecidable assets require explicit recipe pinning or operator source-option selection. See `eldastudyappimages.md` for UX and edge-case discussion.
 
 `release = "latest"` rules:
 - allowed only for local recipes, vendor imports, and other non-published convenience workflows
@@ -253,6 +274,16 @@ Ad hoc git upgrade rules:
 - changing a pinned ad hoc git target requires an explicit new install request or conversion into a maintained recipe
 - when an ad hoc git upgrade does occur, the new installed version is re-normalized from the new resolved commit and `repo_commit` is updated accordingly
 - when Elda scaffolded package metadata for an ad hoc git install during the current session, interactive human install mode writes that metadata into `/etc/elda/recipes/<pkgname>/`, prints the path, and stops for explicit review before build and activation continue
+
+One-time native recipe snapshot imports:
+- `elda a <git-url>` / `elda add <git-url>` may point at a git repository that already contains Elda-native recipe trees, including a single `<pkgname>/pkg.lua` tree or a larger `packages/<pkgname>/pkg.lua` collection
+- this path is a metadata snapshot import, not remote registration; it must not create a remote record, alter remote priority, or make future `elda sync` read that URL
+- Elda resolves the input to an exact commit, scans for native recipe roots, copies candidate recipe dirs into a temporary import staging root, and presents the normal `[Y/n/e]` review gate before writing local recipes
+- `Y` imports the staged set into `/etc/elda/recipes/` and records source URL plus resolved commit as local recipe provenance
+- `n` cancels without changing local recipe state
+- `e` opens the staged recipe root in the configured editor; after the editor exits, Elda re-scans the remaining dirs, validates them with the same checks as `elda rc check`, recomputes conflicts/counts, and re-prompts
+- existing local recipe conflicts fail closed unless the reviewed import explicitly marks the recipe as an update or replacement
+- non-interactive imports of ambiguous multi-recipe repos fail closed unless the requested package set is explicit
 
 Lane-selection rules:
 - `elda i` selection precedence is: explicit command (`ig` / `ib`), explicit preference flag (`--prefer-source` / `--prefer-binary`), `source.default_lane`, then config `defaults.install_preference`
@@ -323,6 +354,15 @@ Rules:
 - unreferenced helper files do not participate in package semantics
 - metadata that can be expressed declaratively should use these fields instead of lifecycle hooks
 - provider-specific service or backend assets use `provider_assets`, not hidden filename conventions or lifecycle-hook guessing
+- empty Lua tables `{}` mapping to empty arrays are accepted and ignored for dictionary-typed metadata fields (hooks, flags, etc.) to ensure a smooth authoring experience
+
+- generated package metadata must not silently omit discovery-critical fields; when Elda generates
+  metadata from a link, interbuild parser, or foreign adapter, the review report tracks each generated
+  `name`, `version`, `description`, `licenses`, `upstream`, `source`, dependency, relationship, and
+  variant field as `authoritative`, `derived`, `operator-edited`, or `missing`
+- `description`, `licenses`, and `upstream` are required for publish-quality metadata; local-only
+  metadata may remain incomplete only after the review gate shows the missing field list and the
+  operator accepts it
 
 Declarative common-case build shape:
 ```lua
@@ -354,6 +394,7 @@ Rules:
 - legacy shell recipes are import and fallback territory, not the documented default
 - local recipes and forge packages use the same maintained definition format
 - the embedded Lua surface is intentionally small and deterministic: staging helpers, archive/process helpers, structured logging, and metadata inspection are allowed; arbitrary network access, unrestricted process spawning, and writes outside the build root are not
+- **Foreign Parse Boundaries**: Elda intentionally bounds its evaluation. It does not bolt on a full `nix` evaluator or shell executor just to parse foreign packages. Instead, it relies on expanding the capabilities of `pkg.lua` and `build.lua` (e.g., standardizing `patch/` directory application and exporting structured environment variables) to translate foreign recipe complexity cleanly into native Elda semantics.
 
 Replacement-grade native build floor:
 - pkgit-parity floor: `cargo`, `cmake`, `go`, `make`, `meson`, `nimble`
@@ -412,27 +453,68 @@ Implementation contract:
 ### 7.1 Flag Layers
 | Layer | Meaning |
 | --- | --- |
-| package defaults | Defaults declared in package metadata |
-| global flags | Machine-wide defaults |
-| profile flags | Defaults attached to a selected profile or system shape |
-| package flags | Persistent per-package overrides |
-| CLI flags | One-shot install or build overrides |
+| package defaults | Defaults declared in package metadata (`flags_default`) |
+| global flags | Machine-wide defaults (`[flags.global]`) |
+| profile flags | Defaults attached to a selected profile or system shape (`[flags.profile.<name>]`) |
+| package flags | Persistent per-package overrides (`[flags.package.<name>]` and atom-versioned `[flags.package."<name><op><version>"]`) |
+| CLI flags | One-shot install or build overrides (`--use=+a,-b`) |
 
-Precedence is low-to-high in the order listed above.
+Precedence is low-to-high in the order listed above. Atom-versioned package flag entries only
+contribute to the package layer when the resolved candidate's `epoch:pkgver-pkgrel` satisfies the
+constraint; non-matching entries are silently skipped (they are not errors).
 
-### 7.2 Variant Identity Contract
+### 7.2 Recipe Flag Surface
+A `pkg.lua` declares its flag surface through the following fields. Every field is optional; the
+defaults are empty maps.
+
+| Field | Shape | Semantics |
+| --- | --- | --- |
+| `flags_default` | `{ flag = bool, ... }` | Default value of every declared flag. |
+| `flags_allowed` | `{ flag = bool, ... }` | Allow list. Any flag referenced by global, profile, package, or CLI layers must appear here (or in `flags_default`/`flags_implies`/`flags_conflicts`). |
+| `flags_implies` | `{ flag = { flag, ... }, ... }` | Closure rules. Enabling the key flag implies every value flag (transitive). |
+| `flags_conflicts` | `{ flag = { flag, ... }, ... }` | Conflict rules. Resolving with both the key and any of the value flags enabled fails closed. |
+| `flags_descriptions` | `{ flag = "human description", ... }` | Per-flag descriptions surfaced by `elda fl check` and interactive review. |
+| `flags_required_one_of` | `{ group = { flag, flag, ... }, ... }` | Cardinality: exactly one member of the group must be enabled in the resolved set. |
+| `flags_required_at_most_one` | `{ group = { flag, flag, ... }, ... }` | Cardinality: at most one member may be enabled. |
+| `flags_required_any_of` | `{ group = { flag, flag, ... }, ... }` | Cardinality: at least one member must be enabled. |
+
+Cardinality groups must reference declared/allowed flags and must list at least two members; both
+constraints are validated at recipe load time.
+
+### 7.3 Conditional Dependencies
+Every dependency family (`depends`, `makedepends`, `checkdepends`, `recommends`, `suggests`,
+`supplements`, `enhances`) accepts entries in three shapes:
+
+| Shape | Meaning |
+| --- | --- |
+| `"name"` or `"name>=ver"` | Unconditional named/versioned constraint. |
+| `{ name = "name>=ver", when = "+flag,-other" }` | Conditional constraint; only fed to the solver when every `+`/`-` atom in `when` matches the resolved effective flag set. |
+| `{ any = { "alt-a", "alt-b>=2" }, when = "..." }` | Conditional any-of choice with the same `when` semantics. |
+
+The `when` predicate is a comma-separated list of `+flag` (must be enabled) and `-flag` (must be
+disabled) atoms. Empty predicates, unknown flag names, and contradictory atoms (e.g. `+x,-x`) are
+recipe-time errors. Conditional dependencies that fail their predicate are *invisible* to the
+resolver — they do not contribute synthetic providers, do not consume choice slots, and do not
+appear in the resulting plan.
+
+### 7.4 Variant Identity Contract
 The resolved flag set is part of the build variant identity.
 
 Rules:
-- cache keys must include the resolved variant
-- CI artifacts must include the resolved variant or a stable variant hash
-- binary and source provenance must record which flags were used
-- `variant_id` is stored as part of installed state and index metadata
+- `variant_id == "default"` whenever the resolved effective flags equal `flags_default` (after
+  implies and conflicts close); otherwise `variant_id == "v1-<sha256_prefix>"` over the canonical
+  `flag=0|1;...` rendering of the resolved set.
+- A `customized` boolean accompanies the variant id and controls binary-lane policy: binary lanes
+  are forbidden for `customized = true` recipes (the resolver fails closed on `ib` and falls back
+  to source on `i --prefer-binary`).
+- Cache keys, CI artifacts, payload provenance, and the installed-state record must include the
+  resolved variant id.
 
 Binary policy:
-- curated profile variants receive CI-published binaries by default
-- arbitrary user flag combinations are valid but normally imply a local build
-- flag drift must be inspectable and rebuildable through the CLI surface
+- curated profile variants receive CI-published binaries by default (always `default`)
+- arbitrary user flag combinations are valid but always imply a local source build
+- flag drift must be inspectable through `elda fl check` / `elda fl diff` and rebuildable through
+  `elda u --rebuild-variant-drift`
 
 ## 8. State and Database
 `/etc/elda/recipes/<pkgname>/pkg.lua` is package-definition metadata, not the installed-state database.
@@ -493,6 +575,7 @@ Default backend expectations:
 - rollback is required as a user-facing operation only on backends that archive prior states
 - system backends stage the next state under `/var/lib/elda/states/<state-id>/` and activate from that staged materialization rather than building directly into the live root
 - prefix backends stage under the prefix-specific state root and activate inside that prefix only
+- **Unprivileged Prefix Mode**: When configured for a user-owned prefix (e.g., `~/.local`), Elda operates strictly as an unprivileged, non-root package manager. It intentionally bypasses the `sudo`/`doas`/`su` escalation layers completely, allowing users to perform ad-hoc installs and testing safely without system-wide privileges.
 
 ### 8.4 World, Bootstrap, Adoption, and Orphans
 #### World Tracking
@@ -520,6 +603,7 @@ Rules:
 - `elda mg from <pm>` imports installed state from another package manager's database
 - `elda adopt --from <pm> <pkg>` adopts one package using the same provenance schema
 - required migration adapter names in v1 are `pacman`, `apt`, `apk`, `xbps`, and `portage`; `dpkg` is an alias of the `apt`-family adapter
+- `nix` is **not** a supported `mg from` / adoption source on NixOS hosts; see §3.2
 - adoption reads the source PM database, not just the live filesystem
 - adopted packages are recorded with `source_kind = adopted` and keep the source-PM provenance fields from §8.2
 - if the source PM exposes repo/channel lineage, Elda records it in `adopted_source_repo` / `adopted_source_channel`
@@ -712,6 +796,7 @@ Recovery rules:
 - incomplete trigger work is re-queued and never silently dropped
 - `elda recover` is the operator-facing command that inspects and resolves incomplete journals before the next mutation
 - `elda rollback` re-activates the previous archived state or named archived state when the active backend supports archived-state rollback
+- on **SIGINT** during a mutating command, Elda stops child build/download processes, removes partial staging trees, releases the mutation lock when safe, marks an open journal as interrupted when applicable, blocks new mutations until `elda recover`, and prints a short recovery hint (pacman/paru-style interrupt semantics)
 
 Snapshot integration rules:
 - if `snapshot_tool` is configured and supported by the active backend, Elda requests a pre-activation snapshot before file switch-over and may request a post-activation snapshot after successful trigger completion
@@ -772,6 +857,25 @@ Channel rules:
 - `elda sync` fetches the selected channel snapshot for each remote, and `elda u` upgrades only against the currently selected channel for that remote
 - if a configured remote does not publish the requested channel, sync fails loudly instead of silently falling back to another lane
 
+Dynamic interemote rules:
+
+Non-normative implementation snapshot: dynamic remote and inspection CLI UX for the current
+native slice is treated as **effectively complete**; interepo binary consumption and coexistence
+policy remain **partial** (~15% in `phase.md`). The landed surface includes global `--no-stream`,
+configurable `[display].tree_chars`, framed privilege escalation handoff, targeted sync,
+remote/interemote inspection, recipe inspection, installed file search, filtered package listing,
+config queue inspection and resolution, trigger inspection, `[git].allowed_protocols` transport
+gating, `elda git releases --tag <ref>` release filtering, maintainer `host` and `publish`
+workflows, and `elda version` / `elda -V` build reporting.
+
+- a configured remote whose `index_url` is a cloneable source tree rather than an index document is an interemote
+- supported interemote shapes are bounded frontends such as Gentoo overlays and XBPS `srcpkgs` trees; arbitrary repository execution is not part of sync
+- `elda rmt preview <remote>` inspects an interemote without writing a synced snapshot, reports source-tree kind, current commit, parser/source-kind labels, include/exclude policy, and a bounded package catalog sample
+- `elda rmt info <remote>` reports the configured remote document, current synced snapshot state when present, indexed package names, and installed packages that still reference that remote
+- `elda rmt trust <remote>` reports configured trust policy, persisted trusted fingerprints/public keys, snapshot verification state, selected key, last sync/verification timestamps, and payload-verification readiness
+- `elda sync` includes interemote diagnostics and package-set deltas in its final structured report: source-tree kind, parser/source-kind labels, commit, discovered/included/excluded counts, parseable count, matched excludes, metadata fields, bounded package samples, bounded per-package parser issue rows, previous/current package counts, added/removed package counts, bounded removed-package samples, and all-failed summaries that distinguish index-document failures from interemote clone/parser failures; sync also clears stale package records when a remote is removed
+- `exclude` is remote policy and must be visible in preview/info/sync surfaces; it is not a hidden filter
+
 ### 11.3 Trust Model
 Trust rules:
 - index signatures are required by default
@@ -793,6 +897,12 @@ Bootstrap and rotation:
 - if a remote key changes without a valid rotation path, Elda stops and requires operator action
 - the current operator-confirmation surface is `--accept-rotated-key <remote>` and it may be repeated for multiple remotes in one invocation
 - non-interactive sessions must not perform first-use TOFU enrollment implicitly; CI and unattended jobs require pinned keys or a pre-seeded trust store
+
+Release-asset trust (`release_asset` / detected sidecars):
+- trusted public keys for ad hoc and vendor release binaries live in `[trust].release_keys` (and optional key files referenced from config)
+- when a release sidecar is present, verification covers the **downloaded archive bytes** (same object as `sha256` in metadata/index)
+- accepted baseline formats are Ed25519/minisign-compatible sidecars; exact extension list may grow but missing keys when a sidecar exists is a **hard failure** on install
+- non-interactive installs require keys to be preconfigured; interactive installs may offer to append missing fingerprints after operator confirmation
 
 ### 11.4 Sync and Offline Rules
 Sync rules:
@@ -1144,6 +1254,20 @@ Failure policy:
 - critical boot-path triggers fail the operation unless policy explicitly overrides
 - `elda check` and `elda fix-triggers` rerun pending trigger work
 
+### 14.3.1 Foreign Package-Manager Hooks (No Universal `.hook` Runner)
+Elda does **not** expose a user-writable arbitrary `.hook` directory that re-executes all foreign hook files. Foreign lifecycle behavior is **translated** into typed triggers, declarative metadata, or bounded execution with frozen contracts.
+
+| Foreign surface | Elda behavior |
+| --- | --- |
+| ALPM path hooks (`Type = Path`, `NeedsTargets`) | Map known targets to central triggers; if a hook must run, pass matched paths on stdin **one per line**, paths relative to install root (no leading `/`), per [alpm-hooks(5)](https://pacman.archlinux.page/alpm-hooks.5.html) |
+| ALPM hooks that parse pacman-only output or undocumented env | Unsupported; reported in doctor/migration output |
+| RPM `%transfiletriggerin` / `%transfiletriggerun` | Stdin = absolute paths, one per line; deduplicated; once per transaction per script; `%transfiletriggerpostun` has no stdin file list |
+| RPM/ALPM opaque `%post` / `.INSTALL` shell | Pattern-scan into triggers; otherwise skip with confidence warning |
+| SELinux (RPM payloads) | Apply header contexts when available; scoped `restorecon` on modified path prefixes when SELinux is enforcing |
+| CachyOS `x86-64-vN` repo tiers | CPUID selects remote tier on `elda sync`; warn on installed packages from a higher tier when hardware downgrades; no silent mass reinstall on sync alone |
+
+Post-transaction **advisories** (reboot required, kernel updated, packages needing rebuild) are collected into the transaction journal and summarized in human success output and structured JSON.
+
 ### 14.4 Exceptional Lifecycle Hooks
 Supported lifecycle points:
 - `pre_install`
@@ -1204,13 +1328,15 @@ The CLI surface is the public operator interface for Elda. Names below are canon
 
 | Namespace | Command | Purpose |
 | --- | --- | --- |
-| `(root)` | `i`, `ig`, `ib`, `rm`, `u`, `sync`, `ls`, `search`, `info`, `files`, `verify`, `reverify`, `why`, `rdeps`, `pin`, `unpin`, `hold`, `unhold`, `adopt`, `downgrade`, `diff`, `check`, `recover`, `rollback`, `fix-triggers`, `autoremove` | Core package-manager operations |
-| `rmt` | `add` | Remote registration and trust bootstrap |
+| `(root)` | `a`, `add`, `i`, `ig`, `ib`, `rm`, `u`, `sync`, `ls`, `search`, `info`, `files`, `verify`, `reverify`, `why`, `rdeps`, `pin`, `unpin`, `hold`, `unhold`, `adopt`, `downgrade`, `diff`, `check`, `recover`, `rollback`, `fix-triggers`, `autoremove` | Core package-manager operations |
+| `rmt` | `add`, `ls`, `info`, `preview`, `enable`, `disable`, `set-priority`, `rm` | Remote registration, listing, inspection, interemote preview, sync participation/priority control, and removal |
 | `rc` | `add`, `edit`, `check`, `ls`, `rm` | Local recipe management and on-disk catalog |
 | `ci` | `sub`, `run`, `status`, `pr`, `retry`, `logs`, `batch new/add/push` | CI and forge submission |
 | `vendor` | `add`, `import`, `export` | Vendor binary management |
+| `git` | `tags`, `releases` | Read-only git tag and release-asset inspection |
+| `appimage` | `inspect` | Read-only Type 2 AppImage inspection (ELF generation, SquashFS offset, embedded `.desktop` / icons / AppStream paths); does not execute the bundle |
 | `forge` | `search`, `browse` | Forge discovery |
-| `pf` | `apply`, `show`, `set-init` | Profile and provider management |
+| `pf` | `apply`, `add`, `rm`, `show`, `set-init`, `clear-init`, `set-arch`, `add-foreign-arch`, `remove-foreign-arch` | Profile and provider management |
 | `fl` | `check`, `diff` | Flag management |
 | `mg` | `from <pm>`, `lock <pm>`, `unlock <pm>` | Whole-system migration and coexistence control |
 | `state` | `show`, `export`, `import` | State export and import |
@@ -1224,7 +1350,7 @@ Command distinctions:
 - `adopt` is the single-package adoption path; `mg from` is whole-system migration from another PM
 - `pin` / `unpin` manage exact-version constraints; `hold` / `unhold` manage upgrade suppression policy
 - `rmt add` is the canonical remote bootstrap command, and `cache add` is the canonical cache-registration command
-- there is no root-level `add`; ad hoc git installs use `elda i <git-url>` or `elda ig <git-url>`, maintained local recipes use `elda rc add`, and CI submission uses `elda ci sub` or `elda ci run`
+- root-level `a` / `add` is the metadata-first link path; it resolves the same source/interbuild strategy as `elda i <link>`, writes accepted local package metadata, and stops before install; when the link is a git repository containing native Elda recipe trees, it performs a one-time metadata snapshot import through the same review gate instead of registering a synced remote; maintained local recipe import remains `elda rc add`, and CI submission remains `elda ci sub` or `elda ci run`
 - `rc ls` lists local recipe trees under the configured recipes directory plus `pkgname` values from the current synced index snapshot (names you can try with `elda i <name>` when resolution allows)
 - `rc rm <pkgname>` deletes the local recipe directory for `<pkgname>` when it contains `pkg.lua` and the package is **not** installed; operators must `elda rm` first when state still references the package
 - there is no hidden `lsc` alias in the canonical CLI; `elda cache ls` is the contract
@@ -1245,13 +1371,21 @@ Human-mode install output contract:
 - the same structured `progress` data should remain available in JSON output for install plan and install result reports
 
 ### 16.2 Core Command Contracts
-- `elda i <target...>` installs package names, explicit interepo targets, or git URLs; for maintained packages with both acquisition lanes it follows the lane-selection rules from §5.2, and it installs hard deps plus default `recommends` unless disabled
-- when `elda i` or `elda ig` causes Elda to generate or scaffold package metadata during the current session, human interactive mode must stop before build for a review gate with `Y`/empty = continue, `n` = abort without deleting generated metadata, and `e` = open the generated recipe tree in the selected editor and then re-prompt
-- `elda ig <target...>` forces the source lane for maintained packages and remains valid for direct git-URL installs
+- `elda a <link>` and `elda add <link>` inspect a direct upstream link, git repository, or local source path, choose the configured metadata/source strategy, generate, import, or update local package metadata, run the metadata review gate, and stop before installation
+- `elda i <target...>` installs package names, explicit interepo targets, or git URLs; for raw links it first runs the same metadata/source strategy path as `elda a <link>`, then continues into normal install/build/stage/activation after review acceptance; for maintained packages with both acquisition lanes it follows the lane-selection rules from §5.2, and it installs hard deps plus default `recommends` unless disabled
+- when `elda a`, `elda add`, `elda i`, or `elda ig` causes Elda to generate or scaffold package metadata during the current session, human interactive mode must stop before build or metadata write for a review gate with `Y`/empty = continue, `n` = abort without deleting generated metadata, and `e` = open the generated recipe tree in the selected editor and then re-prompt
+- content-addressed **review stamps** (`elda review ls|info|diff|forget`) record accepted generated-metadata and interbuild definitions; unchanged recipe hashes skip repeat review prompts
+- interactive source builds that introduce **new** auto-installed build dependencies prompt before install whether to remove them after success; packages already on the system before the transaction are never auto-removed; `--no-remove-build-deps` and config may disable the prompt
+- human install dry-runs include a **Preflight** frame (managed/replaced bytes, root/cache/tmp free space, privilege posture); post-build activation is blocked when staged payload size exceeds available target filesystem space
+- successful mutating commands summarize **post-transaction advisories** (reboot required, kernel/initramfs follow-up, rebuild hints) in human output and structured JSON
+- before privilege re-exec, human mode prints a framed **Privilege Escalation** summary (requested/selected provider, policy, environment handling)
+- when `elda a` or `elda add` detects many native recipe dirs in a git repository, it must stage the candidate set first; `Y` imports the staged set, `n` cancels, and `e` opens the staged root so the operator can delete unwanted recipe dirs before validation and re-prompt
+- `elda ig <target...>` forces the source lane for maintained packages and remains valid for direct git-URL installs after the same metadata generation/review path
 - `elda ib <pkg...>` forces the binary lane for maintained packages and fails if the selected target has no binary lane
 - `--prefer-source` and `--prefer-binary` are mutually exclusive `elda i` overrides; they are the flag form of the `ig` / `ib` choice
+- `--exclude` on `elda a` / `elda add` / `elda i` and on `rmt add` names packages omitted from bulk metadata import or from interemote sync policy. A bare `--exclude` must be placed at the **END of the operand list** because it consumes **all following operands** as exclude names. Each operand may include comma-separated names (e.g., `--exclude pkg1 pkg2` or `--exclude pkg1, pkg2`). Inline `--exclude=pkg1,pkg2` may appear with other flags. Any operand that begins with `--` after a bare `--exclude` is rejected (place other flags before `--exclude`). Operands after `--exclude` are not install targets or remote flags.
 - `elda rm <pkg...>` removes packages; `--cascade` removes reverse dependencies that become invalid, and `--purge-conffiles` drops preserved `*.eldasave` state
-- `elda u [<pkg...>]` upgrades the whole machine or the named package plus required closure from one synced snapshot; it does not permit resolver-broken partial upgrades. VCS packages (e.g., `-git`) are pinned to their install-time commit and do not auto-poll remote URLs during sync; operators must explicitly request VCS updates via `elda u --check-vcs`.
+- `elda u [<pkg...>]` upgrades the whole machine or the named package plus required closure from one synced snapshot; it does not permit resolver-broken partial upgrades. VCS packages (e.g., `-git`) are pinned to their install-time commit and do not auto-poll remote URLs during sync; operators must explicitly request VCS updates via `elda u --check-vcs`. `--rebuild-variant-drift` pre-fills the upgrade target list with every installed package whose resolved `variant_id` no longer matches the recorded one (typically because a `[flags.global]` / `[flags.profile]` / `[flags.package]` change altered the effective flag set); without the flag, variant drift only triggers a rebuild when the operator explicitly names the package.
 - `elda search <query>` is substring match by default, `--regex` opts into regex, and results sort exact-name first, then prefix matches, then other substring matches
 - `elda search <query> --interactive` presents numbered results and accepts selection input (`1 2 3`, `1-3`) to install chosen matches
 - bare `elda <query>` in human mode is shorthand for interactive search
@@ -1266,9 +1400,12 @@ Human-mode install output contract:
 - `elda downgrade <pkg> [version]` chooses an older version from cache or archive; holds and pins are enforced unless the operator overrides them explicitly
 - `elda verify` and `elda reverify` report unmanaged path collisions as actionable errors: remove or move the path, adopt the owning package through a migration adapter, or record an explicit ignore policy
 - `elda recover` repairs or rolls back unfinished transactions; `elda rollback` reactivates archived state when the backend supports it
+- `elda appimage inspect <path>` prints structured human output by default and includes machine-readable fields under `--json`; it is intended for recipe authoring and troubleshooting, not for mutating system menus by itself
 
 ### 16.3 Operator Visibility
 - `elda pf show` outputs active profiles, provider families, enabled foreign architectures, pending system-change handlers, and required activation class
+- `elda fl check [<package>] [--use=+a,-b]` resolves the effective flag set for a target (or for the active profile when no package is given) and reports active profiles, declared/allowed flags, default vs effective state, the active package-flag layers (per-name and per-atom), per-flag descriptions, cardinality group status, the resolved `variant_id`, and whether the result is `customized`; `--use=+a,-b` lets operators preview a one-shot override without persisting it
+- `elda fl diff [<package>] [--use=+a,-b]` runs the same resolution as `fl check` and additionally surfaces drift between the installed `variant_id` and the resolved one, including a per-flag delta; with no package it walks every installed package and reports drift entries plus unresolved targets
 - `elda check` is the aggregated health command for orphaned packages, stale trust, pending trigger repair, risky adopted packages (including `WARN: Zombie Adoption` for adoptions with no upgrade path), and backend-specific warnings
 - `elda daemon status` reports whether the optional background refresh service is configured and running; `elda daemon refresh` triggers an immediate sync/notification pass
 
@@ -1405,20 +1542,19 @@ Serialization contract:
 ```toml
 [defaults]
 remote = "yoka-main"
-cache_policy = "prefer"
-origin_style = "tag"
-install_preference = "binary"
-build_fallback = "local"
 build_mode = "isolated"
-activation = "auto"
 prefix = "/usr"
 allow_system_mode = false
-snapshot_tool = "snapper"
+snapshot_tool = "none"
+auto_create_config = true
+mode_policy = "host"
 install_recommends = true
 refresh_weak_deps = false
+install_preference = "binary"
 
 [privilege]
 provider = "auto"
+preserve_env = false
 interactive = true
 
 [profile]
@@ -1440,34 +1576,115 @@ pipewire = true
 [flags.package.fsel]
 wayland = true
 
+[flags.package."firefox>=130"]
+mp4 = true
+
+[logging]
+dir = "~/.config/elda/logs"
+level = 0
+
+[display]
+default_mode = "human"
+human_detail = "normal"
+tree_chars = "auto"
+
+[capabilities]
+profile = "default-host"
+network_fetch = true
+network_publish = true
+local_editors = true
+local_exec_build = true
+system_activate = true
+profile_apply = true
+migration = true
+extension_runtime = true
+
+[metadata]
+link_option_mode = "priority"
+link_strategy_priority = [
+  "elda-native",
+  "nix_flake",
+  "gentoo_ebuild",
+  "aur_pkgbuild",
+  "xbps_template",
+  "cargo",
+  "cmake",
+  "meson",
+  "make",
+  "go",
+  "python",
+  "zig",
+  "nimble",
+  "git_release",
+  "git_source",
+]
+# release_binary_format_priority = ["tar-gz", "zip", "app-image"]
+
+[git]
+tag_policy = "semver"
+include_prereleases = true
+strip_v_prefix = true
+allow_date_versions = true
+max_tags = 50
+allowed_protocols = ["https", "ssh", "file"]
+
 [submission]
 mode = "pr"
 auto_open = true
+auto_assign = false
 auth = "token"
 token_env = "ELDA_GITHUB_TOKEN"
 api_base = "https://api.github.com"
 remote_name = "origin"
 base_branch = "main"
 
-[logging]
-dir = "~/.config/elda/logs"
-level = 0
-
-[daemon]
-refresh = "30m"
-notify_upgrades = true
-
-[display]
-show_origin = true
-show_remote = true
+[trust]
+release_keys = []
 ```
 
-Separate remote, extension, and cache documents are additional TOML files under their dedicated directories and are interpreted according to the contracts in this specification.
+Separate remote, extension, cache, and recipe documents are additional files under their dedicated directories.
+
+Remote document examples:
+
+```toml
+# /etc/elda/remotes.d/yoka-main.toml
+name = "yoka-main"
+index_url = "https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst"
+channel = "stable"
+packages_url = "https://github.com/Mjoyufull/Elda.git"
+metadata_url = "https://raw.githubusercontent.com/Mjoyufull/Elda/dev/remote-metadata-v1.toml"
+signature_url = "https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst.sig"
+priority = 100
+enabled = true
+allow_stale = false
+trust = "pinned"
+trusted_keys = ["ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344"]
+exclude = []
+```
+
+```toml
+# /etc/elda/remotes.d/heather-overlay.toml
+name = "heather-overlay"
+index_url = "https://github.com/heather7283/heather7283-overlay"
+channel = "stable"
+priority = 120
+enabled = true
+trust = "tofu"
+trusted_keys = []
+allow_stale = false
+exclude = ["firefox", "vlc"]
+```
+
+`[metadata].release_binary_format_priority` lists forge-release payload format identifiers in preference order (`tar-gz`, `tar-xz`, `tar-zst`, `zip`, `raw-binary`, `deb`, `rpm`, `apk`, `pacman-package`, `app-image`, `unknown`, with aliases such as `appimage` normalized to `app-image`). An **empty** list means “use implementation defaults.” A **non-empty** list is exhaustive for automatic binary selection from release summaries: formats not listed are not auto-chosen.
 
 Provider policy uses `[resolver.provider_preferences]`. Each key is a virtual dependency or
 `provides` name, and each value is an ordered list of concrete package names. The resolver tries
 configured packages first, then falls back to remote priority and same-priority version ordering;
 if provider choice still remains ambiguous, resolution fails loudly.
+
+Metadata write rule:
+- generated and imported local metadata preserves existing `pkg.lua`, `build.lua`, patches, legacy import summaries, and vendor recipes unless the operator passes `--replace`
+- `--replace` is command-local intent; remote `rmt add --replace` replaces the remote document, while `elda a --replace`, `rc add --replace`, and `vendor * --replace` replace local recipe metadata
 
 Install-lane rule:
 - `install_preference = "binary"` means `elda i` prefers a declared binary lane when one exists
@@ -1480,6 +1697,13 @@ Prefix rules:
 - any other prefix uses a separate DB root, state root, and cache namespace for that prefix
 - non-system prefixes do not run system-wide `sysusers`, `tmpfiles`, boot publication, or provider-migration side effects unless the operator opts into a host-specific backend that explicitly supports them
 
+Reference docs and examples:
+- `config.toml` is the practical sample `/etc/elda/config.toml`
+- `su/config.toml` is a sample `/etc/elda/config.toml` for hosts that use `su`
+- `examples/config/` contains annotated configs, remote documents, cache documents, and extension documents
+- `fixtures/config/` contains lean runtime fixtures used by tests and docs
+- `man/elda.1` is the man page source
+
 ## 19. Workspace and Crate Architecture
 ### 19.1 Crate Split
 | Crate | Responsibility |
@@ -1490,6 +1714,7 @@ Prefix rules:
 | `elda-repo` | Repo definitions, index sync, signature/checksum validation |
 | `elda-fetch` | HTTP downloads, caching, checksums, release asset fetch |
 | `elda-git` | Git source fetch and inspect logic |
+| `elda-appimage` | Type 2 AppImage ELF/SquashFS offset detection, read-only metadata extraction, `.desktop` rewriting, and integration helpers used by staging and `elda appimage inspect` |
 | `elda-recipe` | Package-definition loading, schema validation, and legacy import handling |
 | `elda-build` | Build orchestration, staging root, payload assembly |
 | `elda-install` | File conflict checks, lock handling, atomic install, remove, and upgrade |
@@ -1513,6 +1738,7 @@ graph TD
     Repo["elda-repo<br/>(index sync, signatures, checksums)"]
     Fetch["elda-fetch<br/>(HTTP, caching, release assets)"]
     Git["elda-git<br/>(git source fetch/inspect)"]
+    AppImage["elda-appimage<br/>(Type 2 AppImage read-only)"]
     Recipe["elda-recipe<br/>(pkg.lua/build.lua loading, schema)"]
     Build["elda-build<br/>(orchestration, staging, payload assembly)"]
     Install["elda-install<br/>(conflicts, locks, atomic install/remove)"]
@@ -1530,6 +1756,7 @@ graph TD
     Build --> Recipe
     Build --> Fetch
     Build --> Git
+    Build --> AppImage
     Build --> Unix
     Repo --> Fetch
     Unix --> Linux
@@ -1555,3 +1782,20 @@ Behavior:
 - `elda -S` is the explicit one-shot frontend override that requests live host system mode even when `defaults.allow_system_mode` is false
 
 The configured provider is frontend policy, not package-manager logic.
+### 6.1.5 Generated Metadata Review Gate
+When Elda generates recipe metadata on behalf of an operator (e.g., during `elda add <url>`), it enters a mandatory review gate in human-interactive mode.
+
+1. **Review**: The operator sees a report of the generated metadata, strategy confidence, and missing fields.
+2. **Action**: The operator can Accept (`y`), Abort (`n`), or Edit (`e`) the generated recipe.
+3. **Recheck**: If edited, Elda re-validates the recipe and re-presents the review if errors remain.
+
+### 6.1.6 Bulk Metadata Snapshot Imports
+Elda supports the ingestion of foreign repository metadata (e.g., Void Linux `srcpkgs`, Gentoo overlays) through a bulk snapshot process.
+
+1. **Detection**: When an ad hoc target (URL or path) is added, Elda identifies if it contains a supported foreign repository structure (Void, Gentoo, or Elda-native monorepo).
+2. **Translation**: Discovered foreign packages are translated into native Elda `pkg.lua` definitions using interbuild parsers.
+3. **Staging**: Translated recipes are placed in a transient staging area (`/var/lib/elda/staging/metadata-import/`).
+4. **Review**: The operator reviews a summary of the discovered recipes and staging locations.
+5. **Ingestion**: Upon approval (`y`), staged recipes are moved to the local recipe directory (`/etc/elda/recipes/`), becoming permanent local recipes.
+
+This mechanism allows Elda to bootstrap from existing package ecosystems without requiring manual recipe creation for every package, while preserving a human-in-the-loop review step for mass ingestion.

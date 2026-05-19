@@ -1,16 +1,50 @@
+use std::sync::Arc;
+
 use super::state::{
-    RemoteSnapshotState, RemoteTrustState, load_cached_remote_snapshot, load_remote_trust_state,
-    store_remote_snapshot, store_remote_trust_state,
+    RemoteSnapshotState, RemoteTrustState, load_remote_trust_state, store_remote_snapshot,
+    store_remote_trust_state,
 };
+use super::sync_cache::{load_offline_remote, load_stale_remote};
 use super::trust::{parse_signature_envelope, verify_remote_signature};
 use super::*;
-use crate::model::TrustMode;
+use crate::model::{InteremotePreview, TrustMode};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
+pub enum RemoteSyncEvent {
+    RemoteStart {
+        name: String,
+    },
+    RemoteDone {
+        name: String,
+        package_count: usize,
+        stale: bool,
+        issue: Option<String>,
+    },
+}
+
+pub type RemoteSyncProgress = Arc<dyn Fn(RemoteSyncEvent) + Send + Sync>;
+
+#[derive(Clone)]
 pub struct SyncOptions {
     pub offline: bool,
     pub allow_initial_tofu: bool,
     pub accept_rotated_keys: Vec<String>,
+    pub target_remotes: Vec<String>,
+    pub allowed_git_protocols: Vec<String>,
+    pub progress: Option<RemoteSyncProgress>,
+}
+
+impl Default for SyncOptions {
+    fn default() -> Self {
+        Self {
+            offline: false,
+            allow_initial_tofu: false,
+            accept_rotated_keys: Vec::new(),
+            target_remotes: Vec::new(),
+            allowed_git_protocols: vec!["https".to_owned(), "ssh".to_owned(), "file".to_owned()],
+            progress: None,
+        }
+    }
 }
 
 pub fn sync_remotes(
@@ -18,9 +52,13 @@ pub fn sync_remotes(
     snapshot_path: &Path,
     options: SyncOptions,
 ) -> Result<SyncReport, RepoError> {
-    let mut remotes = list_remotes(remotes_dir)?
+    let previous_snapshot = load_snapshot(snapshot_path).ok();
+    let all_remotes = list_remotes(remotes_dir)?;
+    validate_target_remotes(&all_remotes, &options.target_remotes)?;
+    let mut remotes = all_remotes
         .into_iter()
         .filter(|remote| remote.enabled)
+        .filter(|remote| target_included(&remote.name, &options.target_remotes))
         .collect::<Vec<_>>();
     remotes.sort_by(|left, right| {
         left.priority
@@ -36,13 +74,32 @@ pub fn sync_remotes(
         packages: Vec::new(),
     };
 
+    let mut interemotes = Vec::new();
     for remote in remotes {
+        if let Some(progress) = &options.progress {
+            progress(RemoteSyncEvent::RemoteStart {
+                name: remote.name.clone(),
+            });
+        }
         let result = sync_one_remote(&remote, snapshot_path, &options)?;
+        if let Some(progress) = &options.progress {
+            progress(RemoteSyncEvent::RemoteDone {
+                name: remote.name.clone(),
+                package_count: result.record.package_count,
+                stale: result.record.stale,
+                issue: result.record.issue.clone(),
+            });
+        }
+        if let Some(preview) = result.interemote {
+            interemotes.push(preview);
+        }
         snapshot.packages.extend(result.packages);
         snapshot.remotes.push(result.record);
     }
 
     snapshot.packages.sort_by(super::select::candidate_order);
+    let package_deltas =
+        super::sync_delta::package_deltas(previous_snapshot.as_ref(), &snapshot.packages);
     let failed_remote_count = snapshot
         .remotes
         .iter()
@@ -64,25 +121,14 @@ pub fn sync_remotes(
         .any(|remote| remote.package_count > 0);
 
     if options.offline && failed_remote_count > 0 {
-        let issue = snapshot
-            .remotes
-            .iter()
-            .find_map(|remote| remote.issue.as_deref())
-            .unwrap_or(
-                "offline sync could not satisfy all enabled remotes from verified local snapshots",
-            );
-        return Err(RepoError::Trust(format!(
-            "offline sync could not satisfy all enabled remotes from verified local snapshots: {issue}"
-        )));
+        return Err(RepoError::Trust(
+            super::sync_failure::offline_failure_message(&snapshot.remotes),
+        ));
     }
     if failed_remote_count > 0 && !has_usable_snapshot {
-        let issue = snapshot
-            .remotes
-            .iter()
-            .find_map(|remote| remote.issue.as_deref())
-            .unwrap_or("sync could not produce a usable snapshot for any enabled remote");
-
-        return Err(RepoError::Trust(issue.to_owned()));
+        return Err(RepoError::Trust(super::sync_failure::all_failed_message(
+            &snapshot.remotes,
+        )));
     }
 
     let snapshot_dir = snapshot_path.parent().ok_or_else(|| {
@@ -91,7 +137,7 @@ pub fn sync_remotes(
             snapshot_path.display()
         ))
     })?;
-    if has_usable_snapshot || !snapshot_path.exists() {
+    if has_usable_snapshot || failed_remote_count == 0 || !snapshot_path.exists() {
         fs::create_dir_all(snapshot_dir)?;
         fs::write(snapshot_path, serde_json::to_vec_pretty(&snapshot)?)?;
     }
@@ -105,7 +151,36 @@ pub fn sync_remotes(
         stale_remote_count,
         failed_remote_count,
         remotes: snapshot.remotes,
+        package_deltas,
+        interemotes,
     })
+}
+
+fn validate_target_remotes(
+    remotes: &[RemoteDocument],
+    targets: &[String],
+) -> Result<(), RepoError> {
+    if targets.is_empty() {
+        return Ok(());
+    }
+
+    for target in targets {
+        let Some(remote) = remotes.iter().find(|remote| remote.name == *target) else {
+            return Err(RepoError::Parse(format!(
+                "remote `{target}` is not registered"
+            )));
+        };
+        if !remote.enabled {
+            return Err(RepoError::Parse(format!(
+                "remote `{target}` is disabled; enable it before targeted sync"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn target_included(remote_name: &str, targets: &[String]) -> bool {
+    targets.is_empty() || targets.iter().any(|target| target == remote_name)
 }
 
 pub fn load_snapshot(snapshot_path: &Path) -> Result<SyncedIndexSnapshot, RepoError> {
@@ -118,9 +193,10 @@ pub fn load_snapshot(snapshot_path: &Path) -> Result<SyncedIndexSnapshot, RepoEr
 }
 
 #[derive(Debug)]
-struct RemoteSyncResult {
-    record: SyncedRemoteRecord,
-    packages: Vec<SyncedPackageRecord>,
+pub(super) struct RemoteSyncResult {
+    pub(super) record: SyncedRemoteRecord,
+    pub(super) packages: Vec<SyncedPackageRecord>,
+    pub(super) interemote: Option<InteremotePreview>,
 }
 
 fn sync_one_remote(
@@ -146,7 +222,12 @@ fn sync_one_remote(
     match result {
         Ok(result) => Ok(result),
         Err(error) => {
-            load_stale_remote(remote, snapshot_path, &trust_state, Some(error.to_string()))
+            let issue = super::sync_failure::contextual_remote_error(
+                &remote.name,
+                super::interemote::should_try_interemote(remote),
+                &error.to_string(),
+            );
+            load_stale_remote(remote, snapshot_path, &trust_state, Some(issue))
         }
     }
 }
@@ -158,6 +239,10 @@ fn fetch_remote(
     now: u64,
     options: &SyncOptions,
 ) -> Result<RemoteSyncResult, RepoError> {
+    if super::interemote::should_try_interemote(remote) {
+        return fetch_interemote(remote, snapshot_path, trust_state, now, options);
+    }
+
     let content = super::fetch::read_location_text(&remote.index_url)?;
     let packages = super::document::parse_remote_packages_from_content(remote, &content)?;
     let verification = verify_live_remote(remote, trust_state, &content, options)?;
@@ -196,7 +281,58 @@ fn fetch_remote(
         )?;
     }
 
-    Ok(RemoteSyncResult { record, packages })
+    Ok(RemoteSyncResult {
+        record,
+        packages,
+        interemote: None,
+    })
+}
+
+fn fetch_interemote(
+    remote: &RemoteDocument,
+    snapshot_path: &Path,
+    trust_state: &mut RemoteTrustState,
+    now: u64,
+    options: &SyncOptions,
+) -> Result<RemoteSyncResult, RepoError> {
+    let interemote =
+        super::interemote::sync_interemote_with_preview(remote, &options.allowed_git_protocols)?;
+    let packages = interemote.packages;
+    let preview = interemote.preview;
+    trust_state.last_sync_unix = Some(now);
+    trust_state.last_error = None;
+    store_remote_trust_state(snapshot_path, &remote.name, trust_state)?;
+
+    let record = SyncedRemoteRecord {
+        name: remote.name.clone(),
+        index_url: remote.index_url.clone(),
+        channel: remote.channel.clone(),
+        priority: remote.priority,
+        package_count: packages.len(),
+        trust: remote.trust.clone(),
+        verified: false,
+        stale: false,
+        source: "interemote".to_owned(),
+        selected_key: None,
+        last_sync_unix: trust_state.last_sync_unix,
+        last_verified_unix: trust_state.last_verified_unix,
+        issue: interemote_issue(&preview, packages.len()),
+    };
+
+    store_remote_snapshot(
+        snapshot_path,
+        &remote.name,
+        &RemoteSnapshotState {
+            remote: record.clone(),
+            packages: packages.clone(),
+        },
+    )?;
+
+    Ok(RemoteSyncResult {
+        record,
+        packages,
+        interemote: Some(preview),
+    })
 }
 
 fn verify_live_remote(
@@ -226,131 +362,27 @@ fn verify_live_remote(
     })
 }
 
-fn load_offline_remote(
-    remote: &RemoteDocument,
-    snapshot_path: &Path,
-    trust_state: &RemoteTrustState,
-) -> Result<RemoteSyncResult, RepoError> {
-    let Some(snapshot) = load_cached_remote_snapshot(snapshot_path, &remote.name)? else {
-        return Err(RepoError::Trust(format!(
-            "offline sync cannot use remote `{}` because no verified snapshot is cached locally",
-            remote.name
-        )));
-    };
-    if !snapshot.remote.verified {
-        return Err(RepoError::Trust(format!(
-            "offline sync cannot use remote `{}` because the cached snapshot is not verified",
-            remote.name
-        )));
-    }
-    ensure_cached_snapshot_matches_remote(remote, &snapshot.remote)?;
-
-    Ok(RemoteSyncResult {
-        record: SyncedRemoteRecord {
-            name: remote.name.clone(),
-            index_url: remote.index_url.clone(),
-            channel: remote.channel.clone(),
-            priority: remote.priority,
-            package_count: snapshot.packages.len(),
-            trust: remote.trust.clone(),
-            verified: true,
-            stale: true,
-            source: "offline-cache".to_owned(),
-            selected_key: snapshot.remote.selected_key,
-            last_sync_unix: trust_state
-                .last_sync_unix
-                .or(snapshot.remote.last_sync_unix),
-            last_verified_unix: trust_state
-                .last_verified_unix
-                .or(snapshot.remote.last_verified_unix),
-            issue: None,
-        },
-        packages: snapshot.packages,
-    })
-}
-
-fn load_stale_remote(
-    remote: &RemoteDocument,
-    snapshot_path: &Path,
-    trust_state: &RemoteTrustState,
-    issue: Option<String>,
-) -> Result<RemoteSyncResult, RepoError> {
-    if remote.allow_stale
-        && let Some(snapshot) = load_cached_remote_snapshot(snapshot_path, &remote.name)?
-        && snapshot.remote.verified
-        && cached_snapshot_matches_remote(remote, &snapshot.remote)
-    {
-        return Ok(RemoteSyncResult {
-            record: SyncedRemoteRecord {
-                name: remote.name.clone(),
-                index_url: remote.index_url.clone(),
-                channel: remote.channel.clone(),
-                priority: remote.priority,
-                package_count: snapshot.packages.len(),
-                trust: remote.trust.clone(),
-                verified: true,
-                stale: true,
-                source: "stale-cache".to_owned(),
-                selected_key: snapshot.remote.selected_key,
-                last_sync_unix: trust_state
-                    .last_sync_unix
-                    .or(snapshot.remote.last_sync_unix),
-                last_verified_unix: trust_state
-                    .last_verified_unix
-                    .or(snapshot.remote.last_verified_unix),
-                issue,
-            },
-            packages: snapshot.packages,
-        });
+fn interemote_issue(preview: &InteremotePreview, package_count: usize) -> Option<String> {
+    let issue_count = preview.issues.len();
+    if issue_count == 0 {
+        return None;
     }
 
-    Ok(RemoteSyncResult {
-        record: SyncedRemoteRecord {
-            name: remote.name.clone(),
-            index_url: remote.index_url.clone(),
-            channel: remote.channel.clone(),
-            priority: remote.priority,
-            package_count: 0,
-            trust: remote.trust.clone(),
-            verified: false,
-            stale: false,
-            source: if trust_state.last_verified_unix.is_some() {
-                "failed"
-            } else {
-                "unverified"
-            }
-            .to_owned(),
-            selected_key: None,
-            last_sync_unix: trust_state.last_sync_unix,
-            last_verified_unix: trust_state.last_verified_unix,
-            issue,
-        },
-        packages: Vec::new(),
-    })
+    if package_count == 0 {
+        return Some(format!(
+            "interemote parser rejected all included packages ({issue_count} issue(s))"
+        ));
+    }
+
+    Some(format!(
+        "interemote parser skipped {issue_count} package(s); synced {package_count}"
+    ))
 }
 
 #[derive(Debug)]
 struct VerificationResult {
     verified: bool,
     selected_key: Option<String>,
-}
-
-fn ensure_cached_snapshot_matches_remote(
-    remote: &RemoteDocument,
-    cached: &SyncedRemoteRecord,
-) -> Result<(), RepoError> {
-    if cached_snapshot_matches_remote(remote, cached) {
-        return Ok(());
-    }
-
-    Err(RepoError::Trust(format!(
-        "cached snapshot for remote `{}` is for channel `{}` but the configured channel is `{}`",
-        remote.name, cached.channel, remote.channel
-    )))
-}
-
-fn cached_snapshot_matches_remote(remote: &RemoteDocument, cached: &SyncedRemoteRecord) -> bool {
-    cached.channel == remote.channel
 }
 
 fn current_unix_timestamp() -> u64 {

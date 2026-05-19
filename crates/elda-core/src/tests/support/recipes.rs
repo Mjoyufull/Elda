@@ -142,6 +142,24 @@ pub(in crate::tests) fn write_local_binary_recipe_with_provides(
     );
 }
 
+pub(in crate::tests) struct PolicyFieldLua<'a> {
+    pub(in crate::tests) depends: &'a str,
+    pub(in crate::tests) recommends: &'a str,
+    pub(in crate::tests) provides: &'a str,
+    pub(in crate::tests) conflicts: &'a str,
+}
+
+impl Default for PolicyFieldLua<'_> {
+    fn default() -> Self {
+        Self {
+            depends: "{}",
+            recommends: "{}",
+            provides: "{}",
+            conflicts: "{}",
+        }
+    }
+}
+
 pub(in crate::tests) fn write_local_binary_recipe_with_lua_fields(
     root: &Path,
     name: &str,
@@ -156,10 +174,12 @@ pub(in crate::tests) fn write_local_binary_recipe_with_lua_fields(
         name,
         binary_source,
         version,
-        depends_lua,
-        recommends_lua,
-        provides_lua,
-        "{}",
+        PolicyFieldLua {
+            depends: depends_lua,
+            recommends: recommends_lua,
+            provides: provides_lua,
+            ..Default::default()
+        },
     );
 }
 
@@ -168,10 +188,7 @@ pub(in crate::tests) fn write_local_binary_recipe_with_policy_fields(
     name: &str,
     binary_source: &Path,
     version: &str,
-    depends_lua: &str,
-    recommends_lua: &str,
-    provides_lua: &str,
-    conflicts_lua: &str,
+    policy: PolicyFieldLua<'_>,
 ) {
     let recipes_dir = root.join("etc/elda/recipes").join(name);
     fs::create_dir_all(&recipes_dir).expect("recipe dir should exist");
@@ -183,10 +200,10 @@ pub(in crate::tests) fn write_local_binary_recipe_with_policy_fields(
             version = version,
             binary = binary_source.display(),
             sha256 = sha256_file(binary_source),
-            depends = depends_lua,
-            recommends = recommends_lua,
-            provides = provides_lua,
-            conflicts = conflicts_lua,
+            depends = policy.depends,
+            recommends = policy.recommends,
+            provides = policy.provides,
+            conflicts = policy.conflicts,
         ),
     )
     .expect("binary recipe should be written");
@@ -368,6 +385,10 @@ pub(in crate::tests) fn fixture_remote_key_fingerprint() -> String {
     let mut hasher = Sha256::new();
     hasher.update(remote_signing_key().verifying_key().as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+pub(in crate::tests) fn fixture_remote_release_trust_public_key() -> String {
+    STANDARD.encode(remote_signing_key().verifying_key().as_bytes())
 }
 
 fn remote_signing_key() -> SigningKey {

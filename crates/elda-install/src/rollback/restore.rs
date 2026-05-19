@@ -2,7 +2,7 @@ use elda_db::Database;
 
 use crate::archive_state::{ArchivedPackage, installed_matches_archive};
 use crate::cached_archive::built_package_from_archive;
-use crate::install_tx::install_built_package_internal;
+use crate::install_tx::{InstallRecordOptions, install_built_package_internal};
 use crate::remove_tx::remove_package_internal;
 use crate::{
     InstallConffileMode, InstallError, InstallExecution, InstallReport, MutationPolicy,
@@ -81,9 +81,11 @@ fn restore_archived_package(
         database,
         &package,
         &archived.install_reason,
-        archived.pinned_version.clone(),
-        archived.held,
-        archived.hold_source.clone(),
+        InstallRecordOptions {
+            pinned_version: archived.pinned_version.clone(),
+            held: archived.held,
+            hold_source: archived.hold_source.clone(),
+        },
         InstallExecution {
             archive_state: false,
             take_lock: false,
