@@ -107,7 +107,7 @@ If a project has both `PROJECT_STANDARDS.md` and `CODE_STANDARDS.md`, then:
 
 ### Workflow Integration
 
-This document is meant to be applied through the workflow defined in `PROJECT_STANDARDS.md`, not beside it.
+This document is meant to be applied through the workflow defined in `PROJECT_STANDARDS.md`, not beside it. External contributors should start with `CONTRIBUTING.md` for setup and PR flow.
 
 In repos that use the `main` / `dev` / release-branch model:
 

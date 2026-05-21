@@ -8,33 +8,123 @@
 [![language: Rust](https://img.shields.io/badge/language-Rust-red.svg?style=flat-square)](https://www.rust-lang.org/)
 [![repository](https://img.shields.io/badge/repo-Mjoyufull%2FElda-blue?style=flat-square)](https://github.com/Mjoyufull/Elda)
 
+<br>
+
+A Unix-first, Linux-first system package manager written in Rust.<br>
+Binary-first delivery, git-capable sources, signed remotes—one ledger for every path under `/usr`.
+
 </div>
 
-Elda is a Unix-first, Linux-first package manager by Rikona
-([@Mjoyufull](https://github.com/Mjoyufull)). It is built to replace the split
-between a system package manager, direct git installer, vendor binary downloader,
-foreign repository bridge, and migration tool with one coherent package-manager
-state model.
+## Table of Contents
 
-Elda uses explicit package metadata, signed remotes, staged payloads, recorded
-ownership, deterministic verification, recoverable transactions, and source or
-binary lanes under one package identity.
+- [Features](#features)
+- [Quick Usage](#quick-usage)
+- [Status](#status)
+- [Building Elda](#building-elda)
+- [Dependencies](#dependencies)
+- [Configuration](#configuration)
+- [Package Definition Example](#package-definition-example)
+- [Documentation](#documentation)
+
+**Elda** is a Unix-first, Linux-first system package manager written in Rust. It manages `/usr` as installed state: one package identity and PubGrub-style solver (`epoch:pkgver-pkgrel`), one SQLite ledger for ownership and rollback, and one transaction path for signed remotes (including dynamic interemotes), Lua recipes (`pkg.lua`, optional `build.lua`), git upstreams, vendor/release binaries, interbuild imports (Nix flakes, Gentoo overlays, AUR, XBPS), and interepo foreign indexes. Host backends handle activation, triggers, conffiles, and boot policy on each supported Unix target. Hard fork of [pkgit](https://git.symlinx.net/pkgit/about/); full contract in [SPEC.md](./SPEC.md).
+
+## Features
+
+- **Lua recipes** — `pkg.lua` / `build.lua`, flags, deps, hooks, profiles, conffiles, `provider_assets`, split packages
+- **Signed remotes** — `sync` (all or named remotes), channels, TOFU/pinned trust, key rotation, cache-first payloads
+- **Interemotes** — Gentoo overlay / XBPS `srcpkgs` git remotes with `rmt preview`, `--exclude`, sync deltas and parser diagnostics
+- **Source and binary lanes** — same package name; `ig` / `ib`, release assets, AppImage, GPKG, vendor-generated recipes
+- **Foreign packaging** — interbuild parsers (Nix, Gentoo, AUR, XBPS) and interepo adapters into one staging model
+- **SQLite ledger** — ownership, manifests, `files` / `files search`, verify/recover, prefix and `/usr` rollback
+- **Operator surfaces** — install preflight, live progress, review stamps, `doctor`, `config pending`/`apply`, `trigger ls/info`
+- **Recipe & git ops** — `rc show` / `diff` / `publish-ready`, `vendor` import/export, `git releases` / tags, metadata `add` with `--replace`
+- **Policy & introspection** — pin/hold, `why` / `rdeps` / `autoremove`, downgrade, `fl check` / `diff`, provider preferences
+- **Forge publishing** — `ci` / `forge` / `qa`, hosted `ci pr`, signed indexes, populate cache mirror/push
+- **Init-agnostic** — provider assets for systemd, OpenRC, runit, dinit, and similar; no mandated init
+- **Staged transactions** — build → stage → verify → activate with journaled mutations on system backends
+
+## Quick Usage
+
+```sh
+# Inspect the CLI (see also examples/ and USAGE.md)
+elda --help
+elda i --help
+elda rmt add --help
+
+# Register a native remote and sync (illustrative URLs and keys—example remote only)
+elda rmt add yoka-main=https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst \
+  --trust pinned \
+  --trusted-key ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344 \
+  --packages-url https://github.com/Mjoyufull/Elda.git
+elda sync
+
+# Search and install
+elda search fsel
+elda i fsel
+elda ig fsel      # force source lane
+elda ib fsel      # force binary lane
+
+# Add local metadata without overwriting existing metadata
+elda a https://github.com/Mjoyufull/fsel
+elda a https://github.com/Mjoyufull/fsel --replace
+
+# Dynamic interemote: --exclude must come at the END of the flag list
+elda rmt add heather-overlay=https://github.com/heather7283/heather7283-overlay --exclude firefox vlc
+elda rmt preview heather-overlay
+elda sync heather-overlay
+
+# Inspect state and bootstrap health
+elda doctor
+elda ls
+elda info fsel
+```
+
+For the full operator guide, use [USAGE.md](./USAGE.md). For hosting native indexes, forges, and caches end to end, see [eldaforgehosting/](./eldaforgehosting/README.md).
+
+> [!WARNING]
+> **Documentation examples:** URLs, remote names, signing keys, and third-party repository names used in this repository’s docs are **strictly illustrative** unless you recognize them as your own infrastructure. Replace them with your index URLs, `packages_url`, trust material, and cache bases.
+
+> [!TIP]
+> **`examples/`:** The [examples/](./examples/) tree is the **primary** reference for `pkg.lua` layouts, profile snippets, import inputs, and annotated `config.toml` fragments.
 
 ## Status
 
-Elda is active development software. The current runtime has a real local and
-disposable-root package-manager slice, including source builds, binary lanes,
-remotes, cache lookup, verification, rollback, profiles, bounded interbuilds,
-local CI/forge tooling, and migration/adoption groundwork. It is not yet a final
-live-system replacement release.
+**Overall (toward full [SPEC.md](./SPEC.md) scope): ~68%**
 
-For exact behavior and implementation status, read:
+| Track | Progress | Notes |
+| --- | ---: | --- |
+| Core PM (recipes, solve, install, state, remotes, build, forge) | **~100%** | Includes interemotes, channels, cache policy, vendor/git release lanes, disposable roots + `/usr` backend |
+| Operator UX (review, doctor, progress, inspection) | **~85%** | Preflight, live progress, review memory, `files`/`config`/`trigger`/`rc` surfaces; setup/takeover still thin |
+| Interepo (foreign index → Elda install) | **~15%** | Architecture + bounded pieces; adapters/coexistence not done |
+| Migration / pkgit retirement | **~25%** | DB import groundwork; live takeover/coexistence not done |
+| Host activation (merged tree, atomic switch) | **0%** | Not in runtime yet |
 
-- [SPEC.md](./SPEC.md) - behavior contract
-- [USAGE.md](./USAGE.md) - operator workflows and examples
-- [phase.md](./phase.md) - implementation ledger and phase status
-- [checklist.md](./checklist.md) - development tracker
-- [eldaforgehosting/](./eldaforgehosting/README.md) - native forge, remote, cache, and publish hosting
+Active development. Native slice covers install/upgrade/remove, signed remotes and interemotes (`preview`, targeted `sync`), review gates, inspection commands, forge/CI publish, and bounded interbuild/migration import; interepo install and merged-tree host activation are not. Prefer disposable roots; treat live `/usr` as experimental. Ledger detail: [phase.md](./phase.md).
+
+### Feature checklist (current tree)
+
+Legend: `[x]` done in the current slice · `[~]` partial · `[ ]` not started
+
+- [x] `pkg.lua` / `build.lua` — parse, validate, install; flags, provider assets, meta/profile packages
+- [x] Source lanes — git, local recipes, synced `packages_url` trees; Cargo, CMake, Meson, Make, Go, Python, Zig, Nimble
+- [x] Binary lanes — URLs, forge `release_asset`, GPKG, AppImage + `appimage inspect`, vendor add/import/export
+- [x] Signed remotes — TOFU/pinned trust, channels, key rotation, offline snapshots, cache priority and cleanup
+- [x] Interemotes — dynamic Gentoo/XBPS git remotes, `rmt preview`/`trust`/`info`, `--exclude`, `sync <remote>` deltas
+- [x] Solver — install/upgrade/downgrade; pins, holds, providers, weak deps, replaces; `why` / `rdeps` / `autoremove`
+- [x] SQLite state — ownership, manifests, `files search`, verify/recover, conffile queue, prefix rollback
+- [x] `/usr` backend — staged activation, triggers, `fix-triggers`, provider assets, archive rollback (not final host model)
+- [x] Profiles — `pf` edit/apply, machine shape, init/foreign-arch policy, `state export`/`import`
+- [x] Inspection — `rc show`/`diff`/`publish-ready`, `config pending`/`diff`/`apply`, `trigger ls/info`, `doctor`
+- [x] Review — generated-metadata and interbuild gates, `review ls/info/forget/diff`, content-addressed stamps
+- [x] Forge — `ci`/`forge`/`qa`, local publish (lock/index/sidecars), hosted `ci pr`; `elda-populate` cache mirror
+- [x] Interbuild — bounded Nix flake, Gentoo overlay, AUR PKGBUILD, XBPS template parsers + review metadata
+- [~] Operator bootstrap — preflight, live progress, privilege handoff; full setup/takeover still open
+- [~] Migration — `mg from` / `adopt` for pacman, apt, apk, xbps, portage DBs; no live file takeover yet
+- [ ] Interepo: translated foreign snapshots install end-to-end
+- [ ] Coexistence / lock / live takeover modes vs other package managers
+- [ ] Host activation: merged-tree materialization and atomic `/usr` exchange (see [phase.md](./phase.md))
+
+**More detail:** full kanban and phase tables in **[checklist.md](./checklist.md)**. Contract: [SPEC.md](./SPEC.md). Changelog: [phase.md](./phase.md).
 
 ## Building Elda
 
@@ -84,55 +174,6 @@ the checkout:
 ```sh
 install -Dm0755 target/release/elda ~/.local/bin/elda
 ```
-
-## Quick Usage
-
-```sh
-# Inspect the CLI (see also examples/ and USAGE.md)
-elda --help
-elda i --help
-elda rmt add --help
-
-# Register a native remote and sync (illustrative URLs and keys—not a real remote)
-elda rmt add yoka-main=https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst \
-  --trust pinned \
-  --trusted-key ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344 \
-  --packages-url https://github.com/Mjoyufull/Elda.git
-elda sync
-
-# Search and install
-elda search fsel
-elda i fsel
-elda ig fsel      # force source lane
-elda ib fsel      # force binary lane
-
-# Add local metadata without overwriting existing metadata
-elda a https://github.com/Mjoyufull/fsel
-elda a https://github.com/Mjoyufull/fsel --replace
-
-# Dynamic interemote: --exclude must come at the END of the flag list; it consumes
-# all trailing package names (spaces or comma-separated tokens).
-elda rmt add heather-overlay=https://github.com/heather7283/heather7283-overlay --exclude firefox vlc
-elda rmt add other-overlay=https://example.invalid/overlay.git --exclude firefox, vlc
-elda rmt preview heather-overlay
-elda sync heather-overlay
-
-# Inspect state and bootstrap health
-elda doctor
-elda ls
-elda info fsel
-elda files fsel
-elda files owner /usr/bin/fsel
-elda verify fsel
-```
-
-For the full operator guide, use [USAGE.md](./USAGE.md). For hosting native indexes, forges, and caches end to end, see [eldaforgehosting/](./eldaforgehosting/README.md).
-
-> [!WARNING]
-> **Documentation examples:** URLs, remote names, signing keys, and third-party repository names used in this repository’s docs are **strictly illustrative** (e.g., example remotes and keys are not real) unless you recognize them as your own infrastructure. Replace them with your real index URLs, `packages_url`, trust material, and cache bases.
-
-> [!TIP]
-> **`examples/`:** The [examples/](./examples/) tree is the **primary** and most important place to learn real `pkg.lua` layouts, profile snippets, import inputs, and annotated `config.toml` fragments. Use it as your primary reference for available features.
 
 ## Dependencies
 
@@ -210,30 +251,18 @@ These are **not** required to compile Elda. Install them when you use the matchi
 
 Network access is required for `elda sync`, remote binary lanes, and release-asset fetch unless you use `--offline` with a verified local cache/snapshot.
 
-## What Works Today
+## What works today
 
-- `pkg.lua` recipes with source lanes, binary lanes, flags, weak deps, providers,
-  conflicts, replaces, conffiles, hooks, `sysusers`, `tmpfiles`, alternatives,
-  provider assets, meta packages, profile packages, and split package metadata.
-- Source installs from git and local recipes, with build support for Cargo,
-  CMake, Meson, Make, Go, Python, Zig, and Nimble in the current slice.
-- Binary installs from URL archives, GitHub release assets, provider-neutral
-  release assets, GPKG, AppImage, and vendor-generated recipes.
-- Signed native remotes, explicit TOFU/pinned trust, channel-aware sync,
-  source-capable `packages_url` remotes, cache-first payload lookup, offline
-  verified snapshot use, and dynamic Gentoo/XBPS interemotes.
-- Solver-backed install, remove, upgrade, downgrade, pin, hold, weak dependency,
-  provider, conflict, and replacement handling.
-- SQLite installed-state DB, file ownership, manifests, verification, recovery,
-  conffile handling, prefix rollback, and the first disposable `/usr` backend.
-- Profiles and machine shape through `pf`, state export/import, trigger
-  inspection, config queue resolution, and system-provider asset visibility.
-- Local native CI/forge workflows through `ci`, `forge`, `qa`, and local publish
-  artifacts.
-- Bounded interbuilds for Nix flakes, Gentoo overlays, AUR PKGBUILDs, and XBPS
-  templates without invoking foreign package-manager CLIs in the parser path.
-- Adoption/migration groundwork for pacman, apt/dpkg, apk, xbps, and portage
-  installed-state import.
+Roughly, the current tree can:
+
+- Parse and install `pkg.lua` recipes (deps, conflicts, replaces, conffiles, hooks, profiles, meta packages, and the rest of the metadata surface in the spec).
+- Build from git/local source (Cargo, CMake, Meson, Make, Go, Python, Zig, Nimble) or pull binaries (URLs, GitHub/GitLab/Gitea releases, GPKG, AppImage, generated vendor recipes).
+- Sync signed remotes, pin trust, use caches/offline snapshots, and wire dynamic Gentoo/XBPS-style interemotes.
+- Plan installs with the solver (upgrade/downgrade, pins, holds, providers, weak deps).
+- Keep state in SQLite: ownership, manifests, verify, rollback, conffiles, disposable `/usr` tests, first real host backend.
+- Run local `ci` / `forge` / `qa` / publish flows; import bounded Nix/Gentoo/AUR/XBPS metadata; start reading foreign PM databases for migration.
+
+Gaps and ordering live in [phase.md](./phase.md)—that file is the honest checklist, not marketing copy.
 
 ## Configuration
 
@@ -311,6 +340,8 @@ More complete package examples are in [examples/recipes](./examples/recipes). An
 
 - [SPEC.md](./SPEC.md) - product/runtime behavior contract
 - [USAGE.md](./USAGE.md) - operator workflows and CLI examples
+- [CONTRIBUTING.md](./CONTRIBUTING.md) - how to contribute (setup, PRs, testing)
+- [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md) - branching, releases, and review workflow
 - [eldaforgehosting/](./eldaforgehosting/README.md) - native forge, remote, index, cache, and publish hosting
 - [phase.md](./phase.md) - implementation order and current status
 - [checklist.md](./checklist.md) - development tracker
