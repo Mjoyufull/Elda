@@ -23,6 +23,7 @@ use crate::OutputMode;
 use crate::app_render_tree::{Glyph, TreeStyle};
 use crate::progress::{FrameOutcome, ProgressEvent, ProgressSink, ProgressUnit};
 use crate::progress_live_json::render_json;
+use crate::render_style::highlight_progress_line;
 
 const TRIANGLE_SPINNER_FRAMES: &[&str] = &["◢", "◣", "◤", "◥"];
 const SPINNER_TICK_MS: u64 = 80;
@@ -115,18 +116,27 @@ fn render_tty(sink: &LiveSink, event: &ProgressEvent) {
     match event {
         ProgressEvent::FrameStart { title, subject, .. } => {
             stop_spinner(sink);
-            let _ = match subject {
-                Some(subject) => writeln!(handle, "{connector_top} {title}: {subject}"),
-                None => writeln!(handle, "{connector_top} {title}"),
-            };
+            match subject {
+                Some(subject) => {
+                    let _ = write_progress_line(
+                        &mut handle,
+                        &format!("{connector_top} {title}: {subject}"),
+                    );
+                }
+                None => {
+                    let _ = write_progress_line(&mut handle, &format!("{connector_top} {title}"));
+                }
+            }
         }
         ProgressEvent::StepStarted {
+            step,
             label,
             detail,
             live_spinner,
             ..
         } => {
-            let tty_tracked = *live_spinner;
+            // Long-running acquire/build steps stream child output; do not cursor-rewind those lines.
+            let tty_tracked = *live_spinner && !matches!(*step, "acquire-source" | "build-inner");
             let generation = start_step(sink, label.clone(), detail.clone(), tty_tracked);
             let line = format_running_step_line(
                 connector_mid,
@@ -134,30 +144,40 @@ fn render_tty(sink: &LiveSink, event: &ProgressEvent) {
                 label,
                 detail.as_deref(),
             );
-            let _ = writeln!(handle, "{line}");
+            let _ = write_progress_line(&mut handle, &line);
             if tty_tracked {
                 spawn_spinner(sink, generation, connector_mid);
             }
         }
         ProgressEvent::StepProgress {
+            step,
             label,
             current,
             total,
             unit,
             ..
         } => {
-            let detail = format_progress_detail(*current, *total, *unit);
-            update_step_detail(sink, label.clone(), Some(detail.clone()));
-            let line = format_running_step_line(
-                connector_mid,
-                running_glyph(style),
-                label,
-                Some(detail.as_str()),
-            );
-            if running_step_allows_tty_rewind(sink) {
-                let _ = overwrite_last_line(&mut handle);
+            if *step == "build-inner" {
+                stop_spinner(sink);
+                let milestone = label.trim();
+                if !milestone.is_empty() {
+                    let _ =
+                        write_progress_line(&mut handle, &format!("{connector_mid}  {milestone}"));
+                }
+            } else {
+                let detail = format_progress_detail_for_step(step, *current, *total, *unit);
+                update_step_detail(sink, label.clone(), detail.clone());
+                let line = format_running_step_line(
+                    connector_mid,
+                    running_glyph(style),
+                    label,
+                    detail.as_deref(),
+                );
+                if running_step_allows_tty_rewind(sink) {
+                    let _ = overwrite_last_line(&mut handle);
+                }
+                let _ = write_progress_line(&mut handle, &line);
             }
-            let _ = writeln!(handle, "{line}");
         }
         ProgressEvent::StepDone { label, summary, .. } => {
             let rewind = running_step_allows_tty_rewind(sink);
@@ -167,7 +187,7 @@ fn render_tty(sink: &LiveSink, event: &ProgressEvent) {
             }
             let glyph = Glyph::Done.render(style);
             let line = format_step_line(connector_mid, glyph, label, summary.as_deref());
-            let _ = writeln!(handle, "{line}");
+            let _ = write_progress_line(&mut handle, &line);
         }
         ProgressEvent::StepSkipped { label, reason, .. } => {
             let rewind = running_step_allows_tty_rewind(sink);
@@ -176,7 +196,10 @@ fn render_tty(sink: &LiveSink, event: &ProgressEvent) {
                 let _ = overwrite_last_line(&mut handle);
             }
             let glyph = Glyph::Skipped.render(style);
-            let _ = writeln!(handle, "{connector_mid}  {glyph} {label}: {reason}");
+            let _ = write_progress_line(
+                &mut handle,
+                &format!("{connector_mid}  {glyph} {label}: {reason}"),
+            );
         }
         ProgressEvent::StepBlocked { label, reason, .. } => {
             let rewind = running_step_allows_tty_rewind(sink);
@@ -185,7 +208,10 @@ fn render_tty(sink: &LiveSink, event: &ProgressEvent) {
                 let _ = overwrite_last_line(&mut handle);
             }
             let glyph = Glyph::Blocked.render(style);
-            let _ = writeln!(handle, "{connector_mid}  {glyph} {label}: {reason}");
+            let _ = write_progress_line(
+                &mut handle,
+                &format!("{connector_mid}  {glyph} {label}: {reason}"),
+            );
         }
         ProgressEvent::FrameEnd {
             outcome, summary, ..
@@ -197,10 +223,17 @@ fn render_tty(sink: &LiveSink, event: &ProgressEvent) {
                 FrameOutcome::Cancelled => Glyph::Skipped,
             };
             let suffix = summary.as_deref().unwrap_or(outcome.as_str());
-            let _ = writeln!(handle, "{connector_bot} {} {suffix}", glyph.render(style));
+            let _ = write_progress_line(
+                &mut handle,
+                &format!("{connector_bot} {} {suffix}", glyph.render(style)),
+            );
         }
     }
     let _ = handle.flush();
+}
+
+fn write_progress_line(handle: &mut impl Write, line: &str) -> io::Result<()> {
+    writeln!(handle, "{}", highlight_progress_line(line))
 }
 
 fn render_plain(sink: &LiveSink, event: &ProgressEvent) {
@@ -235,10 +268,14 @@ fn render_plain(sink: &LiveSink, event: &ProgressEvent) {
             label,
             frame,
             unit,
-        } => {
-            let detail = format_progress_detail(*current, *total, *unit);
-            let _ = writeln!(handle, "[frame:{}] .. {step}: {label}: {detail}", frame.0);
-        }
+        } => match format_progress_detail_for_step(step, *current, *total, *unit) {
+            Some(detail) => {
+                let _ = writeln!(handle, "[frame:{}] .. {step}: {label}: {detail}", frame.0);
+            }
+            None => {
+                let _ = writeln!(handle, "[frame:{}] .. {step}: {label}", frame.0);
+            }
+        },
         ProgressEvent::StepDone {
             step,
             label,
@@ -354,7 +391,7 @@ fn spawn_spinner(sink: &LiveSink, generation: u64, connector: &'static str) {
             let stderr = io::stderr();
             let mut handle = stderr.lock();
             let _ = overwrite_last_line(&mut handle);
-            let _ = writeln!(handle, "{line}");
+            let _ = write_progress_line(&mut handle, &line);
             let _ = handle.flush();
         }
     });
@@ -412,6 +449,18 @@ fn format_step_line(connector: &str, glyph: &str, label: &str, summary: Option<&
     }
 }
 
+fn format_progress_detail_for_step(
+    step: &str,
+    current: u64,
+    total: Option<u64>,
+    unit: ProgressUnit,
+) -> Option<String> {
+    if step == "build-inner" && total.is_none() && current == 0 {
+        return None;
+    }
+    Some(format_progress_detail(current, total, unit))
+}
+
 fn format_progress_detail(current: u64, total: Option<u64>, unit: ProgressUnit) -> String {
     match total {
         Some(total) if total > 0 => {
@@ -436,8 +485,8 @@ fn overwrite_last_line<W: Write>(handle: &mut W) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        LiveSinkMode, format_progress_detail, format_step_line, running_glyph,
-        triangle_spinner_frames,
+        LiveSinkMode, format_progress_detail, format_progress_detail_for_step, format_step_line,
+        running_glyph, triangle_spinner_frames,
     };
     use crate::OutputMode;
     use crate::app_render_tree::TreeStyle;
@@ -474,6 +523,12 @@ mod tests {
     fn format_progress_detail_without_total_omits_percent() {
         let rendered = format_progress_detail(7, None, ProgressUnit::Files);
         assert_eq!(rendered, "7 files");
+    }
+
+    #[test]
+    fn build_inner_progress_omits_empty_zero_detail() {
+        let rendered = format_progress_detail_for_step("build-inner", 0, None, ProgressUnit::Items);
+        assert_eq!(rendered, None);
     }
 
     #[test]

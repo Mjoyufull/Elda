@@ -282,7 +282,7 @@ fn stamp_path(data_dir: &Path, package: &str, review_kind: &str) -> PathBuf {
         .join(format!("{package}.json"))
 }
 
-fn hash_file(path: &Path) -> Result<String, CoreError> {
+pub(crate) fn hash_file(path: &Path) -> Result<String, CoreError> {
     let bytes = fs::read(path)?;
     let mut hasher = Sha256::new();
     hasher.update(bytes);

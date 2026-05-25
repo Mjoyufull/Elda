@@ -5,6 +5,35 @@ use std::thread;
 
 use crate::error::BuildError;
 
+pub(crate) fn emit_build_line(
+    line_hook: &Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line: impl AsRef<str>,
+) {
+    if let Some(hook) = line_hook {
+        hook(line.as_ref());
+    }
+}
+
+pub fn run_command_inherited(
+    program: &'static str,
+    mut command: Command,
+    context: &str,
+) -> Result<(), BuildError> {
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::inherit());
+    command.stderr(Stdio::inherit());
+    let status = command.status()?;
+    if status.success() {
+        return Ok(());
+    }
+
+    Err(BuildError::CommandFailed {
+        program,
+        context: context.to_owned(),
+        stderr: format!("{program} exited with status {status}"),
+    })
+}
+
 pub fn run_command(
     program: &'static str,
     mut command: Command,

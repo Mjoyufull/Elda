@@ -16,6 +16,7 @@ mod review_metadata;
 mod review_recheck;
 pub(crate) mod solver;
 mod source_options;
+mod transaction_gate;
 
 pub(crate) use dependency::constraint::{
     package_satisfies_constraint, parse_dependency_constraint, provides_satisfy_constraint,
@@ -29,7 +30,6 @@ use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus, OutputMode};
 use elda_install::{install_built_package, install_upgraded_package, remove_package_for_upgrade};
 
-use install_confirm::confirm_install_execution;
 use preflight::install_preflight_report;
 use progress::{install_progress_for_completed, planned_activation_backend};
 use progress_emit::{
@@ -41,6 +41,7 @@ use report::{
     interbuild_details_for_report, planned_install_action_json,
 };
 use source_options::apply_interactive_source_option_selection;
+use transaction_gate::confirm_install_transaction;
 
 impl AppContext {
     pub(crate) fn handle_install(
@@ -105,7 +106,7 @@ impl AppContext {
         }
 
         self.review_generated_metadata_if_needed(&request, &install_plan)?;
-        confirm_install_execution(self, &request, &install_plan)?;
+        confirm_install_transaction(self, &request, &install_plan)?;
         let installs = self.apply_install_plan(&install_plan, &request)?;
         Ok(CommandReport {
             area: "install",
@@ -166,21 +167,26 @@ impl AppContext {
                 continue;
             }
 
-            emit_step_started(
-                sink,
-                frame,
-                "acquire-source",
-                "acquire source",
-                None,
-                !stream_child_output,
-            );
-            let build_frame = stream_child_output.then(|| self.next_frame_id());
-            let build_line_hook = build_frame.map(|build_frame| {
+            emit_step_started(sink, frame, "acquire-source", "acquire source", None, true);
+            if stream_child_output {
+                emit_step_started(
+                    sink,
+                    frame,
+                    "build-inner",
+                    "build source",
+                    Some(format!(
+                        "{}/{}",
+                        action.resolved.selected_lane, action.resolved.selected_source_kind
+                    )),
+                    false,
+                );
+            }
+            let build_line_hook = stream_child_output.then(|| {
                 let sink = self.progress_sink_arc();
                 std::sync::Arc::new(move |line: &str| {
                     use crate::progress::{ProgressEvent, ProgressUnit};
                     sink.emit(ProgressEvent::StepProgress {
-                        frame: build_frame,
+                        frame,
                         step: "build-inner",
                         label: line.to_owned(),
                         current: 0,
@@ -189,14 +195,6 @@ impl AppContext {
                     });
                 }) as std::sync::Arc<dyn Fn(&str) + Send + Sync>
             });
-            if let Some(build_frame) = build_frame {
-                use crate::progress::ProgressEvent;
-                sink.emit(ProgressEvent::FrameStart {
-                    frame: build_frame,
-                    title: "Inner build".to_owned(),
-                    subject: Some(action.package_name.clone()),
-                });
-            }
             let mut built = match self.build_resolved_target(
                 &action.resolved,
                 offline,
@@ -205,14 +203,6 @@ impl AppContext {
             ) {
                 Ok(built) => built,
                 Err(error) => {
-                    if let Some(build_frame) = build_frame {
-                        use crate::progress::{FrameOutcome, ProgressEvent};
-                        sink.emit(ProgressEvent::FrameEnd {
-                            frame: build_frame,
-                            outcome: FrameOutcome::Blocked,
-                            summary: Some(error.to_string()),
-                        });
-                    }
                     emit_frame_blocked(
                         sink,
                         frame,
@@ -223,14 +213,6 @@ impl AppContext {
                     return Err(error);
                 }
             };
-            if let Some(build_frame) = build_frame {
-                use crate::progress::{FrameOutcome, ProgressEvent};
-                sink.emit(ProgressEvent::FrameEnd {
-                    frame: build_frame,
-                    outcome: FrameOutcome::Ok,
-                    summary: Some("build finished".to_owned()),
-                });
-            }
             emit_acquire_and_build_done(sink, frame, action, &built.package);
             built.package.dependencies = Self::planned_dependency_records(&action.dependencies);
             let mut replaced = Vec::new();

@@ -5,9 +5,12 @@ use crate::app_confirm::confirm_mutation;
 use crate::error::CoreError;
 
 const SELF_CONFIRMED_PREFIXES: &[&[&str]] = &[
+    &["a"],
+    &["add"],
     &["i"],
     &["ig"],
     &["ib"],
+    &["rm"],
     &["rmt", "add"],
     &["rmt", "rm"],
     &["rmt", "remove"],

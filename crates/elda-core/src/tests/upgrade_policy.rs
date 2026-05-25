@@ -239,7 +239,7 @@ fn install_replaces_installed_package_from_same_origin() {
     .expect("replacement install dry run should succeed");
     let rendered = crate::render_human(&dry_run);
     assert!(
-        rendered.contains("replaces alpha-tool"),
+        rendered.contains("(alpha-tool)"),
         "human install plan should name replaced packages:\n{rendered}"
     );
 

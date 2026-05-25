@@ -143,8 +143,8 @@ fn ad_hoc_git_tag_install_does_not_auto_advance_on_plain_upgrade() {
     )
     .expect("human dry-run upgrade should succeed");
     let rendered = crate::render_human(&human_dry_run);
-    assert!(rendered.contains("git ref policy: pinned"));
-    assert!(rendered.contains("reason git-ref-pinned"));
+    assert!(rendered.contains("policy:: git-ref-pinned"));
+    assert!(rendered.contains("git ref:: pinned"));
 
     assert_eq!(
         installed_git_details(tempdir.path(), "tag-pin-tool").repo_commit,

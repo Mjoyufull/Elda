@@ -39,21 +39,20 @@ pub(super) fn render_privilege_frame(
     request: &PrivilegeRequest,
     resolved: &ResolvedProvider,
 ) -> String {
-    let requested = provider_label(request.provider);
     let selected = provider_label(resolved.effective);
     let prompt = if request.interactive {
-        "provider may prompt for credentials"
+        "may prompt"
     } else {
-        "non-interactive; provider must not prompt"
+        "non-interactive"
     };
     let env_policy = if request.preserve_env {
-        "preserve selected environment"
+        "preserve env"
     } else {
-        "drop caller environment"
+        "clean env"
     };
 
     format!(
-        "┌─ Privilege Escalation\n├─ Provider\n│  requested: {requested}\n│  selected:  {selected}\n│  binary:    {}\n│\n├─ Policy\n│  prompt:    {prompt}\n│  env:       {env_policy}\n└─ Continuing through `{selected}`",
+        ":: privilege {selected} ({prompt}, {env_policy}) via {}",
         resolved.binary_path.display()
     )
 }
@@ -80,6 +79,7 @@ fn configure_provider_command(
             configure_sudo_like_command(command, request, current_exe, forwarded_args);
         }
         PrivilegeProvider::Run0 => {
+            forward_operator_context(command);
             command.arg(current_exe).args(forwarded_args);
         }
         PrivilegeProvider::Su => {
@@ -103,7 +103,38 @@ fn configure_sudo_like_command(
     if !request.interactive {
         command.arg("-n");
     }
+    forward_operator_context(command);
     command.arg("--").arg(current_exe).args(forwarded_args);
+}
+
+/// Preserve invoking-operator paths through sudo/doas clean-env re-exec.
+fn forward_operator_context(command: &mut Command) {
+    command.arg(format!("ELDA_AFTER_PRIVILEGE=1"));
+    append_operator_context_args(command);
+}
+
+fn append_operator_context_args(command: &mut Command) {
+    if let Ok(home) = env::var("HOME") {
+        command.arg(format!("ELDA_OPERATOR_HOME={home}"));
+    }
+    if let Ok(uid) = env::var("UID") {
+        command.arg(format!("ELDA_OPERATOR_UID={uid}"));
+    } else if let Ok(uid) = env::var("SUDO_UID") {
+        command.arg(format!("ELDA_OPERATOR_UID={uid}"));
+    }
+}
+
+fn operator_context_prefix() -> String {
+    let mut parts = vec!["ELDA_AFTER_PRIVILEGE=1".to_owned()];
+    if let Ok(home) = env::var("HOME") {
+        parts.push(format!("ELDA_OPERATOR_HOME={home}"));
+    }
+    if let Ok(uid) = env::var("UID") {
+        parts.push(format!("ELDA_OPERATOR_UID={uid}"));
+    } else if let Ok(uid) = env::var("SUDO_UID") {
+        parts.push(format!("ELDA_OPERATOR_UID={uid}"));
+    }
+    parts.join(" ")
 }
 
 fn configure_su_command(
@@ -120,10 +151,9 @@ fn configure_su_command(
     if request.preserve_env {
         command.arg("-m");
     }
-    command
-        .arg("-c")
-        .arg(render_shell_command(current_exe, forwarded_args)?)
-        .arg("root");
+    let mut shell = render_shell_command(current_exe, forwarded_args)?;
+    shell = format!("{} {}", operator_context_prefix(), shell);
+    command.arg("-c").arg(shell).arg("root");
 
     Ok(())
 }

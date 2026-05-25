@@ -5,7 +5,7 @@ use std::sync::Arc;
 use elda_recipe::{BuildDefinition, PackageDefinition};
 
 use crate::error::BuildError;
-use crate::process::{run_command, run_command_streamed};
+use crate::process::{run_command, run_command_inherited};
 
 pub fn detect_cmake_build(
     _package: &PackageDefinition,
@@ -31,22 +31,19 @@ pub fn build_with_cmake(
     line_hook: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<(), BuildError> {
     let build_dir = source_dir.join("build-elda-cmake");
+    let build_dir_arg = build_dir.to_string_lossy();
     let mut configure = Command::new("cmake");
     configure.current_dir(source_dir).args([
         "-S",
         ".",
         "-B",
-        &build_dir.to_string_lossy(),
+        &build_dir_arg,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_INSTALL_PREFIX=/usr",
     ]);
     if stream_output {
-        run_command_streamed(
-            "cmake",
-            configure,
-            "configuring cmake project",
-            line_hook.clone(),
-        )?;
+        emit_header(&line_hook, "cmake configure (Release)");
+        run_command_inherited("cmake", configure, "configuring cmake project")?;
     } else {
         run_command("cmake", configure, "configuring cmake project")?;
     }
@@ -54,27 +51,21 @@ pub fn build_with_cmake(
     let mut compile = Command::new("cmake");
     compile
         .current_dir(source_dir)
-        .args(["--build", &build_dir.to_string_lossy()]);
+        .args(["--build", &build_dir_arg]);
     if stream_output {
-        run_command_streamed(
-            "cmake",
-            compile,
-            "building cmake project",
-            line_hook.clone(),
-        )?;
+        emit_header(&line_hook, "cmake --build (ninja/make backend)");
+        run_command_inherited("cmake", compile, "building cmake project")?;
     } else {
         run_command("cmake", compile, "building cmake project")?;
     }
 
     if build.tests {
         let mut test = Command::new("ctest");
-        test.current_dir(source_dir).args([
-            "--test-dir",
-            &build_dir.to_string_lossy(),
-            "--output-on-failure",
-        ]);
+        test.current_dir(source_dir)
+            .args(["--test-dir", &build_dir_arg, "--output-on-failure"]);
         if stream_output {
-            run_command_streamed("cmake", test, "running ctest", line_hook.clone())?;
+            emit_header(&line_hook, "ctest --output-on-failure");
+            run_command_inherited("ctest", test, "running ctest")?;
         } else {
             run_command("ctest", test, "running ctest")?;
         }
@@ -84,12 +75,19 @@ pub fn build_with_cmake(
     install
         .current_dir(source_dir)
         .env("DESTDIR", stage_root)
-        .args(["--install", &build_dir.to_string_lossy()]);
+        .args(["--install", &build_dir_arg]);
     if stream_output {
-        run_command_streamed("cmake", install, "installing cmake project", line_hook)?;
+        emit_header(&line_hook, "cmake --install");
+        run_command_inherited("cmake", install, "installing cmake project")?;
     } else {
         run_command("cmake", install, "installing cmake project")?;
     }
 
     Ok(())
+}
+
+fn emit_header(line_hook: &Option<Arc<dyn Fn(&str) + Send + Sync>>, label: &str) {
+    if let Some(hook) = line_hook {
+        hook(label);
+    }
 }

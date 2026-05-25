@@ -97,11 +97,13 @@ fn privilege_frame_names_selected_provider_and_policy() {
 
     let frame = render_privilege_frame(&request, &resolved);
 
-    assert!(frame.contains("Privilege Escalation"));
-    assert!(frame.contains("selected:  sudo"));
-    assert!(frame.contains(&sudo.display().to_string()));
-    assert!(frame.contains("non-interactive"));
-    assert!(frame.contains("preserve selected environment"));
+    assert_eq!(
+        frame,
+        format!(
+            ":: privilege sudo (non-interactive, preserve env) via {}",
+            sudo.display()
+        )
+    );
 }
 
 fn create_executable(path: PathBuf) {

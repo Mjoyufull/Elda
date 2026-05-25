@@ -27,6 +27,7 @@ thiserror = "2.0.17"
 toml = "0.8.23"
 ureq = "2.12.1"
 zstd = "0.13.3"
+ctrlc = "3.4.7"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

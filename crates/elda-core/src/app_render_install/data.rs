@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::app_render_support::{json_array, json_string, json_u64};
+use crate::app_render_support::{json_string, json_u64};
 
 pub(crate) fn primary_action(actions: &[Value]) -> Option<&Value> {
     actions
@@ -9,36 +9,33 @@ pub(crate) fn primary_action(actions: &[Value]) -> Option<&Value> {
         .or_else(|| actions.first())
 }
 
-pub(crate) fn report_actions(details: &Value) -> &[Value] {
-    json_array(details, &["plan", "actions"])
-        .or_else(|| json_array(details, &["installs"]))
-        .unwrap_or_default()
-}
-
 pub(crate) fn provenance_badge(action: &Value) -> &'static str {
+    if let Some(kind) = json_string(action, &["selected_source_kind"]) {
+        if matches!(
+            kind,
+            "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template"
+        ) {
+            return "[I]";
+        }
+    }
+
     match json_string(action, &["persisted_source_kind"])
         .or_else(|| json_string(action, &["package", "source_kind"]))
         .or_else(|| json_string(action, &["selected_source_kind"]))
         .unwrap_or("unknown")
     {
-        "repo_binary" => "[E]",
-        "interbuild" | "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template" => "[I]",
+        "repo_binary" | "local_recipe" => "[E]",
+        "interbuild" => "[I]",
         "adopted" => "[A]",
-        "local_recipe" | "git" if json_string(action, &["source_ref"]).is_some() => "[V]",
-        "local_recipe" | "git" => "[E]",
+        "git" if ad_hoc_vendor_source(action) => "[V]",
+        "git" => "[E]",
         _ => "[?]",
     }
 }
 
-pub(crate) fn confidence_modifier(action: &Value) -> &'static str {
-    match provenance_badge(action) {
-        "[E]" => "native",
-        "[I]" => "parsed",
-        "[F]" => "translated",
-        "[A]" => "adopted",
-        "[V]" => "vendor/ad-hoc",
-        _ => "unknown",
-    }
+fn ad_hoc_vendor_source(action: &Value) -> bool {
+    json_string(action, &["generated_metadata_path"]).is_some()
+        || action.get("ad_hoc_git_moving").is_some()
 }
 
 pub(crate) fn binary_trust_summary(action: &Value) -> Option<&'static str> {
@@ -86,21 +83,6 @@ pub(crate) fn render_snapshot_summary(action: &Value) -> Option<String> {
     Some(summary)
 }
 
-pub(crate) fn snapshot_risk_lines(actions: &[Value]) -> Vec<String> {
-    let snapshots = actions
-        .iter()
-        .filter_map(render_snapshot_summary)
-        .collect::<Vec<_>>();
-    if snapshots.is_empty() {
-        return vec!["snapshots: none recorded in current report".to_owned()];
-    }
-
-    snapshots
-        .into_iter()
-        .map(|summary| format!("snapshots: {summary}"))
-        .collect()
-}
-
 pub(crate) fn action_package_name(action: &Value) -> String {
     json_string(action, &["package"])
         .or_else(|| json_string(action, &["package", "package_name"]))
@@ -140,8 +122,45 @@ pub(crate) fn is_weak(action: &Value) -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn weak_suffix(action: &Value) -> &'static str {
-    if is_weak(action) { " weak" } else { "" }
+/// Semantic version tone for plan gates: green upgrade/install, blue keep/reinstall, red downgrade.
+pub(crate) fn version_change_rgb(action: &Value) -> Option<(u8, u8, u8)> {
+    use crate::render_style::palette;
+    match json_string(action, &["action"]).unwrap_or("install") {
+        "downgrade-explicit" | "downgrade-dependency" | "source-ref-downgrade" => {
+            Some(palette::WARNING) // yellow-orange for downgrade per contract
+        }
+        "keep-installed" | "keep" => Some(palette::VERSION),
+        "upgrade-explicit" | "upgrade-dependency" | "install-replacing" => Some(palette::SUCCESS),
+        "install-explicit" | "install-dependency" | "install-recommended" => Some(palette::SUCCESS),
+        _ if action
+            .get("needs_change")
+            .and_then(Value::as_bool)
+            .is_some_and(|needs| !needs) =>
+        {
+            Some(palette::VERSION)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn compact_plan_interbuild_summary(action: &Value) -> Option<String> {
+    let details = action.get("interbuild")?;
+    if details.is_null() {
+        return None;
+    }
+    let parser = json_string(details, &["parser"]).unwrap_or("unknown");
+    let external_cli = details
+        .get("external_cli_required")
+        .and_then(Value::as_bool)
+        .map(|required| {
+            if required {
+                "requires external CLI"
+            } else {
+                "no external CLI"
+            }
+        })
+        .unwrap_or("external CLI unknown");
+    Some(format!("parser {parser}, {external_cli}"))
 }
 
 pub(crate) fn interbuild_summary(action: &Value) -> Option<String> {
@@ -308,10 +327,4 @@ pub(crate) fn object_summary(action: &Value) -> Option<String> {
     Some(format!(
         "{requires} shlib require(s), {provides} shlib provide(s)"
     ))
-}
-
-pub(crate) fn push_optional_line(lines: &mut Vec<String>, key: &str, value: Option<&str>) {
-    if let Some(value) = value {
-        lines.push(format!("{key}: {value}"));
-    }
 }

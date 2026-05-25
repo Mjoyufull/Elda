@@ -55,6 +55,20 @@ pub(crate) fn emit_acquire_and_build_done(
     action: &PlannedInstallAction,
     package: &BuiltPackage,
 ) {
+    emit_step_done(
+        sink,
+        frame,
+        "build-inner",
+        "build source",
+        Some(build_summary(action)),
+    );
+    emit_step_done(
+        sink,
+        frame,
+        "acquire-source",
+        "acquire source",
+        Some("source ready".to_owned()),
+    );
     let kind = action.resolved.selected_source_kind.as_str();
     if kind == "git"
         || kind == "nix_flake"

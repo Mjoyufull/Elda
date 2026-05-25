@@ -11,7 +11,7 @@ use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::error::BuildError;
 use crate::git::ensure_git_protocol_allowed;
-use crate::process::run_command;
+use crate::process::{emit_build_line, run_command};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InterbuildSource {
@@ -26,6 +26,7 @@ pub fn materialize_or_use_checkout(
     work_root: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<PathBuf, BuildError> {
     if has_build_marker(checkout_dir) {
         return Ok(checkout_dir.to_path_buf());
@@ -35,7 +36,14 @@ pub fn materialize_or_use_checkout(
         return Ok(checkout_dir.to_path_buf());
     };
 
-    materialize_upstream(kind, upstream, work_root, offline, allowed_git_protocols)
+    materialize_upstream(
+        kind,
+        upstream,
+        work_root,
+        offline,
+        allowed_git_protocols,
+        line_hook,
+    )
 }
 
 fn materialize_upstream(
@@ -44,20 +52,24 @@ fn materialize_upstream(
     work_root: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<PathBuf, BuildError> {
     let source_root = work_root.join(format!("{kind}-upstream"));
     match upstream {
         InterbuildSource::Git { url } => {
-            clone_git_source(url, &source_root, offline, allowed_git_protocols)
+            clone_git_source(url, &source_root, offline, allowed_git_protocols, line_hook)
         }
-        InterbuildSource::Archive { url, sha256 } => extract_archive_source(
-            kind,
-            url,
-            sha256.as_deref(),
-            work_root,
-            &source_root,
-            offline,
-        ),
+        InterbuildSource::Archive { url, sha256 } => {
+            emit_build_line(&line_hook, format!("[Interbuild] fetching archive {url}"));
+            extract_archive_source(
+                kind,
+                url,
+                sha256.as_deref(),
+                work_root,
+                &source_root,
+                offline,
+            )
+        }
     }
 }
 
@@ -66,6 +78,7 @@ fn clone_git_source(
     destination: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<PathBuf, BuildError> {
     ensure_git_protocol_allowed(url, allowed_git_protocols)?;
     if offline && !is_local_location(url) {
@@ -77,6 +90,7 @@ fn clone_git_source(
     let mut command = Command::new("git");
     command.args(["clone", "--depth", "1", url]);
     command.arg(destination);
+    emit_build_line(&line_hook, format!("[Git] cloning upstream {url}"));
     run_command("git", command, "cloning interbuild upstream source")?;
     Ok(destination.to_path_buf())
 }

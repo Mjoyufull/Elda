@@ -10,10 +10,25 @@ use elda_repo::list_remotes;
 
 impl AppContext {
     pub(crate) fn handle_ls(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
+        self.list_installed_packages_report(request, ListOperandMode::FiltersOnly)
+    }
+
+    pub(crate) fn handle_list(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
+        self.list_installed_packages_report(request, ListOperandMode::FiltersAndPackages)
+    }
+
+    fn list_installed_packages_report(
+        &self,
+        request: CommandRequest,
+        operand_mode: ListOperandMode,
+    ) -> Result<CommandReport, CoreError> {
         self.database.bootstrap()?;
         let mut packages = self.database.list_installed_packages()?;
-        let filters = parse_list_filters(&request.operands)?;
-        apply_list_filters(&mut packages, &filters);
+        let parsed = parse_list_operands(&request.operands, operand_mode)?;
+        apply_list_filters(&mut packages, &parsed.filters);
+        if !parsed.packages.is_empty() {
+            packages.retain(|package| parsed.packages.contains(&package.pkgname));
+        }
 
         Ok(CommandReport {
             area: "state",
@@ -24,7 +39,7 @@ impl AppContext {
             output_mode: request.output_mode,
             dry_run: request.dry_run,
             summary: format!("listed {} installed package(s).", packages.len()),
-            details: Some(json!({ "packages": packages, "filters": filters })),
+            details: Some(json!({ "packages": packages, "filters": parsed.filters })),
         })
     }
 
@@ -292,6 +307,12 @@ impl AppContext {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ListOperandMode {
+    FiltersOnly,
+    FiltersAndPackages,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 struct ListFilters {
     explicit: bool,
@@ -301,7 +322,51 @@ struct ListFilters {
     source_kind: Option<String>,
 }
 
-fn parse_list_filters(operands: &[String]) -> Result<ListFilters, CoreError> {
+#[derive(Debug, Clone, Default)]
+struct ParsedListOperands {
+    packages: Vec<String>,
+    filters: ListFilters,
+}
+
+fn parse_list_operands(
+    operands: &[String],
+    mode: ListOperandMode,
+) -> Result<ParsedListOperands, CoreError> {
+    let command = match mode {
+        ListOperandMode::FiltersOnly => "ls",
+        ListOperandMode::FiltersAndPackages => "list",
+    };
+
+    if matches!(mode, ListOperandMode::FiltersOnly) {
+        return Ok(ParsedListOperands {
+            packages: Vec::new(),
+            filters: parse_list_filters(operands, command)?,
+        });
+    }
+
+    let mut packages = Vec::new();
+    let mut filter_operands = Vec::new();
+    let mut iter = operands.iter();
+    while let Some(operand) = iter.next() {
+        if operand.starts_with("--") {
+            filter_operands.push(operand.clone());
+            if operand == "--source-kind" {
+                if let Some(value) = iter.next() {
+                    filter_operands.push(value.clone());
+                }
+            }
+        } else {
+            packages.push(operand.clone());
+        }
+    }
+
+    Ok(ParsedListOperands {
+        packages,
+        filters: parse_list_filters(&filter_operands, command)?,
+    })
+}
+
+fn parse_list_filters(operands: &[String], command: &str) -> Result<ListFilters, CoreError> {
     let mut filters = ListFilters::default();
     let mut iter = operands.iter();
     while let Some(operand) = iter.next() {
@@ -312,7 +377,7 @@ fn parse_list_filters(operands: &[String]) -> Result<ListFilters, CoreError> {
             "--pinned" => filters.pinned = true,
             "--source-kind" => {
                 let value = iter.next().ok_or_else(|| {
-                    CoreError::Operator("ls --source-kind requires a value".to_owned())
+                    CoreError::Operator(format!("{command} --source-kind requires a value"))
                 })?;
                 filters.source_kind = Some(value.clone());
             }
@@ -321,15 +386,15 @@ fn parse_list_filters(operands: &[String]) -> Result<ListFilters, CoreError> {
             }
             other => {
                 return Err(CoreError::Operator(format!(
-                    "unexpected ls operand or flag `{other}`"
+                    "unexpected {command} operand or flag `{other}`"
                 )));
             }
         }
     }
     if filters.explicit && filters.deps {
-        return Err(CoreError::Operator(
-            "ls --explicit and --deps cannot be combined".to_owned(),
-        ));
+        return Err(CoreError::Operator(format!(
+            "{command} --explicit and --deps cannot be combined"
+        )));
     }
     Ok(filters)
 }

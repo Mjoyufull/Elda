@@ -208,6 +208,7 @@ impl Frame {
                     buffer.push_str(chars.mid);
                     buffer.push(' ');
                     buffer.push_str(title);
+                    buffer.push(':');
                 }
                 Row::Spacer => {
                     buffer.push_str(chars.vert);
@@ -227,17 +228,12 @@ impl Frame {
                 Row::KeyValue {
                     key,
                     value,
-                    key_pad,
+                    key_pad: _,
                 } => {
                     buffer.push_str(chars.vert);
                     buffer.push_str("  ");
                     buffer.push_str(key);
-                    buffer.push(':');
-                    let already = key.len() + 1; // key + ":"
-                    let target = (*key_pad).max(already + 1);
-                    for _ in 0..(target - already) {
-                        buffer.push(' ');
-                    }
+                    buffer.push_str(":: ");
                     buffer.push_str(value);
                 }
             }
@@ -306,7 +302,7 @@ mod tests {
             });
 
         let rendered = frame.render(TreeStyle::Unicode);
-        let expected = "┌─ System Health\n├─ DB Integrity\n│  ✔ Pass\n├─ Orphan Packages\n│  ⚠ 2 found (`elda autoremove`)\n└─ Overall Status: Warning";
+        let expected = "┌─ System Health\n├─ DB Integrity:\n│  ✔ Pass\n├─ Orphan Packages:\n│  ⚠ 2 found (`elda autoremove`)\n└─ Overall Status: Warning";
         assert_eq!(rendered, expected);
     }
 
@@ -322,7 +318,7 @@ mod tests {
             });
 
         let rendered = frame.render(TreeStyle::Ascii);
-        let expected = "+- Sync\n+- yoka-core\n|  [ok] fetched\n+- [ok] Sync complete";
+        let expected = "+- Sync\n+- yoka-core:\n|  [ok] fetched\n+- [ok] Sync complete";
         assert_eq!(rendered, expected);
     }
 
@@ -334,11 +330,11 @@ mod tests {
 
         let rendered = frame.render(TreeStyle::Unicode);
         assert!(
-            rendered.contains("│  requested:  hyprland"),
+            rendered.contains("│  requested:: hyprland"),
             "missing requested row: {rendered}"
         );
         assert!(
-            rendered.contains("│  mode:       system"),
+            rendered.contains("│  mode:: system"),
             "missing mode row: {rendered}"
         );
     }

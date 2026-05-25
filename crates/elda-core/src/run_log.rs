@@ -195,7 +195,7 @@ pub(crate) fn session_log_path(details: &Value) -> Option<&str> {
     details.get("session_log")?.get("path")?.as_str()
 }
 
-fn is_mutating_command(command_path: &[String]) -> bool {
+pub(crate) fn is_mutating_command(command_path: &[String]) -> bool {
     match command_path {
         [command] => matches!(
             command.as_str(),
@@ -251,12 +251,20 @@ fn is_mutating_command(command_path: &[String]) -> bool {
 }
 
 fn resolve_log_dir(root_dir: &Path, configured_dir: &str) -> PathBuf {
+    resolve_log_dir_for_config_home(root_dir, configured_dir, user_config_home())
+}
+
+fn resolve_log_dir_for_config_home(
+    root_dir: &Path,
+    configured_dir: &str,
+    config_home: Option<PathBuf>,
+) -> PathBuf {
     if root_dir != Path::new("/") {
         return root_relative_path(root_dir, configured_dir);
     }
 
     if let Some(stripped) = configured_dir.strip_prefix("~/")
-        && let Some(config_home) = user_config_home()
+        && let Some(config_home) = config_home
     {
         return config_home.join(stripped.strip_prefix(".config/").unwrap_or(stripped));
     }
@@ -278,6 +286,10 @@ fn root_relative_path(root_dir: &Path, configured_dir: &str) -> PathBuf {
 }
 
 fn user_config_home() -> Option<PathBuf> {
+    if let Ok(home) = env::var("ELDA_OPERATOR_HOME") {
+        return Some(PathBuf::from(home).join(".config"));
+    }
+
     if geteuid().is_root() {
         if let Some(uid) = env::var_os("SUDO_UID")
             .and_then(|value| value.to_str().and_then(|text| text.parse::<u32>().ok()))
@@ -350,14 +362,28 @@ fn command_slug(command_path: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use serde_json::json;
 
     use crate::config::Config;
     use crate::{CommandRequest, OutputMode};
 
-    use super::{CommandLogSession, command_slug, resolve_log_dir, session_log_path};
+    use super::{
+        CommandLogSession, command_slug, resolve_log_dir, resolve_log_dir_for_config_home,
+        session_log_path,
+    };
+
+    #[test]
+    fn resolve_log_dir_uses_operator_home_when_forwarded_through_sudo() {
+        let directory = resolve_log_dir_for_config_home(
+            Path::new("/"),
+            "~/.config/elda/logs",
+            Some(PathBuf::from("/home/chris/.config")),
+        );
+
+        assert_eq!(directory, Path::new("/home/chris/.config/elda/logs"));
+    }
 
     #[test]
     fn resolve_log_dir_uses_root_relative_path_for_isolated_roots() {

@@ -31,7 +31,12 @@ pub(super) const CORE_ROWS: &[HelpRow] = &[
         "<pkg>",
         "inspect installed or synced package metadata",
     ),
-    HelpRow::new("ls", "", "list installed packages in the current root"),
+    HelpRow::new("ls", "", "scan installed packages in the current root"),
+    HelpRow::new(
+        "list",
+        "[pkg...]",
+        "show detailed installed package blocks",
+    ),
     HelpRow::new(
         "files",
         "<pkg>",

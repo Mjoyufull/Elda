@@ -1,6 +1,7 @@
 mod inspect;
 mod recovery;
 mod remove;
+mod remove_gate;
 
 use std::collections::{BTreeMap, BTreeSet};
 

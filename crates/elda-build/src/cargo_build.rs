@@ -11,7 +11,7 @@ use serde::Deserialize;
 use elda_recipe::{BuildDefinition, PackageDefinition};
 
 use crate::error::BuildError;
-use crate::process::{command_failure_message, run_command, run_command_streamed};
+use crate::process::{command_failure_message, run_command, run_command_inherited};
 
 pub fn detect_cargo_build(
     package: &PackageDefinition,
@@ -51,12 +51,10 @@ pub fn build_with_cargo(
         build_command.args(["--bin", bin]);
     }
     if stream_output {
-        run_command_streamed(
-            "cargo",
-            build_command,
-            "building cargo project",
-            line_hook.clone(),
-        )?;
+        if let Some(hook) = &line_hook {
+            hook("cargo build --release");
+        }
+        run_command_inherited("cargo", build_command, "building cargo project")?;
     } else {
         run_command("cargo", build_command, "building cargo project")?;
     }
@@ -71,7 +69,10 @@ pub fn build_with_cargo(
             test_command.arg(build.features.join(","));
         }
         if stream_output {
-            run_command_streamed("cargo", test_command, "running cargo tests", line_hook)?;
+            if let Some(hook) = &line_hook {
+                hook("cargo test --release");
+            }
+            run_command_inherited("cargo", test_command, "running cargo tests")?;
         } else {
             run_command("cargo", test_command, "running cargo tests")?;
         }

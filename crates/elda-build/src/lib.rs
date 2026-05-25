@@ -162,6 +162,7 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
                     build_root.path(),
                     request.offline,
                     &request.allowed_git_protocols,
+                    request.build_line_hook.clone(),
                 )?;
 
                 // Auto-detect foreign build definitions in the checkout.
@@ -196,12 +197,25 @@ pub fn build_recipe(request: BuildRequest<'_>) -> Result<BuiltPackage, BuildErro
                 )
             }
             "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template" => {
-                let checkout = interbuild::prepare_interbuild_source(
-                    request.recipe,
-                    build_root.path(),
-                    request.offline,
-                    &request.allowed_git_protocols,
-                )?;
+                let checkout =
+                    if let Some(local_root) = interbuild::local_interbuild_root(request.recipe) {
+                        interbuild::prepare_local_interbuild_source(
+                            request.recipe,
+                            &local_root,
+                            build_root.path(),
+                            request.offline,
+                            &request.allowed_git_protocols,
+                            request.build_line_hook.clone(),
+                        )?
+                    } else {
+                        interbuild::prepare_interbuild_source(
+                            request.recipe,
+                            build_root.path(),
+                            request.offline,
+                            &request.allowed_git_protocols,
+                            request.build_line_hook.clone(),
+                        )?
+                    };
                 build_source_tree(
                     request.recipe,
                     &checkout.source_dir,

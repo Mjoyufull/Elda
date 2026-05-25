@@ -1,6 +1,7 @@
 mod aur;
 mod gentoo;
 pub(crate) mod gpkg;
+mod local;
 mod metadata;
 pub(crate) mod nix;
 mod shell;
@@ -14,6 +15,9 @@ use elda_recipe::RecipeDocument;
 
 use crate::error::BuildError;
 use crate::git::{SourceCheckout, checkout_source};
+use crate::process::emit_build_line;
+
+pub use local::{local_interbuild_root, snapshot_rev};
 
 pub use metadata::{
     ArchSourceReport, AurReport, GentooReport, InterbuildReport, LockfileReport,
@@ -26,13 +30,64 @@ pub fn prepare_interbuild_source(
     work_root: &std::path::Path,
     offline: bool,
     allowed_git_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<InterbuildCheckout, BuildError> {
+    emit_build_line(
+        &line_hook,
+        format!(
+            "[Interbuild] preparing {} source",
+            recipe.package.source.kind
+        ),
+    );
     let checkout = checkout_source(
         &recipe.package.source,
         work_root,
         offline,
         allowed_git_protocols,
+        line_hook.clone(),
     )?;
+    finish_interbuild_checkout(
+        recipe,
+        checkout,
+        work_root,
+        offline,
+        allowed_git_protocols,
+        line_hook,
+    )
+}
+
+pub fn prepare_local_interbuild_source(
+    recipe: &RecipeDocument,
+    local_root: &Path,
+    work_root: &Path,
+    offline: bool,
+    allowed_git_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+) -> Result<InterbuildCheckout, BuildError> {
+    emit_build_line(&line_hook, "[Interbuild] using local recipe metadata");
+    let checkout = SourceCheckout {
+        source_dir: local_root.to_path_buf(),
+        repo_commit: snapshot_rev(recipe),
+        repo_commit_unix: None,
+    };
+    finish_interbuild_checkout(
+        recipe,
+        checkout,
+        work_root,
+        offline,
+        allowed_git_protocols,
+        line_hook,
+    )
+}
+
+fn finish_interbuild_checkout(
+    recipe: &RecipeDocument,
+    checkout: SourceCheckout,
+    work_root: &Path,
+    offline: bool,
+    allowed_git_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+) -> Result<InterbuildCheckout, BuildError> {
     match recipe.package.source.kind.as_str() {
         "nix_flake" => {
             let source_dir = checkout.source_dir.clone();
@@ -71,6 +126,7 @@ pub fn prepare_interbuild_source(
                 work_root,
                 offline,
                 allowed_git_protocols,
+                line_hook.clone(),
             )?;
 
             Ok(InterbuildCheckout {
@@ -90,6 +146,7 @@ pub fn prepare_interbuild_source(
         }
         "xbps_template" => {
             let validation = xbps::validate_template(recipe, &checkout.source_dir)?;
+            emit_build_line(&line_hook, "[Interbuild] resolving xbps upstream source");
             let source_dir = source::materialize_or_use_checkout(
                 "xbps_template",
                 &checkout.source_dir,
@@ -97,6 +154,7 @@ pub fn prepare_interbuild_source(
                 work_root,
                 offline,
                 allowed_git_protocols,
+                line_hook,
             )?;
             Ok(InterbuildCheckout {
                 source_dir,

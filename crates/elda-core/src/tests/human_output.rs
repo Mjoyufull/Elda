@@ -26,24 +26,16 @@ fn human_install_dry_run_renders_structured_sections() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("┌─ Elda Transaction Plan"));
-    assert!(rendered.contains("├─ Target"));
-    assert!(rendered.contains("│  requested: render-plan-tool"));
-    assert!(rendered.contains("│  backend: prefix-copy"));
-    assert!(rendered.contains("├─ Resolution"));
-    assert!(rendered.contains("│  selected package: render-plan-tool"));
-    assert!(rendered.contains("├─ Plan"));
-    assert!(rendered.contains("│  install-explicit render-plan-tool"));
-    assert!(rendered.contains("├─ Preflight"));
-    assert!(
-        rendered.contains("│  candidate size: estimated-from-cached-payloads")
-            || rendered.contains("│  candidate size: unknown-until-source-build")
-            || rendered.contains("│  candidate size: binary-or-no-change")
-    );
-    assert!(rendered.contains("├─ Progress"));
-    assert!(rendered.contains("│  render-plan-tool:"));
-    assert!(rendered.contains("│    planned fetch-binary:"));
-    assert!(rendered.contains("└─ Proceed?"));
+    assert!(rendered.contains("┌─ install render-plan-tool"));
+    assert!(rendered.contains("│  target:: render-plan-tool"));
+    assert!(rendered.contains("│  version:: 0:0.1.0-1"));
+    assert!(rendered.contains("│  source:: [E] binary/url_archive"));
+    assert!(rendered.contains("│  activate:: /opt/elda (prefix) via prefix-copy"));
+    assert!(rendered.contains("│  change:: install 1, keep 0, replace 0, weak 0"));
+    assert!(rendered.contains("│  safety review::"));
+    assert!(rendered.contains("└─ dry run"));
+    assert!(!rendered.contains("├─ Target"));
+    assert!(!rendered.contains("├─ Progress"));
     assert!(!rendered.contains("\"plan\""));
 }
 
@@ -69,23 +61,28 @@ fn human_install_success_renders_result_block() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("┌─ Install Result"));
-    assert!(rendered.contains("├─ Target"));
-    assert!(rendered.contains("│  requested: render-result-tool"));
-    assert!(rendered.contains("├─ Plan"));
-    assert!(rendered.contains("│  install-explicit render-result-tool"));
-    // The live progression sink streamed the per-step status to stderr;
-    // the post-action human render must not redraw the Progress block.
+    assert!(rendered.contains("┌─ installed render-result-tool"));
+    assert!(rendered.contains("│  target:: render-result-tool"));
+    assert!(rendered.contains("│  state:: "));
+    assert!(rendered.contains("│  paths:: "));
+    assert!(
+        !rendered.contains("│  source "),
+        "post-action render must not repeat source facts: {rendered}"
+    );
+    assert!(
+        !rendered.contains("│  activate "),
+        "post-action render must not repeat activation facts: {rendered}"
+    );
     assert!(
         !rendered.contains("├─ Progress"),
         "post-action render must not duplicate the live progression: {rendered}"
     );
-    assert!(
-        rendered.contains("├─ Result")
-            && rendered.contains("│  render-result-tool 0:0.1.0-1 -> installed")
-            && rendered.contains("backend prefix-copy")
-    );
-    assert!(rendered.contains("Log\n  path:"));
+    assert!(rendered.contains(
+        "Log
+  path:"
+    ));
+    assert!(!rendered.contains("Install Result"));
+    assert!(!rendered.contains("install: ok"));
     assert!(!rendered.contains("\"installs\""));
 }
 
@@ -109,9 +106,9 @@ fn human_direct_git_dry_run_surfaces_generated_metadata_path() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("generated metadata: "));
+    assert!(rendered.contains("metadata::"));
     assert!(rendered.contains("/etc/elda/recipes/render-git-tool"));
-    assert!(rendered.contains("[V] vendor/ad-hoc"));
+    assert!(rendered.contains("source:: [V]"));
 }
 
 #[test]
@@ -162,14 +159,14 @@ fn human_install_render_includes_snapshot_summary_when_present() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("│  backend: linux-copy"));
-    // Live tree streamed the per-step events; success render must not
-    // re-emit the Progress block that duplicates them.
+    assert!(rendered.contains("│  target:: system-tool"));
+    assert!(rendered.contains("│  state:: system-1"));
+    assert!(rendered.contains("│  paths:: 42"));
     assert!(
         !rendered.contains("│  system-tool:\n│    done snapshot-hooks:"),
         "post-action human render duplicated the live progression: {rendered}"
     );
-    assert!(rendered.contains("snapshots 2 via snapper, 2 captured"));
+    assert!(rendered.contains("│  snapshots:: 2 via snapper, 2 captured"));
 }
 
 #[test]
@@ -202,12 +199,10 @@ fn human_interbuild_plan_surfaces_parser_provenance_and_risk() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("│  provenance: [I]"));
-    assert!(rendered.contains("├─ Provenance"));
-    assert!(rendered.contains("│  render-flake-tool: [I] parsed"));
-    assert!(rendered.contains("non-native provenance actions: 1"));
-    assert!(rendered.contains("planned parse-interbuild-source"));
-    assert!(rendered.contains("without nix CLI"));
+    assert!(rendered.contains("│  source:: [I]"));
+    assert!(rendered.contains("interbuild parser:: nix_flake, no external CLI"));
+    assert!(!rendered.contains("├─ Provenance"));
+    assert!(!rendered.contains("non-native provenance actions"));
 }
 
 #[test]
@@ -270,10 +265,8 @@ fn human_interbuild_plan_surfaces_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("render-gentoo-tool interbuild: parser gentoo_overlay"));
-    assert!(rendered.contains("bounded-ebuild-metadata-parser"));
-    assert!(rendered.contains("no external CLI"));
-    assert!(rendered.contains("gentoo EAPI 8"));
+    assert!(rendered.contains("interbuild parser:: gentoo_overlay, no external CLI"));
+    assert!(!rendered.contains("bounded-ebuild-metadata-parser"));
 }
 
 #[test]
@@ -310,9 +303,8 @@ fn human_interbuild_plan_surfaces_aur_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("render-aur-tool interbuild: parser aur_pkgbuild"));
-    assert!(rendered.contains("bounded-pkgbuild-metadata-parser"));
-    assert!(rendered.contains("aur 0 depend(s), 0 makedepend(s), 0 optdepend(s), 0 function(s), 0 arch source set(s), 0 VCS source(s), static pkgver"));
+    assert!(rendered.contains("interbuild parser:: aur_pkgbuild, no external CLI"));
+    assert!(!rendered.contains("bounded-pkgbuild-metadata-parser"));
 }
 
 #[test]
@@ -343,8 +335,14 @@ fn human_interbuild_plan_surfaces_aur_vcs_context() {
     )
     .expect("AUR VCS interbuild install should succeed");
 
+    let details = report.details.as_ref().expect("details should exist");
+    let aur = &details["installs"][0]["interbuild"]["aur"];
+    assert_eq!(aur["vcs_sources"].as_array().map(Vec::len), Some(1));
+    assert_eq!(aur["pkgver_function"], true);
+
     let rendered = render_human(&report);
-    assert!(rendered.contains("1 VCS source(s), pkgver() present"));
+    assert!(rendered.contains("┌─ installed render-aur-vcs-tool"));
+    assert!(rendered.contains("│  paths:: "));
 }
 
 #[test]
@@ -381,11 +379,8 @@ fn human_interbuild_plan_surfaces_xbps_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("render-xbps-tool interbuild: parser xbps_template"));
-    assert!(rendered.contains("bounded-xbps-template-parser"));
-    assert!(
-        rendered.contains("xbps 0 depend(s), 0 makedepend(s), 0 hostmakedepend(s), 0 function(s)")
-    );
+    assert!(rendered.contains("interbuild parser:: xbps_template, no external CLI"));
+    assert!(!rendered.contains("bounded-xbps-template-parser"));
 }
 
 #[test]
@@ -419,7 +414,7 @@ fn human_metadata_add_can_render_priority_sorted_source_options() {
 }
 
 #[test]
-fn human_state_ls_renders_per_package_blocks_in_nix_profile_style() {
+fn human_state_ls_renders_scan_table_without_detail_blocks() {
     let report = CommandReport {
         area: "state",
         status: "ok",
@@ -474,24 +469,91 @@ fn human_state_ls_renders_per_package_blocks_in_nix_profile_style() {
 
     assert!(rendered.contains("state: ok"));
     assert!(rendered.contains("listed 2 installed package(s)."));
-    assert!(rendered.contains("Name:           bfetch"));
-    assert!(rendered.contains("Version:        0:0.1.0-1"));
-    assert!(rendered.contains("Provenance:     [E] local_recipe (Native)"));
-    assert!(rendered.contains("Source ref:     /etc/elda/recipes/bfetch"));
-    assert!(rendered.contains("Repo commit:    4bc9d6447f96b12e554fbdaa5ffe6e1b363de9d4"));
+    assert!(rendered.contains("NAME"));
+    assert!(rendered.contains("bfetch"));
+    assert!(rendered.contains("fsel"));
+    assert!(rendered.contains("native"));
+    assert!(rendered.contains("yoka-core"));
+    assert!(rendered.contains("[pinned]"));
+
+    assert!(!rendered.contains("Name:"));
+    assert!(!rendered.contains("Manifest:"));
+    assert!(!rendered.contains("\"packages\""));
+    assert!(!rendered.contains("\"manifest_hash\""));
+}
+
+#[test]
+fn human_state_list_renders_per_package_blocks_in_nix_profile_style() {
+    let report = CommandReport {
+        area: "state",
+        status: "ok",
+        exit_status: ExitStatus::Success,
+        command_path: vec!["list".to_owned()],
+        operands: Vec::new(),
+        output_mode: OutputMode::Human,
+        dry_run: false,
+        summary: "listed 2 installed package(s).".to_owned(),
+        details: Some(json!({
+            "packages": [
+                {
+                    "pkgname": "bfetch",
+                    "version": "0:0.1.0-1",
+                    "arch": "amd64",
+                    "install_reason": "explicit",
+                    "source_kind": "local_recipe",
+                    "source_ref": "/etc/elda/recipes/bfetch",
+                    "variant_id": "default",
+                    "repo_commit": "4bc9d6447f96b12e554fbdaa5ffe6e1b363de9d4",
+                    "state_id": "system-1777246755498",
+                    "manifest_hash": "498ca50ab1b22eb01c73569d8d8538c1f5e47f45d7a72bd72803a39a3206d8aa",
+                    "payload_sha256": "484c25d02516adc3d2ba5bdd53fa1aab5805ad4d8ad9e46b28535582b2fc42f6",
+                    "remote_name": null,
+                    "pinned_version": null,
+                    "held": false,
+                    "hold_source": null,
+                    "package_kind": "normal"
+                },
+                {
+                    "pkgname": "fsel",
+                    "version": "0:3.3.1-1",
+                    "arch": "amd64",
+                    "install_reason": "dependency",
+                    "source_kind": "interbuild",
+                    "source_ref": "nix_flake:github:fsel/fsel",
+                    "variant_id": "default",
+                    "remote_name": "yoka-core",
+                    "state_id": "system-1777308937160",
+                    "manifest_hash": "deadbeef",
+                    "payload_sha256": null,
+                    "pinned_version": "3.3.1",
+                    "held": true,
+                    "hold_source": "operator",
+                    "package_kind": "normal"
+                }
+            ]
+        })),
+    };
+
+    let rendered = render_human(&report);
+
+    assert!(rendered.contains("state: ok"));
+    assert!(rendered.contains("listed 2 installed package(s)."));
+    assert!(rendered.contains("[E] bfetch"));
+    assert!(rendered.contains("  Version: 0:0.1.0-1"));
+    assert!(rendered.contains("  Source ref: /etc/elda/recipes/bfetch"));
     assert!(rendered.contains(
-        "Manifest:       498ca50ab1b22eb01c73569d8d8538c1f5e47f45d7a72bd72803a39a3206d8aa"
+        "  Manifest: 498ca50ab1b22eb01c73569d8d8538c1f5e47f45d7a72bd72803a39a3206d8aa"
     ));
     assert!(rendered.contains(
-        "Payload:        484c25d02516adc3d2ba5bdd53fa1aab5805ad4d8ad9e46b28535582b2fc42f6"
+        "  Payload: 484c25d02516adc3d2ba5bdd53fa1aab5805ad4d8ad9e46b28535582b2fc42f6"
     ));
 
-    assert!(rendered.contains("Name:           fsel"));
-    assert!(rendered.contains("Provenance:     [I] interbuild (Interbuild)"));
-    assert!(rendered.contains("Remote:         yoka-core"));
-    assert!(rendered.contains("Pinned:         3.3.1"));
-    assert!(rendered.contains("Hold:           yes (operator)"));
+    assert!(rendered.contains("[I] fsel"));
+    assert!(rendered.contains("  Remote: yoka-core"));
+    assert!(rendered.contains("  Pinned: 3.3.1"));
+    assert!(rendered.contains("  Hold: yes (operator)"));
 
+    assert!(!rendered.contains("NAME"));
     assert!(!rendered.contains("\"packages\""));
     assert!(!rendered.contains("\"manifest_hash\""));
 }

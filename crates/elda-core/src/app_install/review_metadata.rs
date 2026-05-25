@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use crate::app::PlannedInstallAction;
 use crate::app_render_tree::{Frame, FrameFooter, Glyph, TreeStyle};
+use crate::render_style::highlight_operator_frame;
 
 /// Display-ready summary of one pending generated-recipe review.
 #[derive(Debug, Clone)]
@@ -109,23 +110,22 @@ pub(super) fn missing_review_fields(action: &PlannedInstallAction) -> Vec<&'stat
 
 pub(super) fn render_metadata_review_frame(plan: &GeneratedRecipeReview) -> String {
     let mut frame = Frame::new("Metadata Add");
-    frame
-        .line(format!("Recipe: {}", plan.recipe_name))
-        .line(format!("Strategy: {}", plan.strategy_label))
-        .line(format!("Output:   {}", plan.recipe_dir.display()));
+    frame.kv("recipe", &plan.recipe_name, 0);
+    frame.kv("strategy", &plan.strategy_label, 0);
+    frame.kv("output", &plan.recipe_dir.display().to_string(), 0);
     if plan.missing_fields.is_empty() {
-        frame.glyph_line(Glyph::Done, "Required fields present");
+        frame.glyph_line(Glyph::Done, "required fields present");
     } else {
         frame.glyph_line(
             Glyph::Warn,
-            format!("Missing:  {}", plan.missing_fields.join(", ")),
+            format!("missing:: {}", plan.missing_fields.join(", ")),
         );
     }
     frame.footer(FrameFooter {
         glyph: None,
-        text: "Review before install".to_owned(),
+        text: "Proceed? [Y/n/e]".to_owned(),
     });
-    frame.render(TreeStyle::detect())
+    highlight_operator_frame(&frame.render(TreeStyle::detect()))
 }
 
 #[cfg(test)]
@@ -150,8 +150,9 @@ mod tests {
         };
         let rendered = render_metadata_review_frame(&plan);
         assert!(rendered.contains("Metadata Add"));
-        assert!(rendered.contains("Strategy: [I] nix_flake (bounded parser)"));
-        assert!(rendered.contains("Missing:  description, licenses"));
+        assert!(rendered.contains("strategy:: [I] nix_flake (bounded parser)"));
+        assert!(rendered.contains("missing:: description, licenses"));
+        assert!(rendered.contains("Proceed? [Y/n/e]"));
     }
 
     #[test]
@@ -163,7 +164,8 @@ mod tests {
             missing_fields: Vec::new(),
         };
         let rendered = render_metadata_review_frame(&plan);
-        assert!(rendered.contains("Required fields present"));
+        assert!(rendered.contains("required fields present"));
+        assert!(rendered.contains("Proceed? [Y/n/e]"));
     }
 
     #[test]

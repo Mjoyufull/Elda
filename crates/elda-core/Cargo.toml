@@ -19,6 +19,7 @@ elda-recipe = { path = "../elda-recipe" }
 elda-repo = { path = "../elda-repo" }
 elda-types = { path = "../elda-types" }
 pubgrub.workspace = true
+ctrlc.workspace = true
 rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true

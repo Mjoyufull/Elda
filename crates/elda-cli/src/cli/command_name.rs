@@ -11,6 +11,7 @@ pub(super) fn command_name(command: &Command) -> String {
         Command::U(_) => "u",
         Command::Sync(_) => "sync",
         Command::Ls(_) => "ls",
+        Command::List(_) => "list",
         Command::Search(_) => "search",
         Command::Info(_) => "info",
         Command::Files(_) => "files",

@@ -7,12 +7,14 @@ use super::review_metadata::{
 };
 use super::review_recheck::recheck_after_edit;
 use crate::app::{AppContext, PlannedInstallAction};
+use crate::app_render_tree::{Frame, FrameFooter, TreeStyle};
 use crate::app_review::preview_recipe_for_review;
 use crate::app_review_memory::{
     load_review_stamp, review_is_unchanged, write_review_stamp, write_review_stamp_with_context,
 };
 use crate::editor::{open_path_in_editor, open_paths_in_diff_pager};
 use crate::error::CoreError;
+use crate::render_style::highlight_operator_frame;
 use crate::{CommandRequest, OutputMode};
 
 impl AppContext {
@@ -79,7 +81,11 @@ impl AppContext {
         let stdin = io::stdin();
 
         loop {
-            writeln!(stdout, "{}", self.render_bulk_snapshot_review(snapshot))?;
+            writeln!(
+                stdout,
+                "{}",
+                highlight_operator_frame(&self.render_bulk_snapshot_review(snapshot))
+            )?;
             stdout.flush()?;
 
             let mut answer = String::new();
@@ -118,49 +124,80 @@ impl AppContext {
             snapshot.generated_recipes.len().saturating_sub(existing)
         };
         let skipped = snapshot.generated_recipes.len().saturating_sub(imported);
-        let sample = snapshot
-            .generated_recipes
+        let commit = snapshot.source_commit.as_deref().unwrap_or("unknown");
+        let preview: Vec<_> = snapshot.generated_recipes.iter().take(12).collect();
+        let preview_row_one = preview
             .iter()
-            .take(8)
-            .cloned()
+            .take(6)
+            .map(|name| (*name).as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        let more = snapshot.generated_recipes.len().saturating_sub(8);
-        let commit = snapshot.source_commit.as_deref().unwrap_or("unknown");
-        let discovered = snapshot.discovered;
-        let excluded = snapshot.excluded;
-        let skipped_existing = snapshot.skipped_existing;
+        let preview_row_two = preview
+            .iter()
+            .skip(6)
+            .take(6)
+            .map(|name| (*name).as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let more = snapshot.generated_recipes.len().saturating_sub(12);
 
-        let mut lines = vec![
-            "┌─ Bulk Snapshot Review".to_owned(),
-            "├─ Source".to_owned(),
-            format!("│  url: {}", snapshot.source_url),
-            format!("│  type: {}", snapshot.repository_type),
-            format!("│  commit: {commit}"),
-            format!("│  staging: {}", snapshot.staging_dir.display()),
-            "│".to_owned(),
-            "├─ Import plan".to_owned(),
-            format!("│  discovered recipes: {discovered}"),
-            format!("│  excluded by policy: {excluded}"),
-            format!("│  skipped existing local: {skipped_existing}"),
-            format!("│  to import: {imported}"),
-            format!("│  existing locally: {existing}"),
-            format!("│  skipped without --replace: {skipped}"),
-            format!("│  replace existing: {}", snapshot.replace),
-            "│".to_owned(),
-            "├─ Semantics".to_owned(),
-            "│  snapshot import: one-time local metadata copy".to_owned(),
-            "│  dynamic remote: not configured by this operation".to_owned(),
-            "│  review path: edit the staging dir before accepting".to_owned(),
-            "│".to_owned(),
-            "├─ Preview".to_owned(),
-            format!("│  {sample}"),
-        ];
-        if more > 0 {
-            lines.push(format!("│  ... and {more} more"));
+        const KEY_PAD: usize = 22;
+        let mut frame = Frame::new("Bulk Snapshot Review");
+        frame.section("Source");
+        frame.kv("url", &snapshot.source_url, KEY_PAD);
+        frame.kv("type", &snapshot.repository_type, KEY_PAD);
+        frame.kv("commit", commit, KEY_PAD);
+        frame.kv(
+            "staging",
+            &snapshot.staging_dir.display().to_string(),
+            KEY_PAD,
+        );
+        frame.spacer();
+        frame.section("Import plan");
+        frame.kv(
+            "discovered recipes",
+            snapshot.discovered.to_string(),
+            KEY_PAD,
+        );
+        frame.kv("excluded by policy", snapshot.excluded.to_string(), KEY_PAD);
+        frame.kv(
+            "skipped existing local",
+            snapshot.skipped_existing.to_string(),
+            KEY_PAD,
+        );
+        frame.kv("to import", imported.to_string(), KEY_PAD);
+        frame.kv("existing locally", existing.to_string(), KEY_PAD);
+        frame.kv("skipped without --replace", skipped.to_string(), KEY_PAD);
+        frame.kv("replace existing", snapshot.replace.to_string(), KEY_PAD);
+        frame.spacer();
+        frame.section("Semantics");
+        frame.kv("snapshot import", "one-time local metadata copy", KEY_PAD);
+        frame.kv(
+            "dynamic remote",
+            "not configured by this operation",
+            KEY_PAD,
+        );
+        frame.kv(
+            "review path",
+            "edit the staging dir before accepting",
+            KEY_PAD,
+        );
+        frame.spacer();
+        frame.section("Preview");
+        if !preview_row_one.is_empty() {
+            frame.line(preview_row_one);
         }
-        lines.push("└─ Accept and import these recipes? [Y/n/e] ".to_owned());
-        lines.join("\n")
+        if !preview_row_two.is_empty() {
+            frame.line(preview_row_two);
+        }
+        if more > 0 {
+            frame.line(format!("… and {more} more"));
+        }
+        frame.footer(FrameFooter {
+            glyph: None,
+            text: "Accept and import these recipes? [Y/n/e]".to_owned(),
+        });
+        frame.render(TreeStyle::detect())
     }
 
     fn commit_bulk_snapshot(
@@ -240,7 +277,6 @@ fn review_one_interbuild(
             preview_recipe_for_review(&action.resolved.recipe.path, &title)?;
         }
         writeln!(stdout, "Paging complete. Press `q` to return to Elda.")?;
-        write!(stdout, "Proceed? [Y/n/e] ")?;
         stdout.flush()?;
 
         let mut answer = String::new();
@@ -295,7 +331,6 @@ fn review_one_generated_recipe(
     loop {
         let header = render_metadata_review_frame(plan);
         writeln!(stdout, "{header}")?;
-        write!(stdout, "Accept generated metadata? [Y/n/e] ")?;
         stdout.flush()?;
 
         let mut answer = String::new();
@@ -372,28 +407,35 @@ fn review_proceed_install_after_metadata_if_needed(
 }
 
 fn render_install_proceed_frame(install_plan: &[PlannedInstallAction]) -> String {
-    let mut lines = Vec::new();
-    lines.push("┌─ Install Review".to_owned());
-    lines.push("├─ Metadata".to_owned());
-    lines.push("│  accepted: generated package metadata".to_owned());
-    lines.push("│".to_owned());
-    lines.push("├─ Pending activation".to_owned());
+    use crate::app_render_tree::{Frame, FrameFooter, TreeStyle};
+    use crate::render_style::highlight_operator_frame;
+
+    let mut frame = Frame::new("Install Review");
+    frame.section("Metadata");
+    frame.kv("status", "accepted generated package metadata", 0);
+    frame.spacer();
+    frame.section("Pending activation");
     for action in install_plan.iter().take(12) {
-        lines.push(format!(
-            "│  {} {} [{} / {}]{}",
-            action.package_name,
-            action.resolved.recipe.package.version,
-            action.resolved.selected_lane,
-            action.resolved.selected_source_kind,
-            replacement_suffix(action),
-        ));
+        frame.kv(
+            &action.package_name,
+            &format!(
+                "{} [{} / {}]{}",
+                action.resolved.recipe.package.version,
+                action.resolved.selected_lane,
+                action.resolved.selected_source_kind,
+                replacement_suffix(action),
+            ),
+            0,
+        );
     }
     if install_plan.len() > 12 {
-        lines.push(format!("│  ... and {} more", install_plan.len() - 12));
+        frame.line(format!("… and {} more", install_plan.len() - 12));
     }
-    lines.push("│".to_owned());
-    lines.push("└─ Proceed with install? [Y/n] ".to_owned());
-    lines.join("\n")
+    frame.footer(FrameFooter {
+        glyph: None,
+        text: "Proceed? [Y/n/e]".to_owned(),
+    });
+    highlight_operator_frame(&frame.render(TreeStyle::detect()))
 }
 
 fn replacement_suffix(action: &PlannedInstallAction) -> String {
@@ -461,7 +503,7 @@ mod tests {
 
         let rendered = render_install_proceed_frame(&[action]);
 
-        assert!(rendered.contains("Proceed with install? [Y/n]"));
+        assert!(rendered.contains("Proceed? [Y/n/e]"));
         assert!(rendered.contains("replaces alpha-tool"));
     }
 
@@ -498,11 +540,11 @@ mod tests {
             interbuild_review_lines(&action, Path::new("/tmp/elda-review-test")).join("\n");
 
         assert!(rendered.contains("Interbuild source review"));
-        assert!(rendered.contains("Provenance: [I] parsed"));
-        assert!(rendered.contains("static flake output parser"));
-        assert!(rendered.contains("Metadata: installable=default"));
-        assert!(rendered.contains("activate:"));
-        assert!(rendered.contains("Review Memory"));
+        assert!(rendered.contains("provenance:: [I] parsed"));
+        assert!(rendered.contains("parser:: static flake output parser"));
+        assert!(rendered.contains("installable:: default"));
+        assert!(rendered.contains("activate::"));
+        assert!(rendered.contains("Review Memory:"));
         assert!(rendered.contains("Proceed? [Y/n/e]"));
     }
 

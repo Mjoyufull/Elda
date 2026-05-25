@@ -49,6 +49,21 @@ pub(crate) fn prompt_yne(prompt: &str) -> Result<ConfirmResponse, CoreError> {
     }
 }
 
+/// Read stdin after a frame footer already printed `[Y/n/e]`; do not emit a second prompt line.
+pub(crate) fn read_yne_after_frame() -> Result<ConfirmResponse, CoreError> {
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+    let stdin = io::stdin();
+
+    let mut answer = String::new();
+    stdin.read_line(&mut answer)?;
+    let response = parse_yne_response(&answer);
+    if response == ConfirmResponse::Invalid {
+        writeln!(stdout, "invalid response: use Y, n, or e")?;
+    }
+    Ok(response)
+}
+
 pub(crate) fn prompt_yn(prompt: &str, default_yes: bool) -> Result<bool, CoreError> {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();

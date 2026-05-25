@@ -9,18 +9,20 @@ use crate::app_render_misc::{
     render_failure_report, render_metadata_add_report, render_recipe_catalog_report,
     render_recipe_removed_report, render_search_report, render_session_log_section,
 };
+use crate::app_render_remove::{render_remove_plan_report, render_remove_success_report};
 use crate::app_render_state::{render_installed_packages_report, render_state_show_report};
 use crate::app_render_support::render_header;
 use crate::app_version::render_version_report;
+use crate::render_style::highlight_operator_frame;
 
 #[must_use]
 pub fn render_human(report: &CommandReport) -> String {
     if let Some(rendered) = render_specialized_report(report) {
-        return append_session_log(rendered, report);
+        return append_session_log(highlight_operator_frame(&rendered), report);
     }
 
     let rendered = if let Some(framed) = crate::app_render_extended::render_extended_human(report) {
-        framed
+        highlight_operator_frame(&framed)
     } else {
         format!(
             "{}\n{}",
@@ -39,7 +41,9 @@ fn render_specialized_report(report: &CommandReport) -> Option<String> {
 
     match (report.area, report.status) {
         ("install", "ok") => render_install_success_report(report),
+        ("remove", "ok") => render_remove_success_report(report),
         ("plan", "planned") => render_install_plan_report(report)
+            .or_else(|| render_remove_plan_report(report))
             .or_else(|| crate::app_render_extended::render_extended_plan_report(report)),
         ("version", "ok") => render_version_report(report),
         ("ci", "ok") => render_ci_report(report),

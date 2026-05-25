@@ -1,12 +1,11 @@
 use std::path::Path;
 use std::process::Command;
+use std::sync::Arc;
 
 use elda_recipe::{BuildDefinition, PackageDefinition};
 
 use crate::error::BuildError;
-use std::sync::Arc;
-
-use crate::process::{run_command, run_command_streamed};
+use crate::process::{run_command, run_command_inherited};
 
 pub fn detect_meson_build(
     _package: &PackageDefinition,
@@ -32,22 +31,19 @@ pub fn build_with_meson(
     line_hook: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<(), BuildError> {
     let build_dir = source_dir.join("build-elda-meson");
+    let build_dir_arg = build_dir.to_string_lossy();
     let mut setup = Command::new("meson");
     setup.current_dir(source_dir).args([
         "setup",
-        &build_dir.to_string_lossy(),
+        &build_dir_arg,
         "--prefix",
         "/usr",
         "--buildtype",
         "release",
     ]);
     if stream_output {
-        run_command_streamed(
-            "meson",
-            setup,
-            "configuring meson project",
-            line_hook.clone(),
-        )?;
+        emit_header(&line_hook, "meson setup --buildtype release");
+        run_command_inherited("meson", setup, "configuring meson project")?;
     } else {
         run_command("meson", setup, "configuring meson project")?;
     }
@@ -55,14 +51,10 @@ pub fn build_with_meson(
     let mut compile = Command::new("meson");
     compile
         .current_dir(source_dir)
-        .args(["compile", "-C", &build_dir.to_string_lossy()]);
+        .args(["compile", "-C", &build_dir_arg]);
     if stream_output {
-        run_command_streamed(
-            "meson",
-            compile,
-            "building meson project",
-            line_hook.clone(),
-        )?;
+        emit_header(&line_hook, "meson compile (ninja backend)");
+        run_command_inherited("meson", compile, "building meson project")?;
     } else {
         run_command("meson", compile, "building meson project")?;
     }
@@ -70,27 +62,36 @@ pub fn build_with_meson(
     if build.tests {
         let mut test = Command::new("meson");
         test.current_dir(source_dir)
-            .args(["test", "-C", &build_dir.to_string_lossy()]);
+            .args(["test", "-C", &build_dir_arg]);
         if stream_output {
-            run_command_streamed("meson", test, "running meson tests", line_hook.clone())?;
+            emit_header(&line_hook, "meson test");
+            run_command_inherited("meson", test, "running meson tests")?;
         } else {
             run_command("meson", test, "running meson tests")?;
         }
     }
 
+    let stage_arg = stage_root.to_string_lossy();
     let mut install = Command::new("meson");
     install.current_dir(source_dir).args([
         "install",
         "-C",
-        &build_dir.to_string_lossy(),
+        &build_dir_arg,
         "--destdir",
-        &stage_root.to_string_lossy(),
+        &stage_arg,
     ]);
     if stream_output {
-        run_command_streamed("meson", install, "installing meson project", line_hook)?;
+        emit_header(&line_hook, "meson install");
+        run_command_inherited("meson", install, "installing meson project")?;
     } else {
         run_command("meson", install, "installing meson project")?;
     }
 
     Ok(())
+}
+
+fn emit_header(line_hook: &Option<Arc<dyn Fn(&str) + Send + Sync>>, label: &str) {
+    if let Some(hook) = line_hook {
+        hook(label);
+    }
 }

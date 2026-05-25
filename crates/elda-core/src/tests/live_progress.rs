@@ -42,7 +42,7 @@ fn install_flow_emits_frame_lifecycle_with_canonical_step_ids() {
         .find(|event| matches!(event, ProgressEvent::FrameStart { .. }))
         .expect("install frame start event should fire");
     if let ProgressEvent::FrameStart { title, subject, .. } = frame_start {
-        assert!(title.starts_with("Install"), "title: {title}");
+        assert!(title.starts_with("Install ("), "title: {title}");
         assert_eq!(subject.as_deref(), Some("live-progress-tool"));
     }
 
@@ -106,7 +106,7 @@ fn live_sink_does_not_replay_progress_block_in_human_render() {
         "post-action human render must not duplicate the live progression: {rendered}"
     );
     assert!(
-        rendered.contains("├─ Result") && rendered.contains("│  no-double-render-tool"),
+        rendered.contains("┌─ installed no-double-render-tool") && rendered.contains("│  paths:: "),
         "result block missing: {rendered}"
     );
 }

@@ -526,6 +526,7 @@ fn root_help_contains_canonical_namespaces() {
         "u",
         "sync",
         "ls",
+        "list",
         "search",
         "info",
         "files",
@@ -567,11 +568,19 @@ fn root_help_contains_canonical_namespaces() {
 }
 
 #[test]
-fn list_alias_routes_to_ls_command_path() {
+fn list_routes_to_list_command_path() {
     let cli = Cli::parse_from(["elda", "list"]);
     let request = cli.command_request().expect("request should exist");
-    assert_eq!(request.command_path, vec!["ls"]);
+    assert_eq!(request.command_path, vec!["list"]);
     assert!(request.operands.is_empty());
+}
+
+#[test]
+fn list_with_package_names_round_trips_operands() {
+    let cli = Cli::parse_from(["elda", "list", "fsel", "foot"]);
+    let request = cli.command_request().expect("request should exist");
+    assert_eq!(request.command_path, vec!["list"]);
+    assert_eq!(request.operands, vec!["fsel", "foot"]);
 }
 
 #[test]

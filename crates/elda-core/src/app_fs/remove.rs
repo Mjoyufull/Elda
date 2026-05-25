@@ -1,5 +1,9 @@
 use super::*;
 
+use remove_gate::{
+    build_remove_plan_report, clear_remove_confirmation, confirm_remove_transaction,
+};
+
 impl AppContext {
     pub(crate) fn handle_remove(
         &self,
@@ -11,22 +15,25 @@ impl AppContext {
         let mutation_policy = self.mutation_policy();
 
         if request.dry_run {
-            let actions = packages
-                .iter()
-                .map(|package| json!({ "target": package, "action": "remove" }))
-                .collect::<Vec<_>>();
-            return Ok(CommandReport {
-                area: "plan",
-                status: "planned",
-                exit_status: ExitStatus::Success,
-                command_path: request.command_path,
-                operands: request.operands,
-                output_mode: request.output_mode,
-                dry_run: request.dry_run,
-                summary: format!("planned removal of {} package(s).", packages.len()),
-                details: Some(json!({ "plan": { "kind": "remove", "actions": actions } })),
-            });
+            let mut plan = build_remove_plan_report(
+                self,
+                &request,
+                &packages,
+                parsed.cascade,
+                parsed.purge_conffiles,
+            )?;
+            plan.dry_run = true;
+            plan.summary = format!("planned removal of {} package(s).", packages.len());
+            return Ok(plan);
         }
+
+        confirm_remove_transaction(
+            self,
+            &request,
+            &packages,
+            parsed.cascade,
+            parsed.purge_conffiles,
+        )?;
 
         let mut removals = Vec::new();
         for package in packages {
@@ -38,6 +45,7 @@ impl AppContext {
             removals.push(report);
         }
         let _ = self.reconcile_cache_policy()?;
+        let _ = clear_remove_confirmation(&self.database.layout().data_dir);
 
         Ok(CommandReport {
             area: "remove",

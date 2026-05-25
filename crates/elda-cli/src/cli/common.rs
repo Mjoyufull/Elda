@@ -220,6 +220,14 @@ pub(super) struct ListArgs {
     pub(super) source_kind: Option<String>,
 }
 
+#[derive(Debug, Args, Default)]
+pub(super) struct ListDetailArgs {
+    #[arg(help = "Optional installed package names to restrict the listing")]
+    pub(super) packages: Vec<String>,
+    #[command(flatten)]
+    pub(super) filters: ListArgs,
+}
+
 #[derive(Debug, Args)]
 pub(super) struct RdepsArgs {
     #[arg(help = "Installed package name")]

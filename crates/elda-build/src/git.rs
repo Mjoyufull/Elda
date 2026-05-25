@@ -4,7 +4,7 @@ use std::process::Command;
 use elda_recipe::{RecipeDocument, ScalarValue, SourceDefinition};
 
 use crate::error::BuildError;
-use crate::process::run_command;
+use crate::process::{emit_build_line, run_command};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceCheckout {
@@ -18,6 +18,7 @@ pub fn checkout_git_source(
     work_root: &Path,
     offline: bool,
     allowed_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<SourceCheckout, BuildError> {
     if recipe.package.source.kind != "git" {
         return Err(BuildError::Unsupported(format!(
@@ -31,6 +32,7 @@ pub fn checkout_git_source(
         work_root,
         offline,
         allowed_protocols,
+        line_hook,
     )
 }
 
@@ -39,6 +41,7 @@ pub fn checkout_source(
     work_root: &Path,
     offline: bool,
     allowed_protocols: &[String],
+    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<SourceCheckout, BuildError> {
     let url = string_field(source, "url")?;
     ensure_git_protocol_allowed(url, allowed_protocols)?;
@@ -58,11 +61,13 @@ pub fn checkout_source(
     }
 
     clone.arg(url).arg(&checkout_dir);
+    emit_build_line(&line_hook, format!("[Git] cloning {url}"));
     run_command("git", clone, "cloning git source")?;
 
     if let Some(rev) = string_field_optional(source, "rev") {
         let mut checkout = Command::new("git");
         checkout.current_dir(&checkout_dir).args(["checkout", rev]);
+        emit_build_line(&line_hook, format!("[Git] checking out {rev}"));
         run_command("git", checkout, "checking out requested git revision")?;
     }
 

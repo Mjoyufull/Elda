@@ -46,11 +46,11 @@ pub(super) fn import_snapshot(
 
         let strategy = match kind {
             super::snapshot::SnapshotType::Void => super::strategy::SourceStrategy::XbpsTemplate {
-                package: candidate.rel_path.to_string_lossy().to_string(),
+                package: String::new(),
             },
             super::snapshot::SnapshotType::Gentoo => {
                 super::strategy::SourceStrategy::GentooEbuild {
-                    package: candidate.rel_path.to_string_lossy().to_string(),
+                    package: String::new(),
                 }
             }
             super::snapshot::SnapshotType::Elda => super::strategy::SourceStrategy::EldaNative {
@@ -66,51 +66,25 @@ pub(super) fn import_snapshot(
         if kind == super::snapshot::SnapshotType::Elda {
             copy_dir_recursive(&candidate.source_path, &recipe_staging_dir)?;
         } else {
-            // Foreign: generate pkg.lua that points back to the snapshot repo via subdir
-            let subdir = candidate
-                .source_path
-                .strip_prefix(source_dir)
-                .ok()
-                .map(|p| p.to_string_lossy().to_string());
+            // Foreign snapshot imports keep translated interbuild files locally so
+            // later installs do not re-clone the snapshot repository for metadata.
+            copy_dir_recursive(&candidate.source_path, &recipe_staging_dir)?;
 
-            // We need to inject subdir and rev into the generated pkg.lua
-            // Since render_pkg_lua is designed for single-recipe git URLs, we might need a
-            // slightly different approach or a way to pass these fields.
-            // For now, let's use a GitRefRequest for the rev.
             let git_ref = source_commit.as_ref().map(|rev| GitRefRequest {
                 kind: GitRefKind::Rev,
                 value: rev.clone(),
             });
 
-            // Handle subdir: we'll use a hack by appending it to extra_fields if we can,
-            // or just rely on render_pkg_lua's default and then post-process or fix strategy.
-            // Actually, let's just write a custom render for snapshot foreigns if needed.
-            let pkg_lua = render_pkg_lua(
+            let mut pkg_lua = render_pkg_lua(
                 &candidate.name,
                 Some(source_url),
-                &[], // no legacy pkgdeps needed here
+                &[],
                 "package",
                 &strategy,
                 &metadata,
                 git_ref.as_ref(),
             );
-
-            // Inject subdir if present
-            // Inject subdir if present (but NOT for foreign strategies that handle their own navigation)
-            let pkg_lua = if let Some(subdir) = subdir
-                && kind == super::snapshot::SnapshotType::Elda
-            {
-                pkg_lua.replace(
-                    &format!("kind = \"{}\",", strategy.kind()),
-                    &format!(
-                        "kind = \"{}\",\n    subdir = \"{}\",",
-                        strategy.kind(),
-                        subdir
-                    ),
-                )
-            } else {
-                pkg_lua
-            };
+            pkg_lua = inject_snapshot_provenance(&pkg_lua, source_url, source_commit.as_deref());
 
             fs::write(recipe_staging_dir.join("pkg.lua"), pkg_lua)?;
         }
@@ -142,4 +116,34 @@ fn extract_commit(dir: &Path) -> Option<String> {
         return Some(String::from_utf8_lossy(&output.stdout).trim().to_owned());
     }
     None
+}
+
+fn inject_snapshot_provenance(
+    pkg_lua: &str,
+    source_url: &str,
+    source_commit: Option<&str>,
+) -> String {
+    let mut lines = Vec::new();
+    let mut injected = false;
+    for line in pkg_lua.lines() {
+        lines.push(line.to_owned());
+        if !injected && line.trim_start().starts_with("url = ") {
+            lines.push(format!(
+                "    snapshot_url = \"{}\",",
+                escape_lua_string(source_url)
+            ));
+            if let Some(rev) = source_commit {
+                lines.push(format!(
+                    "    snapshot_rev = \"{}\",",
+                    escape_lua_string(rev)
+                ));
+            }
+            injected = true;
+        }
+    }
+    lines.join("\n") + "\n"
+}
+
+fn escape_lua_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

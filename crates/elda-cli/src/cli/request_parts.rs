@@ -1,8 +1,8 @@
 use super::command_name::command_name;
 use super::common::{
     AdoptArgs, DiffArgs, DowngradeArgs, HoldArgs, InstallArgs, InstallTargetsArgs, ListArgs,
-    PackageArg, RdepsArgs, RemoveArgs, RollbackArgs, SearchArgs, TargetsArgs, UpgradeArgs,
-    push_flag, push_optional,
+    ListDetailArgs, PackageArg, RdepsArgs, RemoveArgs, RollbackArgs, SearchArgs, TargetsArgs,
+    UpgradeArgs, push_flag, push_optional,
 };
 use super::file_commands::{self, FilesArgs};
 use super::host_commands::HostCommand;
@@ -17,6 +17,7 @@ pub(super) fn request_parts(command: &Command) -> (Vec<String>, Vec<String>) {
         Command::U(args) => upgrade_parts(command, args),
         Command::Sync(args) => targets_parts(command, args),
         Command::Ls(args) => list_parts(command, args),
+        Command::List(args) => list_detail_parts(command, args),
         Command::Check
         | Command::Doctor
         | Command::Version
@@ -132,12 +133,22 @@ fn upgrade_parts(command: &Command, args: &UpgradeArgs) -> (Vec<String>, Vec<Str
 
 fn list_parts(command: &Command, args: &ListArgs) -> (Vec<String>, Vec<String>) {
     let mut operands = Vec::new();
-    push_flag(&mut operands, "--explicit", args.explicit);
-    push_flag(&mut operands, "--deps", args.deps);
-    push_flag(&mut operands, "--held", args.held);
-    push_flag(&mut operands, "--pinned", args.pinned);
-    push_optional(&mut operands, "--source-kind", args.source_kind.as_deref());
+    push_list_filter_operands(&mut operands, args);
     (vec![command_name(command)], operands)
+}
+
+fn list_detail_parts(command: &Command, args: &ListDetailArgs) -> (Vec<String>, Vec<String>) {
+    let mut operands = args.packages.clone();
+    push_list_filter_operands(&mut operands, &args.filters);
+    (vec![command_name(command)], operands)
+}
+
+fn push_list_filter_operands(operands: &mut Vec<String>, args: &ListArgs) {
+    push_flag(operands, "--explicit", args.explicit);
+    push_flag(operands, "--deps", args.deps);
+    push_flag(operands, "--held", args.held);
+    push_flag(operands, "--pinned", args.pinned);
+    push_optional(operands, "--source-kind", args.source_kind.as_deref());
 }
 
 fn search_parts(command: &Command, args: &SearchArgs) -> (Vec<String>, Vec<String>) {

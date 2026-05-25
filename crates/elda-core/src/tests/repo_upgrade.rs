@@ -203,7 +203,7 @@ fn upgrade_replaces_installed_package_when_new_candidate_declares_replaces() {
     .expect("replacement upgrade dry run should succeed");
     let rendered = crate::render_human(&dry_run);
     assert!(
-        rendered.contains("replaces alpha-tool"),
+        rendered.contains("(alpha-tool)"),
         "human upgrade plan should name replaced packages:\n{rendered}"
     );
 

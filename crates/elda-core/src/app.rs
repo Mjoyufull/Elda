@@ -306,6 +306,7 @@ impl AppContext {
                 self.handle_install(request)
             }
             [command] if command == "ls" => self.handle_ls(request),
+            [command] if command == "list" => self.handle_list(request),
             [command] if command == "rm" => self.handle_remove(request),
             [command] if command == "u" => self.handle_upgrade(request),
             [command] if command == "sync" => self.handle_sync(request),
@@ -598,6 +599,7 @@ pub fn run_from_root(
     mut request: CommandRequest,
 ) -> Result<CommandReport, CoreError> {
     let root_dir = root_dir.as_ref();
+    crate::interrupt::install_handler_if_needed(&request)?;
     let context = AppContext::from_root(root_dir, request.system_mode)?;
     set_configured_tree_style(display_tree_style(&context.config.display.tree_chars));
     if request.output_mode == crate::OutputMode::Human

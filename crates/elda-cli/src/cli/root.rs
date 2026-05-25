@@ -3,8 +3,8 @@ use elda_core::{CommandRequest, OutputMode};
 
 use super::appimage_commands::AppImageCommand;
 use super::common::{
-    AdoptArgs, DiffArgs, HoldArgs, InstallArgs, InstallTargetsArgs, ListArgs, PackageArg,
-    RdepsArgs, RemoveArgs, RollbackArgs, SearchArgs, TargetsArgs, UpgradeArgs,
+    AdoptArgs, DiffArgs, HoldArgs, InstallArgs, InstallTargetsArgs, ListArgs, ListDetailArgs,
+    PackageArg, RdepsArgs, RemoveArgs, RollbackArgs, SearchArgs, TargetsArgs, UpgradeArgs,
 };
 use super::file_commands::FilesArgs;
 use super::git_commands::{GitCommand, GitTagsArgs};
@@ -114,9 +114,10 @@ pub(super) enum Command {
     U(UpgradeArgs),
     #[command(about = "Refresh configured remotes into the local snapshot")]
     Sync(TargetsArgs),
-    #[command(alias = "list")]
-    #[command(about = "List installed packages in the current root")]
+    #[command(about = "List installed packages in the current root (scan table)")]
     Ls(ListArgs),
+    #[command(about = "Show detailed installed package blocks")]
+    List(ListDetailArgs),
     #[command(about = "Search synced package indexes")]
     Search(SearchArgs),
     #[command(about = "Inspect installed or synced package metadata")]
