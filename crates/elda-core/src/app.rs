@@ -299,7 +299,10 @@ impl AppContext {
 
     pub fn handle(&self, request: CommandRequest) -> Result<CommandReport, CoreError> {
         self.enforce_capabilities(&request)?;
-        crate::app_mutation_gate::confirm_dispatch_mutation(&request)?;
+        crate::app_mutation_gate::confirm_dispatch_mutation(
+            &self.database.layout().data_dir,
+            &request,
+        )?;
         match request.command_path.as_slice() {
             [command] if command == "a" || command == "add" => self.handle_metadata_add(request),
             [command] if command == "i" || command == "ig" || command == "ib" => {
@@ -615,6 +618,11 @@ pub fn run_from_root(
     let log_session = CommandLogSession::start(root_dir, &context.config, &request)?;
     let request_for_logging = request.clone();
     let result = context.handle(request);
+    if !matches!(result, Err(CoreError::PrivilegeRequired(_))) {
+        crate::app_dispatch_confirm::clear_dispatch_confirmation(
+            &context.database.layout().data_dir,
+        )?;
+    }
 
     match result {
         Ok(mut report) => {

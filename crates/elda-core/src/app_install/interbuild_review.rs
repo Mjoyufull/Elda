@@ -21,31 +21,22 @@ fn render_interbuild_review_frame(action: &PlannedInstallAction, data_dir: &Path
     let mut frame = Frame::new(title);
 
     frame.section("Identity");
-    frame.kv("package", &action.package_name, 0);
-    frame.kv("version", &recipe_version(action), 0);
+    frame.kv("package", &action.package_name);
+    frame.kv("version", &recipe_version(action));
     frame.kv(
         "lane",
         &format!("{} / {source_kind}", action.resolved.selected_lane),
-        0,
     );
-    frame.kv(
-        "provenance",
-        "[I] parsed, no foreign package-manager CLI",
-        0,
-    );
-    frame.kv("parser", interbuild_parser_name(source_kind), 0);
+    frame.kv("provenance", "[I] parsed, no foreign package-manager CLI");
+    frame.kv("parser", interbuild_parser_name(source_kind));
     push_interbuild_identity_rows(&mut frame, action, source_kind);
     if let Some(remote) = &action.resolved.remote_name {
-        frame.kv("remote", remote, 0);
+        frame.kv("remote", remote);
     }
     if let Some(source_ref) = &action.resolved.source_ref {
-        frame.kv("source ref", source_ref, 0);
+        frame.kv("source ref", source_ref);
     }
-    frame.kv(
-        "recipe",
-        &action.resolved.recipe.path.display().to_string(),
-        0,
-    );
+    frame.kv("recipe", &action.resolved.recipe.path.display().to_string());
 
     frame.spacer();
     frame.section("Review Memory");
@@ -105,9 +96,9 @@ fn render_interbuild_review_frame(action: &PlannedInstallAction, data_dir: &Path
 
 fn push_detail_row(frame: &mut Frame, line: &str) {
     if let Some((key, value)) = line.split_once(":: ") {
-        frame.kv(key, value, 0);
+        frame.kv(key, value);
     } else if let Some((key, value)) = line.split_once(": ") {
-        frame.kv(key, value, 0);
+        frame.kv(key, value);
     } else {
         frame.line(line.to_owned());
     }
@@ -121,36 +112,33 @@ fn push_interbuild_identity_rows(
     match source_kind {
         "gentoo_overlay" => {
             let atom = source_string(action, "package").unwrap_or(&action.package_name);
-            frame.kv("atom", atom, 0);
+            frame.kv("atom", atom);
             if let Some(ebuild) = find_ebuild_name(action) {
-                frame.kv("ebuild", &ebuild, 0);
+                frame.kv("ebuild", &ebuild);
             }
             frame.kv(
                 "metadata",
                 "DEPEND/RDEPEND/BDEPEND/IUSE parsed from selected ebuild",
-                0,
             );
         }
         "nix_flake" => {
             let installable = source_string(action, "installable").unwrap_or("default");
-            frame.kv("installable", installable, 0);
+            frame.kv("installable", installable);
         }
         "aur_pkgbuild" => {
             let pkgname = source_string(action, "pkgname").unwrap_or(&action.package_name);
-            frame.kv("pkgname", pkgname, 0);
+            frame.kv("pkgname", pkgname);
             frame.kv(
                 "metadata",
                 "source/checksum/dependency arrays preserved for review",
-                0,
             );
         }
         "xbps_template" => {
             let pkgname = source_string(action, "pkgname").unwrap_or(&action.package_name);
-            frame.kv("pkgname", pkgname, 0);
+            frame.kv("pkgname", pkgname);
             frame.kv(
                 "metadata",
                 "distfiles/checksum/dependency families preserved for review",
-                0,
             );
         }
         _ => {}

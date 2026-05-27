@@ -176,9 +176,12 @@ fn human_search_render_lists_numbered_matches_with_description() {
     };
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("┌─ Search Results"));
-    assert!(rendered.contains("├─ 1. [E] fsel 0:3.4.1-1 (aur)"));
-    assert!(rendered.contains("│  Fast TUI app launcher and fuzzy finder"));
-    assert!(rendered.contains("├─ 2. [E] fselect 0:0.10.0-1 (aur)"));
-    assert!(rendered.contains("└─ 2 result(s) for `fsel`"));
+    assert!(rendered.contains("query    fsel"));
+    assert!(rendered.contains("matches  2"));
+    assert!(rendered.contains("src  package"));
+    assert!(rendered.contains("[L]  aur/fsel"));
+    assert!(rendered.contains("0:3.4.1-1"));
+    assert!(rendered.contains("Fast TUI app launcher and fuzzy finder"));
+    assert!(rendered.contains("[L]  aur/fselect"));
+    assert!(rendered.contains("Find files with SQL-like queries"));
 }

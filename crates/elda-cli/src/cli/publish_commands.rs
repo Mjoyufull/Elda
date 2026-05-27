@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use super::common::{TargetsArgs, push_flag, push_optional};
+use super::common::TargetsArgs;
 
 #[derive(Debug, Subcommand)]
 pub(super) enum PublishCommand {
@@ -25,27 +25,27 @@ impl PublishCommand {
             Self::Run(args) => publish_scope_parts("run", args),
             Self::Finalize(args) => {
                 let mut operands = Vec::new();
-                push_optional(&mut operands, "--channel", args.channel.as_deref());
-                push_optional(&mut operands, "--base-url", args.base_url.as_deref());
-                push_optional(&mut operands, "--profile", args.profile.as_deref());
+                push_optional_assignment(&mut operands, "--channel", args.channel.as_deref());
+                push_optional_assignment(&mut operands, "--base-url", args.base_url.as_deref());
+                push_optional_assignment(&mut operands, "--profile", args.profile.as_deref());
                 (vec!["publish".to_owned(), "finalize".to_owned()], operands)
             }
             Self::Diff(args) => {
                 let mut operands = args.previous.clone().into_iter().collect::<Vec<_>>();
-                push_optional(&mut operands, "--channel", args.channel.as_deref());
+                push_optional_assignment(&mut operands, "--channel", args.channel.as_deref());
                 (vec!["publish".to_owned(), "diff".to_owned()], operands)
             }
             Self::Promote(args) => {
                 let mut operands = Vec::new();
-                push_optional(&mut operands, "--from", args.from.as_deref());
-                push_optional(&mut operands, "--to", args.to.as_deref());
+                push_optional_assignment(&mut operands, "--from", args.from.as_deref());
+                push_optional_assignment(&mut operands, "--to", args.to.as_deref());
                 (vec!["publish".to_owned(), "promote".to_owned()], operands)
             }
             Self::Sign(args) => {
                 let mut operands = Vec::new();
-                push_optional(&mut operands, "--channel", args.channel.as_deref());
-                push_optional(&mut operands, "--key", args.key.as_deref());
-                push_optional(&mut operands, "--profile", args.profile.as_deref());
+                push_optional_assignment(&mut operands, "--channel", args.channel.as_deref());
+                push_optional_assignment(&mut operands, "--key", args.key.as_deref());
+                push_optional_assignment(&mut operands, "--profile", args.profile.as_deref());
                 (vec!["publish".to_owned(), "sign".to_owned()], operands)
             }
         }
@@ -54,10 +54,16 @@ impl PublishCommand {
 
 fn publish_scope_parts(command: &str, args: &PublishScopeArgs) -> (Vec<String>, Vec<String>) {
     let mut operands = args.targets.targets.clone();
-    push_optional(&mut operands, "--tree", args.tree.as_deref());
-    push_optional(&mut operands, "--channel", args.channel.as_deref());
-    push_optional(&mut operands, "--profile", args.profile.as_deref());
+    push_optional_assignment(&mut operands, "--tree", args.tree.as_deref());
+    push_optional_assignment(&mut operands, "--channel", args.channel.as_deref());
+    push_optional_assignment(&mut operands, "--profile", args.profile.as_deref());
     (vec!["publish".to_owned(), command.to_owned()], operands)
+}
+
+fn push_optional_assignment(operands: &mut Vec<String>, flag: &str, value: Option<&str>) {
+    if let Some(value) = value {
+        operands.push(format!("{flag}={value}"));
+    }
 }
 
 #[derive(Debug, Args)]

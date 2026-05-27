@@ -37,8 +37,8 @@ fn ascii_fallback_emits_plain_connectors() {
 #[test]
 fn key_value_rows_align_to_padding() {
     let mut frame = Frame::new("Target");
-    frame.kv("requested", "hyprland", 12);
-    frame.kv("mode", "system", 12);
+    frame.kv("requested", "hyprland");
+    frame.kv("mode", "system");
 
     let rendered = frame.render(TreeStyle::Unicode);
     assert!(

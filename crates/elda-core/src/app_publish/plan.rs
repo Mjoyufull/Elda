@@ -67,21 +67,40 @@ pub(crate) fn parse_publish_scope(
     request: &CommandRequest,
 ) -> Result<(Vec<String>, String), CoreError> {
     let channel = parse_flag_value(request, "--channel").unwrap_or_else(|| "stable".to_owned());
-    let targets = request
-        .operands
-        .iter()
-        .filter(|value| !value.starts_with("--"))
-        .cloned()
-        .collect();
+    let targets = publish_targets(request, &["--tree", "--channel", "--profile"]);
     Ok((targets, channel))
 }
 
 pub(crate) fn parse_flag_value(request: &CommandRequest, flag: &str) -> Option<String> {
     let mut operands = request.operands.iter();
     while let Some(operand) = operands.next() {
+        if let Some(value) = operand.strip_prefix(&format!("{flag}=")) {
+            return Some(value.to_owned());
+        }
         if operand == flag {
             return operands.next().cloned();
         }
     }
     None
+}
+
+pub(crate) fn publish_targets(request: &CommandRequest, value_flags: &[&str]) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut operands = request.operands.iter();
+    while let Some(operand) = operands.next() {
+        if value_flags.iter().any(|flag| operand == flag) {
+            operands.next();
+            continue;
+        }
+        if value_flags
+            .iter()
+            .any(|flag| operand.starts_with(&format!("{flag}=")))
+        {
+            continue;
+        }
+        if !operand.starts_with("--") {
+            targets.push(operand.clone());
+        }
+    }
+    targets
 }

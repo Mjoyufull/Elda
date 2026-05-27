@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use elda_core::{PrivilegeProvider, PrivilegeRequest};
 use tempfile::TempDir;
 
-use super::command::render_privilege_frame;
-use super::provider::resolve_provider;
+use super::command::{configure_provider_command, render_privilege_frame};
+use super::provider::{ResolvedProvider, resolve_provider};
 use super::shell::{render_shell_command, shell_quote};
 
 #[test]
@@ -104,6 +104,68 @@ fn privilege_frame_names_selected_provider_and_policy() {
             sudo.display()
         )
     );
+}
+
+#[test]
+fn run0_policy_uses_provider_flags_and_setenv() {
+    let mut command = std::process::Command::new("run0");
+    let request = PrivilegeRequest {
+        provider: PrivilegeProvider::Run0,
+        preserve_env: false,
+        interactive: false,
+    };
+    configure_provider_command(
+        &mut command,
+        &resolved_provider(PrivilegeProvider::Run0),
+        &request,
+        Path::new("/tmp/elda"),
+        &[OsString::from("ls")],
+    )
+    .expect("run0 command should configure");
+
+    let args = command_args(&command);
+    assert!(args.contains(&"--no-ask-password".to_owned()));
+    assert!(args.contains(&"--setenv=ELDA_AFTER_PRIVILEGE=1".to_owned()));
+    assert!(!args.iter().any(|arg| arg == "ELDA_AFTER_PRIVILEGE=1"));
+}
+
+#[test]
+fn doas_uses_env_command_for_operator_context() {
+    let mut command = std::process::Command::new("doas");
+    let request = PrivilegeRequest {
+        provider: PrivilegeProvider::Doas,
+        preserve_env: false,
+        interactive: false,
+    };
+    configure_provider_command(
+        &mut command,
+        &resolved_provider(PrivilegeProvider::Doas),
+        &request,
+        Path::new("/tmp/elda"),
+        &[OsString::from("ls")],
+    )
+    .expect("doas command should configure");
+
+    let args = command_args(&command);
+    assert_eq!(args.first().map(String::as_str), Some("-n"));
+    assert!(args.contains(&"/usr/bin/env".to_owned()));
+    assert!(args.contains(&"ELDA_AFTER_PRIVILEGE=1".to_owned()));
+}
+
+fn resolved_provider(provider: PrivilegeProvider) -> ResolvedProvider {
+    ResolvedProvider {
+        requested: provider,
+        effective: provider,
+        binary_name: "fixture",
+        binary_path: PathBuf::from("fixture"),
+    }
+}
+
+fn command_args(command: &std::process::Command) -> Vec<String> {
+    command
+        .get_args()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect()
 }
 
 fn create_executable(path: PathBuf) {

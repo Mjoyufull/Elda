@@ -5,6 +5,7 @@ mod app_appimage;
 mod app_ci;
 mod app_config_queue;
 mod app_confirm;
+mod app_dispatch_confirm;
 mod app_doctor;
 mod app_ext;
 mod app_failure;

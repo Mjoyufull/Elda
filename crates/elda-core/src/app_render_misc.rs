@@ -1,7 +1,11 @@
 use serde_json::Value;
 
+mod search;
+
+pub(crate) use search::render_search_report;
+
 use crate::CommandReport;
-use crate::app_render_support::{json_string, json_u64, render_header, render_section};
+use crate::app_render_support::{json_string, render_header, render_section};
 use crate::app_render_tree::{FrameFooter, Glyph, TreeStyle, frame_from_sections};
 use crate::run_log::session_log_path;
 
@@ -289,42 +293,6 @@ pub(crate) fn render_recipe_removed_report(report: &CommandReport) -> Option<Str
     ))
 }
 
-pub(crate) fn render_search_report(report: &CommandReport) -> Option<String> {
-    let details = report.details.as_ref()?;
-    let query = details.get("query")?.as_str()?;
-    let results = details.get("results")?.as_array()?;
-
-    let header = render_header(report.area, report.status);
-    let mut sections: Vec<(String, Vec<String>)> = Vec::new();
-    if results.is_empty() {
-        sections.push((
-            format!("No matches for `{query}`"),
-            vec!["try a broader query or run `elda sync`".to_owned()],
-        ));
-    } else {
-        for (idx, result) in results.iter().enumerate() {
-            let heading = search_result_heading(idx, result);
-            let desc = result
-                .get("description")
-                .and_then(Value::as_str)
-                .or_else(|| result.get("summary").and_then(Value::as_str))
-                .unwrap_or("No description available.");
-            sections.push((heading, vec![desc.to_owned()]));
-        }
-    }
-
-    let footer = FrameFooter {
-        glyph: None,
-        text: format!("{} result(s) for `{query}`", results.len()),
-    };
-    let frame = frame_from_sections("Search Results", &sections, Some(footer));
-    Some(format!(
-        "{header}\n{}\n\n{}",
-        report.summary,
-        frame.render(TreeStyle::detect())
-    ))
-}
-
 fn render_catalog_entry_blocks(names: &[Value], entries: Option<&Vec<Value>>) -> Vec<String> {
     entries.map_or_else(
         || {
@@ -386,31 +354,4 @@ fn catalog_provenance(source: &str) -> String {
         return format!("[E] synced/{remote} (Native, remote)");
     }
     format!("[?] {source}")
-}
-
-fn search_result_heading(index: usize, result: &Value) -> String {
-    let name = json_string(result, &["pkgname"]).unwrap_or("unknown");
-    let remote = json_string(result, &["remote_name"]).unwrap_or("local");
-    let version = search_result_version(result);
-    let badge = search_provenance_badge(result);
-    format!("{}. {badge} {name} {version} ({remote})", index + 1)
-}
-
-fn search_provenance_badge(result: &Value) -> &'static str {
-    match json_string(result, &["source_kind"]).unwrap_or("local_recipe") {
-        "interbuild" | "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template" => "[I]",
-        "interepo" | "alpm" | "apk" | "gpkg" => "[F]",
-        "adopted" => "[A]",
-        "vendor" | "git" | "url_archive" => "[V]",
-        _ => "[E]",
-    }
-}
-
-fn search_result_version(result: &Value) -> String {
-    let Some(epoch) = json_u64(result, &["epoch"]) else {
-        return "unknown".to_owned();
-    };
-    let pkgver = json_string(result, &["pkgver"]).unwrap_or("0.0.0");
-    let pkgrel = json_u64(result, &["pkgrel"]).unwrap_or(1);
-    format!("{epoch}:{pkgver}-{pkgrel}")
 }

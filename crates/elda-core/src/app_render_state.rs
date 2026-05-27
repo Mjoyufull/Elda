@@ -60,10 +60,7 @@ fn render_installed_ls_report(report: &CommandReport) -> Option<String> {
         return Some(blocks.join("\n\n"));
     }
 
-    let rows = packages
-        .iter()
-        .map(installed_ls_row)
-        .collect::<Vec<_>>();
+    let rows = packages.iter().map(installed_ls_row).collect::<Vec<_>>();
     let widths = installed_ls_widths(&rows);
     let mut table = String::new();
     table.push_str(&format!(
@@ -99,9 +96,7 @@ fn render_installed_ls_report(report: &CommandReport) -> Option<String> {
             false,
         );
         let status = paint_status_marker(&row.status);
-        table.push_str(&format!(
-            "{name}  {version}  {badge}  {origin}  {status}\n",
-        ));
+        table.push_str(&format!("{name}  {version}  {badge}  {origin}  {status}\n",));
     }
 
     blocks.push(table.trim_end().to_owned());
@@ -148,9 +143,15 @@ struct InstalledLsWidths {
 
 fn installed_ls_row(package: &Value) -> InstalledLsRow {
     InstalledLsRow {
-        name: json_string(package, &["pkgname"]).unwrap_or("<unknown>").to_owned(),
-        version: json_string(package, &["version"]).unwrap_or("<unknown>").to_owned(),
-        reason: json_string(package, &["install_reason"]).unwrap_or("<unknown>").to_owned(),
+        name: json_string(package, &["pkgname"])
+            .unwrap_or("<unknown>")
+            .to_owned(),
+        version: json_string(package, &["version"])
+            .unwrap_or("<unknown>")
+            .to_owned(),
+        reason: json_string(package, &["install_reason"])
+            .unwrap_or("<unknown>")
+            .to_owned(),
         origin: package_origin(package),
         status: package_status_marker(package),
     }

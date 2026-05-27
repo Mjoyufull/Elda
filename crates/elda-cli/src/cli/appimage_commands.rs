@@ -1,4 +1,8 @@
+use std::path::PathBuf;
+
 use clap::{Args, Subcommand};
+
+use super::common::path_to_string;
 
 #[derive(Debug, Subcommand)]
 pub(super) enum AppImageCommand {
@@ -13,7 +17,7 @@ impl AppImageCommand {
         match self {
             Self::Inspect(args) => (
                 vec!["appimage".to_owned(), "inspect".to_owned()],
-                vec![args.path.clone()],
+                vec![path_to_string(&args.path)],
             ),
         }
     }
@@ -21,5 +25,5 @@ impl AppImageCommand {
 
 #[derive(Debug, Args)]
 pub(super) struct AppImageInspectArgs {
-    pub(super) path: String,
+    pub(super) path: PathBuf,
 }

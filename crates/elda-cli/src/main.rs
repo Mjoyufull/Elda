@@ -106,6 +106,9 @@ fn fallback_bare_query_request(raw_args: &[std::ffi::OsString]) -> Option<Comman
     if query.trim().is_empty() || query.starts_with('-') {
         return None;
     }
+    if root_command_exists(&query) {
+        return None;
+    }
 
     Some(CommandRequest::new(
         vec!["search".to_owned()],
@@ -115,11 +118,18 @@ fn fallback_bare_query_request(raw_args: &[std::ffi::OsString]) -> Option<Comman
     ))
 }
 
+fn root_command_exists(token: &str) -> bool {
+    let command = Cli::command();
+    command.get_subcommands().any(|subcommand| {
+        subcommand.get_name() == token || subcommand.get_aliases().any(|alias| alias == token)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use clap::Parser;
 
-    use super::{Cli, is_help_or_version_error};
+    use super::{Cli, fallback_bare_query_request, is_help_or_version_error};
 
     #[test]
     fn command_specific_help_is_not_a_frontend_failure() {
@@ -136,5 +146,12 @@ mod tests {
             .expect_err("missing required argument should fail");
 
         assert!(!is_help_or_version_error(&error));
+    }
+
+    #[test]
+    fn bare_query_fallback_does_not_capture_known_commands() {
+        assert!(fallback_bare_query_request(&["elda".into(), "add".into()]).is_none());
+        assert!(fallback_bare_query_request(&["elda".into(), "rmt".into()]).is_none());
+        assert!(fallback_bare_query_request(&["elda".into(), "todo".into()]).is_some());
     }
 }

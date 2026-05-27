@@ -58,13 +58,6 @@ pub(crate) fn emit_acquire_and_build_done(
     emit_step_done(
         sink,
         frame,
-        "build-inner",
-        "build source",
-        Some(build_summary(action)),
-    );
-    emit_step_done(
-        sink,
-        frame,
         "acquire-source",
         "acquire source",
         Some("source ready".to_owned()),
@@ -76,6 +69,13 @@ pub(crate) fn emit_acquire_and_build_done(
         || kind == "aur_pkgbuild"
         || kind == "xbps_template"
     {
+        emit_step_done(
+            sink,
+            frame,
+            "build-inner",
+            "build source",
+            Some(build_summary(action)),
+        );
         emit_step_done(
             sink,
             frame,

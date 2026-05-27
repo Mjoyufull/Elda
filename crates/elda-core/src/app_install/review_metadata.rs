@@ -110,9 +110,9 @@ pub(super) fn missing_review_fields(action: &PlannedInstallAction) -> Vec<&'stat
 
 pub(super) fn render_metadata_review_frame(plan: &GeneratedRecipeReview) -> String {
     let mut frame = Frame::new("Metadata Add");
-    frame.kv("recipe", &plan.recipe_name, 0);
-    frame.kv("strategy", &plan.strategy_label, 0);
-    frame.kv("output", &plan.recipe_dir.display().to_string(), 0);
+    frame.kv("recipe", &plan.recipe_name);
+    frame.kv("strategy", &plan.strategy_label);
+    frame.kv("output", &plan.recipe_dir.display().to_string());
     if plan.missing_fields.is_empty() {
         frame.glyph_line(Glyph::Done, "required fields present");
     } else {

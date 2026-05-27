@@ -22,19 +22,14 @@ pub(super) fn qa_targets(
         return resolve_ci_targets(app, std::slice::from_ref(value));
     }
 
-    let mut targets = fs::read_dir(&app.database.layout().recipes_dir)?
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            entry
-                .file_type()
-                .ok()
-                .filter(|kind| kind.is_dir())
-                .map(|_| entry)
-        })
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
+    let mut target_set = BTreeSet::new();
+    for entry in fs::read_dir(&app.database.layout().recipes_dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            target_set.insert(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    let mut targets = target_set.into_iter().collect::<Vec<_>>();
 
     if targets.is_empty() {
         return Err(CoreError::Operator(

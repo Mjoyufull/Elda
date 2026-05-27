@@ -511,6 +511,43 @@ fn appimage_inspect_round_trips_into_command_request() {
 }
 
 #[test]
+fn publish_scope_flags_round_trip_as_assignments() {
+    let cli = Cli::parse_from([
+        "elda",
+        "publish",
+        "plan",
+        "demo",
+        "--tree",
+        "/tmp/pkgs",
+        "--channel",
+        "testing",
+        "--profile",
+        "forge",
+    ]);
+    let request = cli.command_request().expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["publish", "plan"]);
+    assert_eq!(
+        request.operands,
+        vec![
+            "demo",
+            "--tree=/tmp/pkgs",
+            "--channel=testing",
+            "--profile=forge",
+        ]
+    );
+}
+
+#[test]
+fn publish_diff_channel_does_not_look_like_previous_index() {
+    let cli = Cli::parse_from(["elda", "publish", "diff", "--channel", "testing"]);
+    let request = cli.command_request().expect("request should exist");
+
+    assert_eq!(request.command_path, vec!["publish", "diff"]);
+    assert_eq!(request.operands, vec!["--channel=testing"]);
+}
+
+#[test]
 fn root_help_contains_canonical_namespaces() {
     let command = Cli::command();
     let names = command

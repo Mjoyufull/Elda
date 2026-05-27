@@ -5,8 +5,6 @@ use super::common::{
     UpgradeArgs, push_flag, push_optional,
 };
 use super::file_commands::{self, FilesArgs};
-use super::host_commands::HostCommand;
-use super::publish_commands::PublishCommand;
 use super::root::Command;
 
 pub(super) fn request_parts(command: &Command) -> (Vec<String>, Vec<String>) {

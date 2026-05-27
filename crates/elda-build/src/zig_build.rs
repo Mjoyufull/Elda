@@ -29,13 +29,10 @@ pub fn build_with_zig(
 ) -> Result<(), BuildError> {
     let prefix = stage_root.join("usr");
     let mut install = Command::new("zig");
-    install.current_dir(source_dir).args([
-        "build",
-        "install",
-        "-Doptimize=ReleaseSafe",
-        "--prefix",
-        &prefix.to_string_lossy(),
-    ]);
+    install
+        .current_dir(source_dir)
+        .args(["build", "install", "-Doptimize=ReleaseSafe", "--prefix"])
+        .arg(&prefix);
     run_command("zig", install, "building zig project")?;
 
     if build.tests {

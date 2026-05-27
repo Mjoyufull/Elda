@@ -51,7 +51,9 @@ pub fn load_cache_metadata(path: &Path) -> Result<Option<CacheEntryMetadata>, Bu
 
 #[must_use]
 pub fn cache_metadata_path(path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}.eldameta.json", path.display()))
+    let mut metadata_path = path.as_os_str().to_owned();
+    metadata_path.push(".eldameta.json");
+    PathBuf::from(metadata_path)
 }
 
 fn current_unix_timestamp() -> Result<u64, BuildError> {

@@ -144,7 +144,6 @@ fn compact_lines(
         return compact_result_rows(action, actions);
     }
 
-    const KEY_PAD: usize = 16;
     let mut rows = vec![
         ("target".to_owned(), action_package_name(action)),
         ("version".to_owned(), format_version_value(action)),
@@ -186,9 +185,8 @@ fn compact_lines(
 }
 
 fn apply_compact_rows(frame: &mut Frame, rows: &[(String, String)]) {
-    const KEY_PAD: usize = 16;
     for (key, value) in rows {
-        frame.kv(key, value, KEY_PAD);
+        frame.kv(key, value);
     }
 }
 

@@ -6,11 +6,10 @@
 //!
 //! All static renderers must format frames through this module so that the
 //! Unicode/ASCII fallback decision lives in one place. A few row variants
-//! (`Section`, `Spacer`, `KeyValue`) and the `Bullet` glyph are part of the
-//! documented frame surface from `eldainstallaztionuxandcliimprovements.md`
-//! §13.4 but not yet consumed by any handler. They stay on the API so the
-//! pattern matches in renderers stay exhaustive as the static-frame sweep
-//! lands.
+//! and the `Bullet` glyph are part of the documented frame surface from
+//! `eldainstallaztionuxandcliimprovements.md` §13.4 but not yet consumed by
+//! every handler. They stay on the API so the pattern matches in renderers
+//! stay exhaustive as the static-frame sweep lands.
 #![allow(dead_code)]
 
 use std::{cell::Cell, env};
@@ -122,12 +121,8 @@ pub(crate) enum Row {
     Line(String),
     /// A glyph + label line (`│  ✔ label`).
     Glyph { glyph: Glyph, label: String },
-    /// A two-column key/value line (`│  key: value`), aligned with `key_pad`.
-    KeyValue {
-        key: String,
-        value: String,
-        key_pad: usize,
-    },
+    /// A two-column key/value line (`│  key:: value`).
+    KeyValue { key: String, value: String },
 }
 
 #[derive(Debug, Clone)]
@@ -175,16 +170,10 @@ impl Frame {
         self
     }
 
-    pub(crate) fn kv(
-        &mut self,
-        key: impl Into<String>,
-        value: impl Into<String>,
-        key_pad: usize,
-    ) -> &mut Self {
+    pub(crate) fn kv(&mut self, key: impl Into<String>, value: impl Into<String>) -> &mut Self {
         self.rows.push(Row::KeyValue {
             key: key.into(),
             value: value.into(),
-            key_pad,
         });
         self
     }
@@ -225,11 +214,7 @@ impl Frame {
                     buffer.push(' ');
                     buffer.push_str(label);
                 }
-                Row::KeyValue {
-                    key,
-                    value,
-                    key_pad: _,
-                } => {
+                Row::KeyValue { key, value } => {
                     buffer.push_str(chars.vert);
                     buffer.push_str("  ");
                     buffer.push_str(key);
@@ -325,8 +310,8 @@ mod tests {
     #[test]
     fn key_value_rows_align_to_padding() {
         let mut frame = Frame::new("Target");
-        frame.kv("requested", "hyprland", 12);
-        frame.kv("mode", "system", 12);
+        frame.kv("requested", "hyprland");
+        frame.kv("mode", "system");
 
         let rendered = frame.render(TreeStyle::Unicode);
         assert!(

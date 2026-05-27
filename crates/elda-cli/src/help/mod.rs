@@ -36,6 +36,6 @@ pub fn print_root_help() {
 pub fn print_framed_subcommand_help(command_label: &str, clap_help: &str) {
     println!(
         "{}",
-        command_help::render_framed_command_help(command_label, clap_help)
+        command_help::render_framed_command_help(command_label, clap_help, color_enabled())
     );
 }

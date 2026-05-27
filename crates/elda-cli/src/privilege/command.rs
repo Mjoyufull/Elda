@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsString;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
@@ -7,7 +8,7 @@ use anyhow::bail;
 use elda_core::{PrivilegeProvider, PrivilegeRequest};
 
 use super::provider::{ResolvedProvider, provider_label, resolve_provider};
-use super::shell::render_shell_command;
+use super::shell::{render_shell_command, shell_quote};
 
 pub fn reexec_with_provider(request: &PrivilegeRequest) -> anyhow::Result<()> {
     if request.provider == PrivilegeProvider::None {
@@ -67,7 +68,7 @@ fn report_provider_fallback(request: &PrivilegeRequest, resolved: &ResolvedProvi
     }
 }
 
-fn configure_provider_command(
+pub(super) fn configure_provider_command(
     command: &mut Command,
     resolved: &ResolvedProvider,
     request: &PrivilegeRequest,
@@ -75,11 +76,14 @@ fn configure_provider_command(
     forwarded_args: &[std::ffi::OsString],
 ) -> anyhow::Result<()> {
     match resolved.effective {
-        PrivilegeProvider::Doas | PrivilegeProvider::Sudo => {
-            configure_sudo_like_command(command, request, current_exe, forwarded_args);
+        PrivilegeProvider::Sudo => {
+            configure_sudo_command(command, request, current_exe, forwarded_args);
+        }
+        PrivilegeProvider::Doas => {
+            configure_doas_command(command, request, current_exe, forwarded_args);
         }
         PrivilegeProvider::Run0 => {
-            forward_operator_context(command);
+            configure_run0_policy(command, request);
             command.arg(current_exe).args(forwarded_args);
         }
         PrivilegeProvider::Su => {
@@ -91,7 +95,7 @@ fn configure_provider_command(
     Ok(())
 }
 
-fn configure_sudo_like_command(
+fn configure_sudo_command(
     command: &mut Command,
     request: &PrivilegeRequest,
     current_exe: &Path,
@@ -103,38 +107,88 @@ fn configure_sudo_like_command(
     if !request.interactive {
         command.arg("-n");
     }
-    forward_operator_context(command);
-    command.arg("--").arg(current_exe).args(forwarded_args);
+    command.arg("--");
+    append_env_exec(command, request.preserve_env, current_exe, forwarded_args);
 }
 
-/// Preserve invoking-operator paths through sudo/doas clean-env re-exec.
-fn forward_operator_context(command: &mut Command) {
-    command.arg(format!("ELDA_AFTER_PRIVILEGE=1"));
-    append_operator_context_args(command);
+fn configure_doas_command(
+    command: &mut Command,
+    request: &PrivilegeRequest,
+    current_exe: &Path,
+    forwarded_args: &[OsString],
+) {
+    if !request.interactive {
+        command.arg("-n");
+    }
+    append_env_exec(command, request.preserve_env, current_exe, forwarded_args);
 }
 
-fn append_operator_context_args(command: &mut Command) {
+fn configure_run0_policy(command: &mut Command, request: &PrivilegeRequest) {
+    if !request.interactive {
+        command.arg("--no-ask-password");
+    }
+    for (name, value) in env_assignments(request.preserve_env) {
+        command.arg(format!("--setenv={name}={value}"));
+    }
+}
+
+fn append_env_exec(
+    command: &mut Command,
+    preserve_env: bool,
+    current_exe: &Path,
+    forwarded_args: &[OsString],
+) {
+    command.arg("/usr/bin/env");
+    for (name, value) in env_assignments(preserve_env) {
+        command.arg(format!("{name}={value}"));
+    }
+    command.arg(current_exe).args(forwarded_args);
+}
+
+fn env_assignments(preserve_env: bool) -> Vec<(String, String)> {
+    let mut assignments = if preserve_env {
+        env::vars()
+            .filter(|(name, _)| valid_env_name(name))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    upsert_assignment(&mut assignments, "ELDA_AFTER_PRIVILEGE", "1".to_owned());
     if let Ok(home) = env::var("HOME") {
-        command.arg(format!("ELDA_OPERATOR_HOME={home}"));
+        upsert_assignment(&mut assignments, "ELDA_OPERATOR_HOME", home);
     }
-    if let Ok(uid) = env::var("UID") {
-        command.arg(format!("ELDA_OPERATOR_UID={uid}"));
-    } else if let Ok(uid) = env::var("SUDO_UID") {
-        command.arg(format!("ELDA_OPERATOR_UID={uid}"));
+    if let Ok(uid) = env::var("UID").or_else(|_| env::var("SUDO_UID")) {
+        upsert_assignment(&mut assignments, "ELDA_OPERATOR_UID", uid);
+    }
+    assignments
+}
+
+fn upsert_assignment(assignments: &mut Vec<(String, String)>, name: &str, value: String) {
+    if let Some((_, existing)) = assignments
+        .iter_mut()
+        .find(|(existing, _)| existing == name)
+    {
+        *existing = value;
+    } else {
+        assignments.push((name.to_owned(), value));
     }
 }
 
-fn operator_context_prefix() -> String {
-    let mut parts = vec!["ELDA_AFTER_PRIVILEGE=1".to_owned()];
-    if let Ok(home) = env::var("HOME") {
-        parts.push(format!("ELDA_OPERATOR_HOME={home}"));
+fn valid_env_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(ch) if ch == '_' || ch.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn operator_context_prefix() -> anyhow::Result<String> {
+    let mut parts = Vec::new();
+    for (name, value) in env_assignments(false) {
+        parts.push(format!(
+            "{name}={}",
+            shell_quote(std::ffi::OsStr::new(&value))?
+        ));
     }
-    if let Ok(uid) = env::var("UID") {
-        parts.push(format!("ELDA_OPERATOR_UID={uid}"));
-    } else if let Ok(uid) = env::var("SUDO_UID") {
-        parts.push(format!("ELDA_OPERATOR_UID={uid}"));
-    }
-    parts.join(" ")
+    Ok(parts.join(" "))
 }
 
 fn configure_su_command(
@@ -152,7 +206,7 @@ fn configure_su_command(
         command.arg("-m");
     }
     let mut shell = render_shell_command(current_exe, forwarded_args)?;
-    shell = format!("{} {}", operator_context_prefix(), shell);
+    shell = format!("{} {shell}", operator_context_prefix()?);
     command.arg("-c").arg(shell).arg("root");
 
     Ok(())

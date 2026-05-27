@@ -31,16 +31,12 @@ pub fn build_with_meson(
     line_hook: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 ) -> Result<(), BuildError> {
     let build_dir = source_dir.join("build-elda-meson");
-    let build_dir_arg = build_dir.to_string_lossy();
     let mut setup = Command::new("meson");
-    setup.current_dir(source_dir).args([
-        "setup",
-        &build_dir_arg,
-        "--prefix",
-        "/usr",
-        "--buildtype",
-        "release",
-    ]);
+    setup
+        .current_dir(source_dir)
+        .arg("setup")
+        .arg(&build_dir)
+        .args(["--prefix", "/usr", "--buildtype", "release"]);
     if stream_output {
         emit_header(&line_hook, "meson setup --buildtype release");
         run_command_inherited("meson", setup, "configuring meson project")?;
@@ -51,7 +47,8 @@ pub fn build_with_meson(
     let mut compile = Command::new("meson");
     compile
         .current_dir(source_dir)
-        .args(["compile", "-C", &build_dir_arg]);
+        .args(["compile", "-C"])
+        .arg(&build_dir);
     if stream_output {
         emit_header(&line_hook, "meson compile (ninja backend)");
         run_command_inherited("meson", compile, "building meson project")?;
@@ -62,7 +59,8 @@ pub fn build_with_meson(
     if build.tests {
         let mut test = Command::new("meson");
         test.current_dir(source_dir)
-            .args(["test", "-C", &build_dir_arg]);
+            .args(["test", "-C"])
+            .arg(&build_dir);
         if stream_output {
             emit_header(&line_hook, "meson test");
             run_command_inherited("meson", test, "running meson tests")?;
@@ -71,15 +69,13 @@ pub fn build_with_meson(
         }
     }
 
-    let stage_arg = stage_root.to_string_lossy();
     let mut install = Command::new("meson");
-    install.current_dir(source_dir).args([
-        "install",
-        "-C",
-        &build_dir_arg,
-        "--destdir",
-        &stage_arg,
-    ]);
+    install
+        .current_dir(source_dir)
+        .args(["install", "-C"])
+        .arg(&build_dir)
+        .arg("--destdir")
+        .arg(stage_root);
     if stream_output {
         emit_header(&line_hook, "meson install");
         run_command_inherited("meson", install, "installing meson project")?;

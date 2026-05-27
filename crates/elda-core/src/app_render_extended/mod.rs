@@ -2,11 +2,13 @@
 
 mod config_view;
 mod extras;
+mod forge_view;
 mod helpers;
 mod inspect;
 mod maint_view;
 mod plans;
 mod profile_policy;
+mod qa_view;
 mod repo_net;
 mod repo_net_remote;
 mod repo_net_remote_trust;
@@ -14,6 +16,7 @@ mod review_view;
 mod state_paths;
 mod transactions;
 mod trigger_view;
+mod vendor_view;
 
 pub(crate) use plans::render_extended_plan_report;
 
@@ -49,9 +52,9 @@ pub fn render_extended_human(report: &CommandReport) -> Option<String> {
         "recovery" => transactions::render_recovery(report),
         "rollback" => transactions::render_rollback_done(report),
         "ops" => transactions::render_ops(report),
-        "qa" => extras::render_qa(report),
-        "forge" => extras::render_forge(report),
-        "vendor" => extras::render_vendor(report),
+        "qa" => qa_view::render_qa(report),
+        "forge" => forge_view::render_forge(report),
+        "vendor" => vendor_view::render_vendor(report),
         "extension" => extras::render_extension(report),
         "command" => extras::render_command_stub(report),
         "state" => state_paths::render_state_files(report)

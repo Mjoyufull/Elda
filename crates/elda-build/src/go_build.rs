@@ -39,6 +39,7 @@ pub fn build_with_go(
     fs::create_dir_all(&bin_dir)?;
 
     for bin in &bins {
+        validate_bin_name(bin)?;
         let target = if source_dir.join("cmd").join(bin).is_dir() {
             format!("./cmd/{bin}")
         } else {
@@ -46,12 +47,12 @@ pub fn build_with_go(
         };
         let destination = bin_dir.join(bin);
         let mut command = Command::new("go");
-        command.current_dir(source_dir).args([
-            "build",
-            "-o",
-            &destination.to_string_lossy(),
-            &target,
-        ]);
+        command
+            .current_dir(source_dir)
+            .arg("build")
+            .arg("-o")
+            .arg(&destination)
+            .arg(&target);
         run_command("go", command, "building go project")?;
 
         let mode = fs::metadata(&destination)?.permissions().mode();
@@ -65,4 +66,32 @@ pub fn build_with_go(
     }
 
     Ok(())
+}
+
+fn validate_bin_name(value: &str) -> Result<(), BuildError> {
+    let path = Path::new(value);
+    if value.is_empty()
+        || path.is_absolute()
+        || value.contains('/')
+        || value.contains('\\')
+        || value == "."
+        || value == ".."
+    {
+        return Err(BuildError::Invalid(format!(
+            "go build binary name `{value}` must be a plain file name"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_bin_name;
+
+    #[test]
+    fn go_bin_name_must_not_escape_stage_bin_dir() {
+        validate_bin_name("demo").expect("plain name should pass");
+        validate_bin_name("../demo").expect_err("relative escape should fail");
+        validate_bin_name("/tmp/demo").expect_err("absolute path should fail");
+    }
 }

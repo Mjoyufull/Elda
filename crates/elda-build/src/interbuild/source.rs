@@ -10,7 +10,7 @@ use tar::Archive;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::error::BuildError;
-use crate::git::ensure_git_protocol_allowed;
+use crate::git::{ensure_git_protocol_allowed, redact_url_credentials};
 use crate::process::{emit_build_line, run_command};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,7 +60,13 @@ fn materialize_upstream(
             clone_git_source(url, &source_root, offline, allowed_git_protocols, line_hook)
         }
         InterbuildSource::Archive { url, sha256 } => {
-            emit_build_line(&line_hook, format!("[Interbuild] fetching archive {url}"));
+            emit_build_line(
+                &line_hook,
+                format!(
+                    "[Interbuild] fetching archive {}",
+                    redact_url_credentials(url)
+                ),
+            );
             extract_archive_source(
                 kind,
                 url,
@@ -83,14 +89,18 @@ fn clone_git_source(
     ensure_git_protocol_allowed(url, allowed_git_protocols)?;
     if offline && !is_local_location(url) {
         return Err(BuildError::Unsupported(format!(
-            "offline mode cannot fetch interbuild upstream git source `{url}`"
+            "offline mode cannot fetch interbuild upstream git source `{}`",
+            redact_url_credentials(url)
         )));
     }
 
     let mut command = Command::new("git");
     command.args(["clone", "--depth", "1", url]);
     command.arg(destination);
-    emit_build_line(&line_hook, format!("[Git] cloning upstream {url}"));
+    emit_build_line(
+        &line_hook,
+        format!("[Git] cloning upstream {}", redact_url_credentials(url)),
+    );
     run_command("git", command, "cloning interbuild upstream source")?;
     Ok(destination.to_path_buf())
 }

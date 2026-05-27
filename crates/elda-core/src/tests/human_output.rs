@@ -541,12 +541,16 @@ fn human_state_list_renders_per_package_blocks_in_nix_profile_style() {
     assert!(rendered.contains("[E] bfetch"));
     assert!(rendered.contains("  Version: 0:0.1.0-1"));
     assert!(rendered.contains("  Source ref: /etc/elda/recipes/bfetch"));
-    assert!(rendered.contains(
-        "  Manifest: 498ca50ab1b22eb01c73569d8d8538c1f5e47f45d7a72bd72803a39a3206d8aa"
-    ));
-    assert!(rendered.contains(
-        "  Payload: 484c25d02516adc3d2ba5bdd53fa1aab5805ad4d8ad9e46b28535582b2fc42f6"
-    ));
+    assert!(
+        rendered.contains(
+            "  Manifest: 498ca50ab1b22eb01c73569d8d8538c1f5e47f45d7a72bd72803a39a3206d8aa"
+        )
+    );
+    assert!(
+        rendered.contains(
+            "  Payload: 484c25d02516adc3d2ba5bdd53fa1aab5805ad4d8ad9e46b28535582b2fc42f6"
+        )
+    );
 
     assert!(rendered.contains("[I] fsel"));
     assert!(rendered.contains("  Remote: yoka-core"));

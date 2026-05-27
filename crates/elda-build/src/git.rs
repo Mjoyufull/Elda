@@ -47,7 +47,8 @@ pub fn checkout_source(
     ensure_git_protocol_allowed(url, allowed_protocols)?;
     if offline && !git_source_is_local(url) {
         return Err(BuildError::Unsupported(format!(
-            "offline mode cannot fetch git source `{url}`"
+            "offline mode cannot fetch git source `{}`",
+            redact_url_credentials(url)
         )));
     }
     let checkout_dir = work_root.join("src");
@@ -61,7 +62,10 @@ pub fn checkout_source(
     }
 
     clone.arg(url).arg(&checkout_dir);
-    emit_build_line(&line_hook, format!("[Git] cloning {url}"));
+    emit_build_line(
+        &line_hook,
+        format!("[Git] cloning {}", redact_url_credentials(url)),
+    );
     run_command("git", clone, "cloning git source")?;
 
     if let Some(rev) = string_field_optional(source, "rev") {
@@ -99,8 +103,34 @@ pub fn ensure_git_protocol_allowed(
     }
 
     Err(BuildError::Unsupported(format!(
-        "git source `{location}` uses `{protocol}` transport, which is not allowed by [git].allowed_protocols"
+        "git source `{}` uses `{protocol}` transport, which is not allowed by [git].allowed_protocols",
+        redact_url_credentials(location)
     )))
+}
+
+pub fn redact_url_credentials(location: &str) -> String {
+    let mut redacted = location.to_owned();
+    if let Some(query_start) = redacted.find(|character| character == '?' || character == '#') {
+        redacted.truncate(query_start);
+        redacted.push_str("?redacted");
+    }
+
+    let Some(scheme_end) = redacted.find("://") else {
+        return redacted;
+    };
+    let authority_start = scheme_end + 3;
+    let authority_end = redacted[authority_start..]
+        .find('/')
+        .map_or(redacted.len(), |offset| authority_start + offset);
+    let authority = &redacted[authority_start..authority_end];
+    let Some(at_index) = authority.rfind('@') else {
+        return redacted;
+    };
+
+    let replace_start = authority_start;
+    let replace_end = authority_start + at_index + 1;
+    redacted.replace_range(replace_start..replace_end, "redacted@");
+    redacted
 }
 
 fn classify_git_protocol(location: &str) -> &'static str {
@@ -140,7 +170,7 @@ fn git_source_is_local(url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_git_protocol_allowed;
+    use super::{ensure_git_protocol_allowed, redact_url_credentials};
 
     fn default_allowed() -> Vec<String> {
         vec!["https".to_owned(), "ssh".to_owned(), "file".to_owned()]
@@ -156,6 +186,18 @@ mod tests {
             .expect("ssh scp-like syntax should be allowed");
         ensure_git_protocol_allowed("file:///tmp/repo.git", &allowed)
             .expect("file URLs should be allowed");
+    }
+
+    #[test]
+    fn redacts_url_credentials_and_query_tokens() {
+        assert_eq!(
+            redact_url_credentials("https://user:secret@example.invalid/repo.git?token=abc"),
+            "https://redacted@example.invalid/repo.git?redacted"
+        );
+        assert_eq!(
+            redact_url_credentials("https://example.invalid/repo.git?token=abc"),
+            "https://example.invalid/repo.git?redacted"
+        );
     }
 
     #[test]

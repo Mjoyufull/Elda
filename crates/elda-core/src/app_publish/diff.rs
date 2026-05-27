@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::app::AppContext;
 use crate::app_ci::CiWorkspacePaths;
 use crate::app_publish::finalize::read_index_packages;
-use crate::app_publish::plan::parse_flag_value;
+use crate::app_publish::plan::{parse_flag_value, publish_targets};
 use crate::error::CoreError;
 use crate::{CommandReport, CommandRequest, ExitStatus};
 
@@ -30,11 +30,9 @@ impl AppContext {
             )));
         }
 
-        let previous_path = request
-            .operands
-            .iter()
-            .find(|value| !value.starts_with("--"))
-            .map(std::path::PathBuf::from);
+        let previous_path = publish_targets(&request, &["--channel"])
+            .first()
+            .map(|value| std::path::PathBuf::from(value.as_str()));
         let current = read_index_packages(&current_path)?;
         let previous = match previous_path {
             Some(path) => read_index_packages(&path)?,

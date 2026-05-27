@@ -15,6 +15,7 @@ pub(super) fn fetch_binary_source(
     configured_caches: &[BinaryCache],
     offline: bool,
 ) -> Result<PathBuf, BuildError> {
+    validate_sha256_path_component(expected_sha256)?;
     fs::create_dir_all(cache_src_dir)?;
     let cached_payload_path = cache_src_dir.join(expected_sha256);
 
@@ -55,6 +56,16 @@ pub(super) fn fetch_binary_source(
     Err(BuildError::Invalid(format!(
         "downloaded source sha256 mismatch for `{source_url}`; expected `{expected_sha256}`"
     )))
+}
+
+fn validate_sha256_path_component(value: &str) -> Result<(), BuildError> {
+    if value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Ok(());
+    }
+
+    Err(BuildError::Invalid(
+        "expected_sha256 must be a 64-character hexadecimal digest".to_owned(),
+    ))
 }
 
 fn sorted_caches(configured_caches: &[BinaryCache]) -> Vec<BinaryCache> {
@@ -148,4 +159,23 @@ fn http_error(error: UreqError) -> BuildError {
 
 fn is_local_location(location: &str) -> bool {
     location.starts_with("file://") || Path::new(location).exists()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_sha256_path_component;
+
+    #[test]
+    fn sha256_cache_key_must_be_hex_digest() {
+        validate_sha256_path_component(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        )
+        .expect("valid digest should pass");
+
+        validate_sha256_path_component("../outside").expect_err("path traversal must be rejected");
+        validate_sha256_path_component(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg",
+        )
+        .expect_err("non-hex digest must be rejected");
+    }
 }

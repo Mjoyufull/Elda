@@ -11,7 +11,10 @@ pub fn detect_make_build(
     _package: &PackageDefinition,
     source_dir: &Path,
 ) -> Result<Option<BuildDefinition>, BuildError> {
-    if !source_dir.join("Makefile").is_file() && !source_dir.join("makefile").is_file() {
+    if !source_dir.join("GNUmakefile").is_file()
+        && !source_dir.join("Makefile").is_file()
+        && !source_dir.join("makefile").is_file()
+    {
         return Ok(None);
     }
 

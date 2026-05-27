@@ -2,11 +2,12 @@
 
 use crate::CommandRequest;
 use crate::app_confirm::confirm_mutation;
+use crate::app_dispatch_confirm::{
+    clear_dispatch_confirmation, dispatch_confirmation_matches, write_dispatch_confirmation,
+};
 use crate::error::CoreError;
 
 const SELF_CONFIRMED_PREFIXES: &[&[&str]] = &[
-    &["a"],
-    &["add"],
     &["i"],
     &["ig"],
     &["ib"],
@@ -21,12 +22,20 @@ const SELF_CONFIRMED_PREFIXES: &[&[&str]] = &[
     &["rollback"],
 ];
 
-pub(crate) fn confirm_dispatch_mutation(request: &CommandRequest) -> Result<(), CoreError> {
+pub(crate) fn confirm_dispatch_mutation(
+    data_dir: &std::path::Path,
+    request: &CommandRequest,
+) -> Result<(), CoreError> {
     if request.dry_run || !requires_dispatch_confirmation(&request.command_path) {
         return Ok(());
     }
+    if dispatch_confirmation_matches(data_dir, request)? {
+        clear_dispatch_confirmation(data_dir)?;
+        return Ok(());
+    }
     let summary = mutation_summary(request);
-    confirm_mutation(request, &summary)
+    confirm_mutation(request, &summary)?;
+    write_dispatch_confirmation(data_dir, request)
 }
 
 fn requires_dispatch_confirmation(path: &[String]) -> bool {

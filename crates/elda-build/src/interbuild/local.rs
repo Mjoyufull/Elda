@@ -5,6 +5,7 @@ use elda_recipe::{RecipeDocument, ScalarValue};
 /// Recipe trees imported from bulk metadata snapshots materialize interbuild
 /// files locally; builds must not re-clone the snapshot repository for metadata.
 pub fn local_interbuild_root(recipe: &RecipeDocument) -> Option<PathBuf> {
+    snapshot_rev(recipe)?;
     let recipe_dir = recipe.path.parent()?;
     match recipe.package.source.kind.as_str() {
         "xbps_template" if recipe_dir.join("template").is_file() => Some(recipe_dir.to_path_buf()),
@@ -109,8 +110,25 @@ mod tests {
         fs::write(recipe_dir.join("template"), "pkgname=demo\n").expect("template");
         fs::write(recipe_dir.join("pkg.lua"), "pkg = {}\n").expect("pkg.lua");
 
-        let recipe = recipe_with_template(&recipe_dir, "xbps_template");
+        let mut recipe = recipe_with_template(&recipe_dir, "xbps_template");
+        recipe.package.source.fields.insert(
+            "snapshot_rev".to_owned(),
+            ScalarValue::String("abc123".to_owned()),
+        );
         assert_eq!(local_interbuild_root(&recipe), Some(recipe_dir.clone()));
+    }
+
+    #[test]
+    fn local_interbuild_root_requires_snapshot_provenance() {
+        let tempdir = TempDir::new().expect("tempdir");
+        let recipe_dir = tempdir.path().join("demo");
+        fs::create_dir_all(&recipe_dir).expect("recipe dir");
+        fs::write(recipe_dir.join("template"), "pkgname=demo\n").expect("template");
+        fs::write(recipe_dir.join("pkg.lua"), "pkg = {}\n").expect("pkg.lua");
+
+        let recipe = recipe_with_template(&recipe_dir, "xbps_template");
+
+        assert_eq!(local_interbuild_root(&recipe), None);
     }
 
     #[test]

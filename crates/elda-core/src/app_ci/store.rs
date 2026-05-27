@@ -13,17 +13,14 @@ pub(super) fn load_batch(
     workspace: &CiWorkspacePaths,
     batch_name: &str,
 ) -> Result<CiBatchRecord, CoreError> {
-    read_json(&workspace.batches_dir.join(format!("{batch_name}.json")))
+    read_json(&batch_path(workspace, batch_name)?)
 }
 
 pub(super) fn save_batch(
     workspace: &CiWorkspacePaths,
     batch: &CiBatchRecord,
 ) -> Result<(), CoreError> {
-    write_json(
-        &workspace.batches_dir.join(format!("{}.json", batch.name)),
-        batch,
-    )
+    write_json(&batch_path(workspace, &batch.name)?, batch)
 }
 
 pub(super) fn load_batches(workspace: &CiWorkspacePaths) -> Result<Vec<CiBatchRecord>, CoreError> {
@@ -101,16 +98,46 @@ pub(super) fn submission_id(targets: &[String]) -> String {
 
 pub(super) fn branch_name(targets: &[String], batch_name: Option<&str>) -> String {
     if let Some(batch_name) = batch_name {
-        return format!("elda/batch/{}", sanitize_name(batch_name));
+        return format!("elda/batch/{}", safe_branch_component(batch_name, "batch"));
     }
 
     format!(
         "elda/{}",
         targets
             .first()
-            .map(|target| sanitize_name(target))
+            .map(|target| safe_branch_component(target, "submission"))
             .unwrap_or_else(|| "submission".to_owned())
     )
+}
+
+fn batch_path(
+    workspace: &CiWorkspacePaths,
+    batch_name: &str,
+) -> Result<std::path::PathBuf, CoreError> {
+    let file_stem = safe_file_component(batch_name, "batch")?;
+    Ok(workspace.batches_dir.join(format!("{file_stem}.json")))
+}
+
+fn safe_file_component(value: &str, fallback: &str) -> Result<String, CoreError> {
+    let sanitized = sanitize_name(value);
+    if sanitized.is_empty() {
+        return Ok(fallback.to_owned());
+    }
+    if sanitized != value {
+        return Err(CoreError::Operator(format!(
+            "ci batch name `{value}` is not a safe file name; use `{sanitized}`"
+        )));
+    }
+    Ok(sanitized)
+}
+
+fn safe_branch_component(value: &str, fallback: &str) -> String {
+    let sanitized = sanitize_name(value);
+    if sanitized.is_empty() {
+        fallback.to_owned()
+    } else {
+        sanitized
+    }
 }
 
 fn sanitize_name(value: &str) -> String {
@@ -132,5 +159,21 @@ pub(super) fn submission_mode_name(mode: SubmissionMode) -> &'static str {
     match mode {
         SubmissionMode::Pr => "pr",
         SubmissionMode::Push => "push",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{branch_name, safe_file_component};
+
+    #[test]
+    fn ci_batch_file_component_rejects_path_traversal() {
+        safe_file_component("release-tools", "batch").expect("safe name should pass");
+        safe_file_component("../outside", "batch").expect_err("traversal should fail");
+    }
+
+    #[test]
+    fn branch_name_uses_fallback_for_empty_sanitized_batch() {
+        assert_eq!(branch_name(&[], Some("///")), "elda/batch/batch");
     }
 }

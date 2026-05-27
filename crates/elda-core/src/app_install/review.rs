@@ -141,47 +141,29 @@ impl AppContext {
             .join(", ");
         let more = snapshot.generated_recipes.len().saturating_sub(12);
 
-        const KEY_PAD: usize = 22;
         let mut frame = Frame::new("Bulk Snapshot Review");
         frame.section("Source");
-        frame.kv("url", &snapshot.source_url, KEY_PAD);
-        frame.kv("type", &snapshot.repository_type, KEY_PAD);
-        frame.kv("commit", commit, KEY_PAD);
-        frame.kv(
-            "staging",
-            &snapshot.staging_dir.display().to_string(),
-            KEY_PAD,
-        );
+        frame.kv("url", &snapshot.source_url);
+        frame.kv("type", &snapshot.repository_type);
+        frame.kv("commit", commit);
+        frame.kv("staging", &snapshot.staging_dir.display().to_string());
         frame.spacer();
         frame.section("Import plan");
-        frame.kv(
-            "discovered recipes",
-            snapshot.discovered.to_string(),
-            KEY_PAD,
-        );
-        frame.kv("excluded by policy", snapshot.excluded.to_string(), KEY_PAD);
+        frame.kv("discovered recipes", snapshot.discovered.to_string());
+        frame.kv("excluded by policy", snapshot.excluded.to_string());
         frame.kv(
             "skipped existing local",
             snapshot.skipped_existing.to_string(),
-            KEY_PAD,
         );
-        frame.kv("to import", imported.to_string(), KEY_PAD);
-        frame.kv("existing locally", existing.to_string(), KEY_PAD);
-        frame.kv("skipped without --replace", skipped.to_string(), KEY_PAD);
-        frame.kv("replace existing", snapshot.replace.to_string(), KEY_PAD);
+        frame.kv("to import", imported.to_string());
+        frame.kv("existing locally", existing.to_string());
+        frame.kv("skipped without --replace", skipped.to_string());
+        frame.kv("replace existing", snapshot.replace.to_string());
         frame.spacer();
         frame.section("Semantics");
-        frame.kv("snapshot import", "one-time local metadata copy", KEY_PAD);
-        frame.kv(
-            "dynamic remote",
-            "not configured by this operation",
-            KEY_PAD,
-        );
-        frame.kv(
-            "review path",
-            "edit the staging dir before accepting",
-            KEY_PAD,
-        );
+        frame.kv("snapshot import", "one-time local metadata copy");
+        frame.kv("dynamic remote", "not configured by this operation");
+        frame.kv("review path", "edit the staging dir before accepting");
         frame.spacer();
         frame.section("Preview");
         if !preview_row_one.is_empty() {
@@ -412,7 +394,7 @@ fn render_install_proceed_frame(install_plan: &[PlannedInstallAction]) -> String
 
     let mut frame = Frame::new("Install Review");
     frame.section("Metadata");
-    frame.kv("status", "accepted generated package metadata", 0);
+    frame.kv("status", "accepted generated package metadata");
     frame.spacer();
     frame.section("Pending activation");
     for action in install_plan.iter().take(12) {
@@ -425,7 +407,6 @@ fn render_install_proceed_frame(install_plan: &[PlannedInstallAction]) -> String
                 action.resolved.selected_source_kind,
                 replacement_suffix(action),
             ),
-            0,
         );
     }
     if install_plan.len() > 12 {
