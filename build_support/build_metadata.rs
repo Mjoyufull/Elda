@@ -1,9 +1,8 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub fn emit_build_metadata(workspace: &Path) {
-    println!("cargo:rerun-if-changed=../../.git/HEAD");
-    println!("cargo:rerun-if-changed=../../.git/refs");
+    emit_git_rerun_metadata(workspace);
     println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
 
     let profile = std::env::var("PROFILE").unwrap_or_else(|_| "unknown".to_owned());
@@ -14,6 +13,41 @@ pub fn emit_build_metadata(workspace: &Path) {
 
     println!("cargo:rustc-env=ELDA_BUILD_DATE={}", build_date(workspace));
     println!("cargo:rustc-env=ELDA_GIT_COMMIT={}", git_commit(workspace));
+}
+
+fn emit_git_rerun_metadata(workspace: &Path) {
+    let Some(git_dir) = git_dir(workspace) else {
+        return;
+    };
+    let head = git_dir.join("HEAD");
+    println!("cargo:rerun-if-changed={}", head.display());
+
+    let Ok(head_contents) = std::fs::read_to_string(&head) else {
+        return;
+    };
+    let Some(symbolic_ref) = head_contents.trim().strip_prefix("ref: ") else {
+        return;
+    };
+    println!(
+        "cargo:rerun-if-changed={}",
+        git_dir.join(symbolic_ref).display()
+    );
+}
+
+fn git_dir(workspace: &Path) -> Option<PathBuf> {
+    let dot_git = workspace.join(".git");
+    if dot_git.is_dir() {
+        return Some(dot_git);
+    }
+
+    let contents = std::fs::read_to_string(&dot_git).ok()?;
+    let gitdir = contents.trim().strip_prefix("gitdir: ")?;
+    let path = PathBuf::from(gitdir);
+    Some(if path.is_absolute() {
+        path
+    } else {
+        workspace.join(path)
+    })
 }
 
 fn build_date(workspace: &Path) -> String {

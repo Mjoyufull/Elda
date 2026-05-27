@@ -152,6 +152,34 @@ fn doas_uses_env_command_for_operator_context() {
     assert!(args.contains(&"ELDA_AFTER_PRIVILEGE=1".to_owned()));
 }
 
+#[test]
+fn sudo_preserve_env_uses_sudo_policy_without_serializing_full_environment() {
+    let mut command = std::process::Command::new("sudo");
+    let request = PrivilegeRequest {
+        provider: PrivilegeProvider::Sudo,
+        preserve_env: true,
+        interactive: true,
+    };
+    configure_provider_command(
+        &mut command,
+        &resolved_provider(PrivilegeProvider::Sudo),
+        &request,
+        Path::new("/tmp/elda"),
+        &[OsString::from("ls")],
+    )
+    .expect("sudo command should configure");
+
+    let args = command_args(&command);
+    assert!(args.contains(&"-E".to_owned()));
+    assert!(args.contains(&"/usr/bin/env".to_owned()));
+    assert!(args.contains(&"ELDA_AFTER_PRIVILEGE=1".to_owned()));
+    assert!(
+        args.iter()
+            .filter(|arg| arg.contains('='))
+            .all(|arg| arg.starts_with("ELDA_"))
+    );
+}
+
 fn resolved_provider(provider: PrivilegeProvider) -> ResolvedProvider {
     ResolvedProvider {
         requested: provider,

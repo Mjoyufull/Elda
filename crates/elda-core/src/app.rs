@@ -618,14 +618,27 @@ pub fn run_from_root(
     let log_session = CommandLogSession::start(root_dir, &context.config, &request)?;
     let request_for_logging = request.clone();
     let result = context.handle(request);
-    if !matches!(result, Err(CoreError::PrivilegeRequired(_))) {
+    let cleanup_result = if !matches!(result, Err(CoreError::PrivilegeRequired(_))) {
         crate::app_dispatch_confirm::clear_dispatch_confirmation(
             &context.database.layout().data_dir,
-        )?;
-    }
+        )
+    } else {
+        Ok(())
+    };
 
     match result {
         Ok(mut report) => {
+            if let Err(error) = cleanup_result {
+                if let Some(log_session) = &log_session {
+                    log_session.write_error(
+                        root_dir,
+                        &context.config,
+                        &request_for_logging,
+                        &error,
+                    )?;
+                }
+                return Err(error);
+            }
             if let Some(log_session) = &log_session {
                 log_session.write_success(
                     root_dir,
@@ -641,6 +654,7 @@ pub fn run_from_root(
             if let Some(log_session) = &log_session {
                 log_session.write_error(root_dir, &context.config, &request_for_logging, &error)?;
             }
+            let _ = cleanup_result;
             Err(error)
         }
     }

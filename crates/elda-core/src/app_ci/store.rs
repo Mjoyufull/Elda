@@ -114,21 +114,33 @@ fn batch_path(
     workspace: &CiWorkspacePaths,
     batch_name: &str,
 ) -> Result<std::path::PathBuf, CoreError> {
-    let file_stem = safe_file_component(batch_name, "batch")?;
+    let file_stem = safe_file_component(batch_name)?;
     Ok(workspace.batches_dir.join(format!("{file_stem}.json")))
 }
 
-fn safe_file_component(value: &str, fallback: &str) -> Result<String, CoreError> {
-    let sanitized = sanitize_name(value);
-    if sanitized.is_empty() {
-        return Ok(fallback.to_owned());
+fn safe_file_component(value: &str) -> Result<String, CoreError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(CoreError::Operator(
+            "ci batch name must contain at least one safe file-name character".to_owned(),
+        ));
     }
-    if sanitized != value {
+    if trimmed
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
+    {
+        return Ok(trimmed.to_owned());
+    }
+
+    let suggested = sanitize_name(trimmed);
+    if suggested.is_empty() {
         return Err(CoreError::Operator(format!(
-            "ci batch name `{value}` is not a safe file name; use `{sanitized}`"
+            "ci batch name `{value}` is not a safe file name"
         )));
     }
-    Ok(sanitized)
+    Err(CoreError::Operator(format!(
+        "ci batch name `{value}` is not a safe file name; use `{suggested}`"
+    )))
 }
 
 fn safe_branch_component(value: &str, fallback: &str) -> String {
@@ -168,8 +180,17 @@ mod tests {
 
     #[test]
     fn ci_batch_file_component_rejects_path_traversal() {
-        safe_file_component("release-tools", "batch").expect("safe name should pass");
-        safe_file_component("../outside", "batch").expect_err("traversal should fail");
+        safe_file_component("release-tools").expect("safe name should pass");
+        safe_file_component("../outside").expect_err("traversal should fail");
+    }
+
+    #[test]
+    fn ci_batch_file_component_preserves_mixed_case_and_rejects_empty() {
+        assert_eq!(
+            safe_file_component("Release_Tools-1").unwrap(),
+            "Release_Tools-1"
+        );
+        safe_file_component("///").expect_err("empty sanitized name should fail");
     }
 
     #[test]

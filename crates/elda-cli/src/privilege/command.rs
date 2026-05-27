@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
@@ -108,7 +108,7 @@ fn configure_sudo_command(
         command.arg("-n");
     }
     command.arg("--");
-    append_env_exec(command, request.preserve_env, current_exe, forwarded_args);
+    append_env_exec(command, false, current_exe, forwarded_args);
 }
 
 fn configure_doas_command(
@@ -147,8 +147,8 @@ fn append_env_exec(
 
 fn env_assignments(preserve_env: bool) -> Vec<(String, String)> {
     let mut assignments = if preserve_env {
-        env::vars()
-            .filter(|(name, _)| valid_env_name(name))
+        env::vars_os()
+            .filter_map(|(name, value)| unicode_env_assignment(name, value))
             .collect()
     } else {
         Vec::new()
@@ -161,6 +161,14 @@ fn env_assignments(preserve_env: bool) -> Vec<(String, String)> {
         upsert_assignment(&mut assignments, "ELDA_OPERATOR_UID", uid);
     }
     assignments
+}
+
+fn unicode_env_assignment(name: OsString, value: OsString) -> Option<(String, String)> {
+    let name = name.into_string().ok()?;
+    if !valid_env_name(&name) {
+        return None;
+    }
+    Some((name, value.into_string().ok()?))
 }
 
 fn upsert_assignment(assignments: &mut Vec<(String, String)>, name: &str, value: String) {
@@ -183,10 +191,7 @@ fn valid_env_name(name: &str) -> bool {
 fn operator_context_prefix() -> anyhow::Result<String> {
     let mut parts = Vec::new();
     for (name, value) in env_assignments(false) {
-        parts.push(format!(
-            "{name}={}",
-            shell_quote(std::ffi::OsStr::new(&value))?
-        ));
+        parts.push(format!("{name}={}", shell_quote(OsStr::new(&value))?));
     }
     Ok(parts.join(" "))
 }
