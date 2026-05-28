@@ -1,9 +1,7 @@
 use std::io::{self, Write};
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 use crate::app::AppContext;
 use crate::app_confirm::{
@@ -14,13 +12,6 @@ use crate::app_render_remove::render_remove_plan_frame;
 use crate::error::CoreError;
 use crate::render_style::highlight_operator_frame;
 use crate::{CommandReport, CommandRequest, ExitStatus, OutputMode};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RemoveConfirmStamp {
-    plan_hash: String,
-    command_path: Vec<String>,
-    operands: Vec<String>,
-}
 
 pub(super) fn confirm_remove_transaction(
     app: &AppContext,
@@ -40,10 +31,7 @@ pub(super) fn confirm_remove_transaction(
     }
 
     let data_dir = app.database.layout().data_dir.clone();
-    let plan_hash = remove_plan_hash(packages, cascade, purge_conffiles);
-    if remove_confirmation_matches(&data_dir, request, &plan_hash)? {
-        return Ok(());
-    }
+    clear_remove_confirmation(&data_dir)?;
 
     let plan_report = build_remove_plan_report(app, request, packages, cascade, purge_conffiles)?;
     if let Some(rendered) = render_remove_plan_frame(&plan_report) {
@@ -56,7 +44,6 @@ pub(super) fn confirm_remove_transaction(
     loop {
         match read_yne_after_frame()? {
             ConfirmResponse::Accept => {
-                write_remove_confirmation(&data_dir, request, &plan_hash)?;
                 return Ok(());
             }
             ConfirmResponse::Decline => {
@@ -131,51 +118,8 @@ fn remove_action_json(app: &AppContext, package: &str) -> Result<Value, CoreErro
     }))
 }
 
-fn remove_plan_hash(packages: &[String], cascade: bool, purge_conffiles: bool) -> String {
-    let mut hasher = Sha256::new();
-    for package in packages {
-        hasher.update(package.as_bytes());
-    }
-    hasher.update([u8::from(cascade)]);
-    hasher.update([u8::from(purge_conffiles)]);
-    format!("{:x}", hasher.finalize())
-}
-
 fn remove_confirm_path(data_dir: &Path) -> std::path::PathBuf {
     data_dir.join("remove-confirm.json")
-}
-
-fn remove_confirmation_matches(
-    data_dir: &Path,
-    request: &CommandRequest,
-    plan_hash: &str,
-) -> Result<bool, CoreError> {
-    let path = remove_confirm_path(data_dir);
-    if !path.is_file() {
-        return Ok(false);
-    }
-    let stamp: RemoveConfirmStamp = serde_json::from_slice(&std::fs::read(&path)?)?;
-    Ok(stamp.plan_hash == plan_hash
-        && stamp.command_path == request.command_path
-        && stamp.operands == request.operands)
-}
-
-fn write_remove_confirmation(
-    data_dir: &Path,
-    request: &CommandRequest,
-    plan_hash: &str,
-) -> Result<(), CoreError> {
-    let path = remove_confirm_path(data_dir);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let stamp = RemoveConfirmStamp {
-        plan_hash: plan_hash.to_owned(),
-        command_path: request.command_path.clone(),
-        operands: request.operands.clone(),
-    };
-    std::fs::write(path, serde_json::to_vec_pretty(&stamp)?)?;
-    Ok(())
 }
 
 pub(super) fn clear_remove_confirmation(data_dir: &Path) -> Result<(), CoreError> {
@@ -184,4 +128,20 @@ pub(super) fn clear_remove_confirmation(data_dir: &Path) -> Result<(), CoreError
         std::fs::remove_file(path)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clear_remove_confirmation, remove_confirm_path};
+
+    #[test]
+    fn clear_remove_confirmation_deletes_stale_stamp() {
+        let tempdir = tempfile::TempDir::new().expect("tempdir");
+        let stamp_path = remove_confirm_path(tempdir.path());
+        std::fs::write(&stamp_path, "{}").expect("stale stamp should be written");
+
+        clear_remove_confirmation(tempdir.path()).expect("stale stamp should clear");
+
+        assert!(!stamp_path.exists());
+    }
 }

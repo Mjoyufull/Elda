@@ -31,10 +31,21 @@ pub(crate) fn set_configured_tree_style(style: Option<TreeStyle>) {
 #[cfg(test)]
 pub(crate) fn scoped_tree_style_for_tests<T>(style: Option<TreeStyle>, f: impl FnOnce() -> T) -> T {
     let previous = configured_tree_style();
+    let _guard = ScopedTreeStyle { previous };
     set_configured_tree_style(style);
-    let result = f();
-    set_configured_tree_style(previous);
-    result
+    f()
+}
+
+#[cfg(test)]
+struct ScopedTreeStyle {
+    previous: Option<TreeStyle>,
+}
+
+#[cfg(test)]
+impl Drop for ScopedTreeStyle {
+    fn drop(&mut self) {
+        set_configured_tree_style(self.previous);
+    }
 }
 
 impl TreeStyle {
@@ -280,7 +291,28 @@ pub(crate) fn frame_from_sections(
 
 #[cfg(test)]
 mod tests {
-    use super::{Frame, FrameFooter, Glyph, TreeStyle};
+    use super::{
+        Frame, FrameFooter, Glyph, TreeStyle, scoped_tree_style_for_tests,
+        set_configured_tree_style,
+    };
+
+    #[test]
+    fn scoped_tree_style_restores_after_panic() {
+        scoped_tree_style_for_tests(Some(TreeStyle::Unicode), || {
+            assert_eq!(TreeStyle::detect(), TreeStyle::Unicode);
+        });
+
+        let result = std::panic::catch_unwind(|| {
+            scoped_tree_style_for_tests(Some(TreeStyle::Ascii), || {
+                assert_eq!(TreeStyle::detect(), TreeStyle::Ascii);
+                panic!("test panic");
+            });
+        });
+
+        assert!(result.is_err());
+        assert_eq!(TreeStyle::detect(), TreeStyle::Unicode);
+        set_configured_tree_style(None);
+    }
 
     #[test]
     fn unicode_frame_renders_connectors_and_glyphs() {
