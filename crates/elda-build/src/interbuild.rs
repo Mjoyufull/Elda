@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use elda_recipe::RecipeDocument;
 
+use crate::BuildLineHook;
 use crate::error::BuildError;
 use crate::git::{SourceCheckout, checkout_source};
 use crate::process::emit_build_line;
@@ -30,7 +31,7 @@ pub fn prepare_interbuild_source(
     work_root: &std::path::Path,
     offline: bool,
     allowed_git_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<InterbuildCheckout, BuildError> {
     emit_build_line(
         &line_hook,
@@ -62,7 +63,7 @@ pub fn prepare_local_interbuild_source(
     work_root: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<InterbuildCheckout, BuildError> {
     emit_build_line(&line_hook, "[Interbuild] using local recipe metadata");
     let checkout = SourceCheckout {
@@ -86,7 +87,7 @@ fn finish_interbuild_checkout(
     work_root: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<InterbuildCheckout, BuildError> {
     match recipe.package.source.kind.as_str() {
         "nix_flake" => {

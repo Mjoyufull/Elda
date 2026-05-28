@@ -31,6 +31,9 @@ pub(super) fn render_verify(report: &CommandReport) -> Option<String> {
             }
         }
     }
+    if lines.is_empty() {
+        lines.push(report.summary.clone());
+    }
     Some(human_framed_report(
         report,
         "Verify",

@@ -5,7 +5,7 @@ use crate::app::{AppContext, BuiltInstallTarget, ParsedInstallRequest, ResolvedI
 use crate::config::InstallPreference;
 use crate::error::CoreError;
 use crate::flags::parse_cli_flag_list;
-use elda_build::{BuildRequest, build_recipe};
+use elda_build::{BuildLineHook, BuildRequest, build_recipe};
 use elda_recipe::{
     GitRefKind, GitRefRequest, ImportOptions, SOURCE_LANE_BINARY, SOURCE_LANE_SOURCE,
     SourceDefinition, add_recipe_with_options, is_git_like_target, load_recipe,
@@ -24,7 +24,7 @@ impl AppContext {
         resolved: &ResolvedInstallTarget,
         offline: bool,
         stream_child_output: bool,
-        build_line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+        build_line_hook: Option<BuildLineHook>,
     ) -> Result<BuiltInstallTarget, CoreError> {
         let materialized_recipe = resolved
             .remote_recipe_source
@@ -347,7 +347,7 @@ impl AppContext {
                 }
                 "--exclude" => {
                     let mut count = 0usize;
-                    while let Some(rest) = operands.next() {
+                    for rest in operands.by_ref() {
                         if rest.starts_with("--") {
                             return Err(CoreError::Operator(format!(
                                 "`--exclude` consumes all trailing package names; place other flags before `--exclude` (unexpected `{rest}`)"

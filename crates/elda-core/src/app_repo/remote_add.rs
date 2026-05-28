@@ -95,7 +95,7 @@ impl AppContext {
                 "--replace" => replace = true,
                 "--exclude" => {
                     let mut count = 0usize;
-                    while let Some(rest) = operands.next() {
+                    for rest in operands.by_ref() {
                         if rest.starts_with("--") {
                             return Err(CoreError::Operator(format!(
                                 "`--exclude` consumes trailing package names; place other `rmt add` flags before `--exclude` (unexpected `{rest}`)"

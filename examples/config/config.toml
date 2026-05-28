@@ -15,7 +15,7 @@ remote = "yoka-main"              # default remote name for commands that need o
 build_mode = "isolated"           # host, isolated, or remote
 prefix = "/usr"                   # /usr = system mode; anything else is prefix mode
 allow_system_mode = false          # set true or use `elda -S` for live-host mutation
-snapshot_tool = "snapper"         # none, snapper, or backend-supported snapshot tool
+snapshot_tool = "snapper"         # none, snapper, btrfs, or executable path
 auto_create_config = true          # create missing default config under isolated roots
 mode_policy = "host"              # current host/profile capability label
 install_recommends = true
@@ -123,7 +123,7 @@ allowed_protocols = ["https", "ssh", "file"]
 mode = "pr"
 auto_open = true
 auto_assign = false
-auth = "token"
+auth = "token"                    # none, token, bearer, or ssh
 token_env = "ELDA_GITHUB_TOKEN"
 api_base = "https://api.github.com"
 remote_name = "origin"

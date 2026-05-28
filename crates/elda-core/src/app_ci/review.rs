@@ -42,6 +42,7 @@ struct HostedReviewRequest<'a> {
     target_branch: &'a str,
     title: &'a str,
     description: &'a str,
+    auth: SubmissionAuthKind,
     token: &'a str,
 }
 
@@ -162,15 +163,15 @@ fn maybe_create_hosted_review_from_config(
 
     match submission_config.auth {
         SubmissionAuthKind::None | SubmissionAuthKind::Ssh => Ok(None),
-        SubmissionAuthKind::Token => {
+        SubmissionAuthKind::Token | SubmissionAuthKind::Bearer => {
             if submission_config.token_env.trim().is_empty() {
                 return Err(CoreError::Operator(
-                    "submission auth is `token` but the resolved token env is empty".to_owned(),
+                    "submission auth requires a non-empty resolved token env".to_owned(),
                 ));
             }
             let token = env::var(&submission_config.token_env).map_err(|_| {
                 CoreError::Operator(format!(
-                    "submission auth is `token` but env var `{}` is not set",
+                    "submission auth requires env var `{}` but it is not set",
                     submission_config.token_env
                 ))
             })?;
@@ -183,6 +184,7 @@ fn maybe_create_hosted_review_from_config(
                 target_branch,
                 title: &title,
                 description: &description,
+                auth: submission_config.auth,
                 token: token.trim(),
             };
             create_hosted_review(request).map(Some)
@@ -229,7 +231,10 @@ fn create_hosted_review(request: HostedReviewRequest<'_>) -> Result<HostedReview
             }))?;
             let response = agent
                 .post(&endpoint)
-                .set("Authorization", &format!("token {}", request.token))
+                .set(
+                    "Authorization",
+                    &authorization_header(request.auth, request.token),
+                )
                 .set("Accept", "application/json")
                 .set("User-Agent", "elda")
                 .set("Content-Type", "application/json")
@@ -267,9 +272,19 @@ fn create_hosted_review(request: HostedReviewRequest<'_>) -> Result<HostedReview
                 "source_branch": request.branch_name,
                 "target_branch": request.target_branch,
             }))?;
-            let response = agent
-                .post(&endpoint)
-                .set("PRIVATE-TOKEN", request.token)
+            let mut request_builder = agent.post(&endpoint);
+            match request.auth {
+                SubmissionAuthKind::Bearer => {
+                    request_builder = request_builder.set(
+                        "Authorization",
+                        &authorization_header(request.auth, request.token),
+                    );
+                }
+                _ => {
+                    request_builder = request_builder.set("PRIVATE-TOKEN", request.token);
+                }
+            }
+            let response = request_builder
                 .set("Accept", "application/json")
                 .set("User-Agent", "elda")
                 .set("Content-Type", "application/json")
@@ -291,6 +306,13 @@ fn create_hosted_review(request: HostedReviewRequest<'_>) -> Result<HostedReview
                     .map(|value| value.to_string()),
             })
         }
+    }
+}
+
+fn authorization_header(auth: SubmissionAuthKind, token: &str) -> String {
+    match auth {
+        SubmissionAuthKind::Bearer => format!("Bearer {token}"),
+        _ => format!("token {token}"),
     }
 }
 
@@ -436,6 +458,7 @@ mod tests {
             target_branch: "stable",
             title: "Elda CI: review-tool",
             description: "body",
+            auth: crate::config::SubmissionAuthKind::Token,
             token: "secret-token",
         })
         .expect("github review should succeed");
@@ -467,6 +490,7 @@ mod tests {
             target_branch: "stable",
             title: "Elda CI: review-tool",
             description: "body",
+            auth: crate::config::SubmissionAuthKind::Token,
             token: "secret-token",
         })
         .expect("gitlab review should succeed");
@@ -493,6 +517,33 @@ mod tests {
             "https://gitlab.example.com/group/sub/pkgs/-/merge_requests/8"
         );
         assert_eq!(review.review_id.as_deref(), Some("8"));
+    }
+
+    #[test]
+    fn create_hosted_review_accepts_bearer_auth_for_github() {
+        let (api_base, receiver) = start_mock_server(
+            r#"{"html_url":"https://github.com/yoka-ci/pkgs/pull/42","number":42}"#,
+        );
+        let review = create_hosted_review(HostedReviewRequest {
+            origin_url: "https://github.com/yoka-ci/pkgs.git",
+            api_base_override: Some(&api_base),
+            branch_name: "elda/review-tool",
+            target_branch: "stable",
+            title: "Elda CI: review-tool",
+            description: "body",
+            auth: crate::config::SubmissionAuthKind::Bearer,
+            token: "secret-token",
+        })
+        .expect("github review should succeed");
+
+        let captured = receiver.recv().expect("request should be captured");
+        assert!(
+            captured
+                .headers
+                .iter()
+                .any(|header| header == "authorization: Bearer secret-token")
+        );
+        assert_eq!(review.url, "https://github.com/yoka-ci/pkgs/pull/42");
     }
 
     #[test]

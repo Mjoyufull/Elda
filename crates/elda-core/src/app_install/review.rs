@@ -146,7 +146,7 @@ impl AppContext {
         frame.kv("url", &snapshot.source_url);
         frame.kv("type", &snapshot.repository_type);
         frame.kv("commit", commit);
-        frame.kv("staging", &snapshot.staging_dir.display().to_string());
+        frame.kv("staging", snapshot.staging_dir.display().to_string());
         frame.spacer();
         frame.section("Import plan");
         frame.kv("discovered recipes", snapshot.discovered.to_string());
@@ -400,7 +400,7 @@ fn render_install_proceed_frame(install_plan: &[PlannedInstallAction]) -> String
     for action in install_plan.iter().take(12) {
         frame.kv(
             &action.package_name,
-            &format!(
+            format!(
                 "{} [{} / {}]{}",
                 action.resolved.recipe.package.version,
                 action.resolved.selected_lane,

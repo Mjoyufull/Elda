@@ -39,6 +39,12 @@ pub(super) fn confirm_remove_transaction(
         return require_interactive_confirmation(request, "remove");
     }
 
+    let data_dir = app.database.layout().data_dir.clone();
+    let plan_hash = remove_plan_hash(packages, cascade, purge_conffiles);
+    if remove_confirmation_matches(&data_dir, request, &plan_hash)? {
+        return Ok(());
+    }
+
     let plan_report = build_remove_plan_report(app, request, packages, cascade, purge_conffiles)?;
     if let Some(rendered) = render_remove_plan_frame(&plan_report) {
         let stdout = io::stdout();
@@ -50,8 +56,6 @@ pub(super) fn confirm_remove_transaction(
     loop {
         match read_yne_after_frame()? {
             ConfirmResponse::Accept => {
-                let data_dir = app.database.layout().data_dir.clone();
-                let plan_hash = remove_plan_hash(packages, cascade, purge_conffiles);
                 write_remove_confirmation(&data_dir, request, &plan_hash)?;
                 return Ok(());
             }

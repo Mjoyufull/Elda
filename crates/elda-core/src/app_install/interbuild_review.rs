@@ -22,10 +22,10 @@ fn render_interbuild_review_frame(action: &PlannedInstallAction, data_dir: &Path
 
     frame.section("Identity");
     frame.kv("package", &action.package_name);
-    frame.kv("version", &recipe_version(action));
+    frame.kv("version", recipe_version(action));
     frame.kv(
         "lane",
-        &format!("{} / {source_kind}", action.resolved.selected_lane),
+        format!("{} / {source_kind}", action.resolved.selected_lane),
     );
     frame.kv("provenance", "[I] parsed, no foreign package-manager CLI");
     frame.kv("parser", interbuild_parser_name(source_kind));
@@ -36,7 +36,7 @@ fn render_interbuild_review_frame(action: &PlannedInstallAction, data_dir: &Path
     if let Some(source_ref) = &action.resolved.source_ref {
         frame.kv("source ref", source_ref);
     }
-    frame.kv("recipe", &action.resolved.recipe.path.display().to_string());
+    frame.kv("recipe", action.resolved.recipe.path.display().to_string());
 
     frame.spacer();
     frame.section("Review Memory");

@@ -58,7 +58,7 @@ fn human_git_tags_renders_operator_dense_tag_rows() {
     .expect("git tags should succeed");
     let rendered = crate::render_human(&report);
 
-    assert!(rendered.contains("git: ok"));
+    assert!(rendered.contains("git ok"));
     assert!(rendered.contains("Git Tags"));
     assert!(rendered.contains("v2.0.0: 0:2.0.0-1 [stable-semver]"));
 }
@@ -219,7 +219,7 @@ fn human_git_releases_renders_operator_dense_asset_rows() {
 
     let rendered = crate::render_human(&report);
 
-    assert!(rendered.contains("git: ok"));
+    assert!(rendered.contains("git ok"));
     assert!(rendered.contains("Git Releases"));
     assert!(rendered.contains("v3.4.1: 0:3.4.1-1 [stable-semver]"));
     assert!(rendered.contains("recommended=fsel-v3.4.1-x86_64-unknown-linux-gnu.tar.gz"));

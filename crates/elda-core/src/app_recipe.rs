@@ -72,9 +72,7 @@ impl AppContext {
             .issues
             .iter()
             .any(|issue| issue.severity == elda_recipe::IssueSeverity::Warning);
-        let status = if has_errors {
-            "invalid"
-        } else if strict && has_warnings {
+        let status = if has_errors || strict && has_warnings {
             "invalid"
         } else {
             "ok"

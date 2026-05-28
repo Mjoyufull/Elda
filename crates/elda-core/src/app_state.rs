@@ -350,10 +350,10 @@ fn parse_list_operands(
     while let Some(operand) = iter.next() {
         if operand.starts_with("--") {
             filter_operands.push(operand.clone());
-            if operand == "--source-kind" {
-                if let Some(value) = iter.next() {
-                    filter_operands.push(value.clone());
-                }
+            if operand == "--source-kind"
+                && let Some(value) = iter.next()
+            {
+                filter_operands.push(value.clone());
             }
         } else {
             packages.push(operand.clone());

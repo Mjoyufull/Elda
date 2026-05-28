@@ -221,7 +221,7 @@ fn human_failure_report_surfaces_blocker_context_and_action() {
     assert_eq!(report.exit_status, ExitStatus::ResolutionFailure);
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("install: blocked"));
+    assert!(rendered.contains("install blocked"));
     assert!(rendered.contains("┌─ install blocked: missing-tool"));
     assert!(rendered.contains("├─ Blocked"));
     assert!(rendered.contains("│  kind: resolution failure"));
@@ -467,7 +467,7 @@ fn human_state_ls_renders_scan_table_without_detail_blocks() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("state: ok"));
+    assert!(rendered.contains("state ok"));
     assert!(rendered.contains("listed 2 installed package(s)."));
     assert!(rendered.contains("NAME"));
     assert!(rendered.contains("bfetch"));
@@ -536,7 +536,7 @@ fn human_state_list_renders_per_package_blocks_in_nix_profile_style() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("state: ok"));
+    assert!(rendered.contains("state ok"));
     assert!(rendered.contains("listed 2 installed package(s)."));
     assert!(rendered.contains("[E] bfetch"));
     assert!(rendered.contains("  Version: 0:0.1.0-1"));
@@ -578,7 +578,7 @@ fn human_state_ls_renders_empty_state_without_blocks() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("state: ok"));
+    assert!(rendered.contains("state ok"));
     assert!(rendered.contains("listed 0 installed package(s)."));
     assert!(rendered.contains("No installed packages."));
     assert!(!rendered.contains("Name:"));
@@ -623,7 +623,7 @@ fn human_recipe_catalog_renders_per_recipe_blocks_with_provenance() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("recipe: ok"));
+    assert!(rendered.contains("recipe ok"));
     assert!(rendered.contains("1 local recipe(s); 1 synced install name(s)."));
     assert!(rendered.contains("directory: /etc/elda/recipes"));
 
@@ -655,7 +655,7 @@ fn human_render_does_not_emit_raw_json_for_unstyled_reports() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("verify: ok"));
+    assert!(rendered.contains("Verify"));
     assert!(rendered.contains("verified 0 installed package(s)."));
     assert!(!rendered.contains("\"verified\""));
     assert!(!rendered.contains("secret_field"));

@@ -800,6 +800,7 @@ Recovery rules:
 
 Snapshot integration rules:
 - if `snapshot_tool` is configured and supported by the active backend, Elda requests a pre-activation snapshot before file switch-over and may request a post-activation snapshot after successful trigger completion
+- current built-in system-backend snapshot tools are `snapper` and direct `btrfs subvolume snapshot -r`; absolute paths are accepted when the executable name is one of those tools
 - snapshot identifiers are recorded in the transaction journal and linked state metadata
 - snapshot tooling is integration, not the primary rollback semantic model; Elda journals and archived states remain authoritative for PM-level recovery
 
@@ -1429,7 +1430,7 @@ Forge auth contract:
 - read-only `ci status` / `ci logs` may use anonymous access when the forge allows it
 - local-only `ci sub`, `ci run`, `ci retry`, and `ci batch ...` may operate without hosted-forge credentials when the current CI workspace is not publishing to a configured remote
 - once a submission publishes to a configured remote or opens a hosted review, mutating forge-facing operations use the resolved auth profile for that remote
-- supported auth kinds are `token`, `ssh`, and `none`
+- supported auth kinds are `token`, `bearer`, `ssh`, and `none`
 - `token_env` is the canonical token configuration field for token-based forges
 - `submission.remote_name` selects which git remote the current CI workspace publishes to; the default is `origin`
 - `submission.base_branch` selects the PR/MR target branch and direct-push target branch; the default is `main`
@@ -1545,7 +1546,7 @@ remote = "yoka-main"
 build_mode = "isolated"
 prefix = "/usr"
 allow_system_mode = false
-snapshot_tool = "none"
+snapshot_tool = "none" # none, snapper, btrfs, or executable path
 auto_create_config = true
 mode_policy = "host"
 install_recommends = true
@@ -1632,7 +1633,7 @@ allowed_protocols = ["https", "ssh", "file"]
 mode = "pr"
 auto_open = true
 auto_assign = false
-auth = "token"
+auth = "token" # token, bearer, ssh, or none
 token_env = "ELDA_GITHUB_TOKEN"
 api_base = "https://api.github.com"
 remote_name = "origin"

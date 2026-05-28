@@ -12,33 +12,41 @@ pub(super) fn render_pkg_lua(
     metadata: &GeneratedMetadata,
     git_ref: Option<&GitRefRequest>,
 ) -> String {
-    render_pkg_lua_with_binary_lane(
+    render_pkg_lua_with_binary_lane(PkgLuaRender {
         recipe_name,
         source_url,
         legacy_pkgdeps,
         recipe_kind,
-        strategy,
-        None,
-        "source",
+        source_strategy: strategy,
+        binary_strategy: None,
+        default_lane: "source",
         metadata,
         git_ref,
-    )
+    })
 }
 
-pub(super) fn render_pkg_lua_with_binary_lane(
-    recipe_name: &str,
-    source_url: Option<&str>,
-    legacy_pkgdeps: &[LegacyPkgdep],
-    recipe_kind: &str,
-    strategy: &SourceStrategy,
-    binary_strategy: Option<&SourceStrategy>,
-    default_lane: &str,
-    metadata: &GeneratedMetadata,
-    git_ref: Option<&GitRefRequest>,
-) -> String {
-    let source_block =
-        render_source_block(source_url, strategy, binary_strategy, default_lane, git_ref);
-    let depends_block = render_depends_block(legacy_pkgdeps, &metadata.depends);
+pub(super) struct PkgLuaRender<'a> {
+    pub(super) recipe_name: &'a str,
+    pub(super) source_url: Option<&'a str>,
+    pub(super) legacy_pkgdeps: &'a [LegacyPkgdep],
+    pub(super) recipe_kind: &'a str,
+    pub(super) source_strategy: &'a SourceStrategy,
+    pub(super) binary_strategy: Option<&'a SourceStrategy>,
+    pub(super) default_lane: &'a str,
+    pub(super) metadata: &'a GeneratedMetadata,
+    pub(super) git_ref: Option<&'a GitRefRequest>,
+}
+
+pub(super) fn render_pkg_lua_with_binary_lane(input: PkgLuaRender<'_>) -> String {
+    let source_block = render_source_block(
+        input.source_url,
+        input.source_strategy,
+        input.binary_strategy,
+        input.default_lane,
+        input.git_ref,
+    );
+    let metadata = input.metadata;
+    let depends_block = render_depends_block(input.legacy_pkgdeps, &metadata.depends);
     let makedepends_block = render_string_array("makedepends", &metadata.makedepends);
     let checkdepends_block = render_string_array("checkdepends", &metadata.checkdepends);
     let provides_block = render_string_array("provides", &metadata.provides);
@@ -47,13 +55,13 @@ pub(super) fn render_pkg_lua_with_binary_lane(
 
     format!(
         "pkg = {{\n  name = \"{name}\",\n  description = \"{description}\",\n  licenses = {licenses},\n  upstream = \"{upstream}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = {rel},\n  arch = {{ \"amd64\" }},\n  kind = \"{recipe_kind}\",\n\n{source_block}\n{depends_block}{makedepends_block}{checkdepends_block}  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n{provides_block}{conflicts_block}{replaces_block}\n  conffiles = {{}},\n  sysusers = {{}},\n  tmpfiles = {{}},\n  alternatives = {{}},\n  hooks = {{}},\n  provider_assets = {{}},\n\n  flags_default = {{}},\n  flags_allowed = {{}},\n  flags_implies = {{}},\n  flags_conflicts = {{}},\n\n  subpackages = {{}},\n{profile_block}}}\n",
-        name = escape_lua_string(recipe_name),
+        name = escape_lua_string(input.recipe_name),
         description = escape_lua_string(metadata.description.as_deref().unwrap_or_default()),
         licenses = render_array_values(&metadata.licenses),
         upstream = escape_lua_string(metadata.upstream.as_deref().unwrap_or_default()),
         version = escape_lua_string(metadata.version.as_deref().unwrap_or("0.1.0")),
         rel = metadata.rel.unwrap_or(1),
-        recipe_kind = escape_lua_string(recipe_kind),
+        recipe_kind = escape_lua_string(input.recipe_kind),
         source_block = source_block,
         depends_block = depends_block,
         makedepends_block = makedepends_block,
@@ -61,7 +69,7 @@ pub(super) fn render_pkg_lua_with_binary_lane(
         provides_block = provides_block,
         conflicts_block = conflicts_block,
         replaces_block = replaces_block,
-        profile_block = profile_block(recipe_kind),
+        profile_block = profile_block(input.recipe_kind),
     )
 }
 

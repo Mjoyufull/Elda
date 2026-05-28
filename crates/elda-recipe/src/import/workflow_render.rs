@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::metadata::read_generated_metadata;
 use super::model::{ImportOptions, LegacyPkgdep};
-use super::render::{render_pkg_lua, render_pkg_lua_with_binary_lane};
+use super::render::{PkgLuaRender, render_pkg_lua, render_pkg_lua_with_binary_lane};
 use super::strategy::{SourceStrategy, metadata_strategy_for_source, release_binary_strategy};
 
 pub(super) fn render_generated_pkg_lua(
@@ -21,17 +21,17 @@ pub(super) fn render_generated_pkg_lua(
     let binary_strategy = binary_lane_strategy(source_url, selected_strategy, options);
 
     if let Some(binary_strategy) = binary_strategy.as_ref() {
-        return render_pkg_lua_with_binary_lane(
+        return render_pkg_lua_with_binary_lane(PkgLuaRender {
             recipe_name,
             source_url,
             legacy_pkgdeps,
             recipe_kind,
-            &source_strategy,
-            Some(binary_strategy),
-            default_lane(selected_strategy),
-            &metadata,
-            options.git_ref.as_ref(),
-        );
+            source_strategy: &source_strategy,
+            binary_strategy: Some(binary_strategy),
+            default_lane: default_lane(selected_strategy),
+            metadata: &metadata,
+            git_ref: options.git_ref.as_ref(),
+        });
     }
 
     render_pkg_lua(

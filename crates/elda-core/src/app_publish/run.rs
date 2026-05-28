@@ -45,12 +45,11 @@ impl AppContext {
         .ok();
         let workspace = CiWorkspacePaths::for_channel(layout, &channel);
         workspace.ensure_exists()?;
-        if let Some(profile) = &profile {
-            if let Some(key_path) = profile.signing_key_path() {
-                if key_path.is_file() {
-                    std::fs::copy(&key_path, &workspace.signing_key_path)?;
-                }
-            }
+        if let Some(profile) = &profile
+            && let Some(key_path) = profile.signing_key_path()
+            && key_path.is_file()
+        {
+            std::fs::copy(&key_path, &workspace.signing_key_path)?;
         }
 
         let plan = publish_plan_for_targets(self, &targets)?;

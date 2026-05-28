@@ -55,6 +55,8 @@ pub const BOUNDARY: CrateBoundary = CrateBoundary::new(
     "Build orchestration, staging roots, and payload assembly.",
 );
 
+pub type BuildLineHook = std::sync::Arc<dyn Fn(&str) + Send + Sync>;
+
 #[derive(Clone)]
 pub struct BuildRequest<'a> {
     pub recipe: &'a RecipeDocument,
@@ -74,7 +76,7 @@ pub struct BuildRequest<'a> {
     /// When true, builders that support it attach child stdout/stderr to the terminal (human installs).
     pub stream_child_output: bool,
     /// Optional hook for bounded build-tool status lines (ProgressSink inner build frame).
-    pub build_line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    pub build_line_hook: Option<BuildLineHook>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -306,7 +308,7 @@ fn build_source_tree(
     source_dir: &Path,
     stage_root: &Path,
     stream_child_output: bool,
-    build_line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    build_line_hook: Option<BuildLineHook>,
 ) -> Result<(), BuildError> {
     if matches!(recipe.package.kind.as_str(), "meta" | "profile") {
         return Ok(());

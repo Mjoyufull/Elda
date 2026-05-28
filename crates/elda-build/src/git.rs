@@ -3,6 +3,7 @@ use std::process::Command;
 
 use elda_recipe::{RecipeDocument, ScalarValue, SourceDefinition};
 
+use crate::BuildLineHook;
 use crate::error::BuildError;
 use crate::process::{emit_build_line, run_command};
 
@@ -18,7 +19,7 @@ pub fn checkout_git_source(
     work_root: &Path,
     offline: bool,
     allowed_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<SourceCheckout, BuildError> {
     if recipe.package.source.kind != "git" {
         return Err(BuildError::Unsupported(format!(
@@ -41,7 +42,7 @@ pub fn checkout_source(
     work_root: &Path,
     offline: bool,
     allowed_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<SourceCheckout, BuildError> {
     let url = string_field(source, "url")?;
     ensure_git_protocol_allowed(url, allowed_protocols)?;
@@ -110,7 +111,7 @@ pub fn ensure_git_protocol_allowed(
 
 pub fn redact_url_credentials(location: &str) -> String {
     let mut redacted = location.to_owned();
-    if let Some(query_start) = redacted.find(|character| character == '?' || character == '#') {
+    if let Some(query_start) = redacted.find(['?', '#']) {
         redacted.truncate(query_start);
         redacted.push_str("?redacted");
     }
@@ -168,6 +169,36 @@ fn git_source_is_local(url: &str) -> bool {
     Path::new(url).exists()
 }
 
+fn string_field<'a>(source: &'a SourceDefinition, key: &str) -> Result<&'a str, BuildError> {
+    string_field_optional(source, key).ok_or_else(|| {
+        BuildError::Invalid(format!("source.kind `{}` is missing `{key}`", source.kind))
+    })
+}
+
+fn string_field_optional<'a>(source: &'a SourceDefinition, key: &str) -> Option<&'a str> {
+    match source.fields.get(key) {
+        Some(ScalarValue::String(value)) => Some(value.as_str()),
+        _ => None,
+    }
+}
+
+fn read_git_output(repo_dir: &Path, args: &[&str]) -> Result<Option<String>, BuildError> {
+    let output = Command::new("git")
+        .current_dir(repo_dir)
+        .args(args)
+        .output()?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if value.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ensure_git_protocol_allowed, redact_url_credentials};
@@ -206,35 +237,5 @@ mod tests {
 
         assert!(ensure_git_protocol_allowed("http://example.invalid/repo.git", &allowed).is_err());
         assert!(ensure_git_protocol_allowed("git://example.invalid/repo.git", &allowed).is_err());
-    }
-}
-
-fn string_field<'a>(source: &'a SourceDefinition, key: &str) -> Result<&'a str, BuildError> {
-    string_field_optional(source, key).ok_or_else(|| {
-        BuildError::Invalid(format!("source.kind `{}` is missing `{key}`", source.kind))
-    })
-}
-
-fn string_field_optional<'a>(source: &'a SourceDefinition, key: &str) -> Option<&'a str> {
-    match source.fields.get(key) {
-        Some(ScalarValue::String(value)) => Some(value.as_str()),
-        _ => None,
-    }
-}
-
-fn read_git_output(repo_dir: &Path, args: &[&str]) -> Result<Option<String>, BuildError> {
-    let output = Command::new("git")
-        .current_dir(repo_dir)
-        .args(args)
-        .output()?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if value.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(value))
     }
 }

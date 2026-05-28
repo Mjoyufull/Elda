@@ -110,18 +110,17 @@ pub(super) fn render_sync(report: &CommandReport) -> Option<String> {
                     lines.push(format!("    excluded: {}", names.join(", ")));
                 }
             }
-            if let Some(issues) = remote.get("issues").and_then(Value::as_array) {
-                if !issues.is_empty() {
-                    lines.push(format!("    parser issues: {}", issues.len()));
-                    for issue in issues.iter().take(3) {
-                        let package = json_string(issue, &["name"]).unwrap_or("?");
-                        let reason =
-                            json_string(issue, &["issue"]).unwrap_or("unknown parser issue");
-                        lines.push(format!("      {package}: {reason}"));
-                    }
-                    if issues.len() > 3 {
-                        lines.push(format!("      … {} more parser issue(s)", issues.len() - 3));
-                    }
+            if let Some(issues) = remote.get("issues").and_then(Value::as_array)
+                && !issues.is_empty()
+            {
+                lines.push(format!("    parser issues: {}", issues.len()));
+                for issue in issues.iter().take(3) {
+                    let package = json_string(issue, &["name"]).unwrap_or("?");
+                    let reason = json_string(issue, &["issue"]).unwrap_or("unknown parser issue");
+                    lines.push(format!("      {package}: {reason}"));
+                }
+                if issues.len() > 3 {
+                    lines.push(format!("      … {} more parser issue(s)", issues.len() - 3));
                 }
             }
         }

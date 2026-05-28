@@ -118,6 +118,7 @@ impl AppContext {
             ),
             details: Some(json!({
                 "profile": profile.name,
+                "profile_path": profile.profile_path().display().to_string(),
                 "scan": scan_tree_json(&tree.root, &results),
             })),
         })
@@ -312,7 +313,12 @@ impl AppContext {
             summary: format!("host status for profile `{}`.", profile.name),
             details: Some(json!({
                 "profile": profile.name,
+                "profile_path": profile.profile_path().display().to_string(),
                 "tree": profile.tree_path(),
+                "cache": {
+                    "populate_after_publish": profile.cache_populate_after_publish(),
+                    "upload_command_env": profile.cache_upload_command_env(),
+                },
                 "channels": channel_status,
             })),
         })
@@ -367,6 +373,7 @@ impl AppContext {
             ),
             details: Some(json!({
                 "profile": profile.name,
+                "profile_path": profile.profile_path().display().to_string(),
                 "blockers": blockers,
                 "warnings": warnings,
             })),

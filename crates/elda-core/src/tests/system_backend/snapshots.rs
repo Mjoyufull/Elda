@@ -126,6 +126,56 @@ fn unsupported_snapshot_tools_are_recorded_as_failed_requests() {
     }));
 }
 
+#[test]
+fn btrfs_snapshot_tool_records_activation_snapshot_paths() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    let snapshot_tool = write_fake_btrfs(tempdir.path());
+    write_prefix_config_with_extras(
+        tempdir.path(),
+        "/usr",
+        true,
+        false,
+        &format!("snapshot_tool = \"{}\"\n", snapshot_tool.display()),
+    );
+
+    let repo_dir = create_system_make_repo(tempdir.path(), "system-tool", "system backend v1");
+    write_system_recipe(
+        tempdir.path(),
+        "system-tool",
+        &repo_dir,
+        "0.1.0",
+        "u elda - EldaUser /usr/bin/false",
+        "d /run/elda 0755 root root -",
+    );
+
+    let install = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["system-tool".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("system install should succeed");
+
+    let snapshots = install_snapshots_from_report(&install).expect("snapshots should exist");
+    assert_snapshot_records(snapshots);
+    assert!(snapshots.iter().all(|record| {
+        record
+            .get("snapshot_id")
+            .and_then(|value| value.as_str())
+            .is_some_and(|id| id.contains("/var/lib/elda/snapshots/"))
+    }));
+    assert_eq!(
+        fs::read_to_string(tempdir.path().join("btrfs.log"))
+            .expect("btrfs log should exist")
+            .lines()
+            .count(),
+        2
+    );
+}
+
 fn install_snapshots_from_report(report: &CommandReport) -> Option<&Vec<Value>> {
     report
         .details
@@ -160,6 +210,28 @@ fn write_fake_snapper(root: &Path) -> PathBuf {
     fs::set_permissions(&snapper_path, permissions).expect("fake snapper should be executable");
 
     snapper_path
+}
+
+fn write_fake_btrfs(root: &Path) -> PathBuf {
+    let bin_dir = root.join("test-bin");
+    fs::create_dir_all(&bin_dir).expect("fake btrfs dir should exist");
+    let btrfs_path = bin_dir.join("btrfs");
+    let log_path = root.join("btrfs.log");
+    fs::write(
+        &btrfs_path,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"{log}\"\nexit 0\n",
+            log = log_path.display(),
+        ),
+    )
+    .expect("fake btrfs should be written");
+    let mut permissions = fs::metadata(&btrfs_path)
+        .expect("fake btrfs metadata should exist")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&btrfs_path, permissions).expect("fake btrfs should be executable");
+
+    btrfs_path
 }
 
 fn assert_snapshot_records(records: &[Value]) {

@@ -218,11 +218,11 @@ fn push_source_context_rows(rows: &mut Vec<(String, String)>, action: &Value, sh
     if let Some(path) = json_string(action, &["generated_metadata_path"]) {
         rows.push(("metadata".to_owned(), path.to_owned()));
     }
-    if shape == RenderShape::DryRunPlan {
-        if let Some(summary) = compact_plan_interbuild_summary(action) {
-            let value = summary.strip_prefix("parser ").unwrap_or(summary.as_str());
-            rows.push(("interbuild parser".to_owned(), value.to_owned()));
-        }
+    if shape == RenderShape::DryRunPlan
+        && let Some(summary) = compact_plan_interbuild_summary(action)
+    {
+        let value = summary.strip_prefix("parser ").unwrap_or(summary.as_str());
+        rows.push(("interbuild parser".to_owned(), value.to_owned()));
     }
     if let Some(trust) = binary_trust_summary(action) {
         rows.push(("trust".to_owned(), trust.to_owned()));

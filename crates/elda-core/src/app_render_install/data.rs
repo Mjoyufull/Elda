@@ -10,13 +10,13 @@ pub(crate) fn primary_action(actions: &[Value]) -> Option<&Value> {
 }
 
 pub(crate) fn provenance_badge(action: &Value) -> &'static str {
-    if let Some(kind) = json_string(action, &["selected_source_kind"]) {
-        if matches!(
+    if let Some(kind) = json_string(action, &["selected_source_kind"])
+        && matches!(
             kind,
             "nix_flake" | "gentoo_overlay" | "aur_pkgbuild" | "xbps_template"
-        ) {
-            return "[I]";
-        }
+        )
+    {
+        return "[I]";
     }
 
     match json_string(action, &["persisted_source_kind"])
@@ -161,155 +161,6 @@ pub(crate) fn compact_plan_interbuild_summary(action: &Value) -> Option<String> 
         })
         .unwrap_or("external CLI unknown");
     Some(format!("parser {parser}, {external_cli}"))
-}
-
-pub(crate) fn interbuild_summary(action: &Value) -> Option<String> {
-    let details = action.get("interbuild")?;
-    if details.is_null() {
-        return None;
-    }
-
-    let parser = json_string(details, &["parser"]).unwrap_or("unknown");
-    let engine = json_string(details, &["engine"]).unwrap_or("unknown");
-    let confidence = json_string(details, &["confidence"]).unwrap_or("unknown");
-    let external_cli = details
-        .get("external_cli_required")
-        .and_then(Value::as_bool)
-        .map(|required| {
-            if required {
-                "requires external CLI"
-            } else {
-                "no external CLI"
-            }
-        })
-        .unwrap_or("external CLI unknown");
-
-    let target = json_string(details, &["target"])
-        .map(|value| format!(", target {value}"))
-        .unwrap_or_default();
-    let lockfile = lockfile_summary(details)
-        .map(|value| format!(", lockfile {value}"))
-        .unwrap_or_default();
-    let ecosystem = ecosystem_summary(details)
-        .map(|value| format!(", {value}"))
-        .unwrap_or_default();
-
-    Some(format!(
-        "parser {parser}, engine {engine}, confidence {confidence}, {external_cli}{target}{lockfile}{ecosystem}"
-    ))
-}
-
-fn lockfile_summary(details: &Value) -> Option<String> {
-    let lockfile = details.get("lockfile")?;
-    if lockfile.is_null() {
-        return None;
-    }
-    let present = lockfile.get("present").and_then(Value::as_bool)?;
-    let locked_inputs = lockfile
-        .get("locked_inputs")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
-    Some(if present {
-        format!("present, {locked_inputs} locked input(s)")
-    } else {
-        "absent".to_owned()
-    })
-}
-
-fn ecosystem_summary(details: &Value) -> Option<String> {
-    gentoo_summary(details)
-        .or_else(|| aur_summary(details))
-        .or_else(|| xbps_summary(details))
-}
-
-fn gentoo_summary(details: &Value) -> Option<String> {
-    let gentoo = details.get("gentoo")?;
-    if gentoo.is_null() {
-        return None;
-    }
-    let eapi = json_string(gentoo, &["eapi"]).unwrap_or("unknown");
-    let depend = gentoo
-        .get("depend")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-    let rdepend = gentoo
-        .get("rdepend")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-    let iuse = gentoo
-        .get("iuse")
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0);
-    let phases = array_len(gentoo, "phases");
-    let commands = phase_command_count(gentoo);
-    Some(format!(
-        "gentoo EAPI {eapi}, {depend} DEPEND, {rdepend} RDEPEND, {iuse} IUSE, {phases} phase(s), {commands} command(s)"
-    ))
-}
-
-fn aur_summary(details: &Value) -> Option<String> {
-    let aur = details.get("aur")?;
-    if aur.is_null() {
-        return None;
-    }
-    let depends = array_len(aur, "depends");
-    let makedepends = array_len(aur, "makedepends");
-    let optdepends = array_len(aur, "optdepends");
-    let functions = array_len(aur, "functions");
-    let arch_sources = array_len(aur, "arch_sources");
-    let vcs_sources = array_len(aur, "vcs_sources");
-    let pkgver = if aur
-        .get("pkgver_function")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        "pkgver() present"
-    } else {
-        "static pkgver"
-    };
-    let commands = phase_command_count(aur);
-    Some(format!(
-        "aur {depends} depend(s), {makedepends} makedepend(s), {optdepends} optdepend(s), {functions} function(s), {arch_sources} arch source set(s), {vcs_sources} VCS source(s), {pkgver}, {commands} command(s)"
-    ))
-}
-
-fn xbps_summary(details: &Value) -> Option<String> {
-    let xbps = details.get("xbps")?;
-    if xbps.is_null() {
-        return None;
-    }
-    let depends = array_len(xbps, "depends");
-    let makedepends = array_len(xbps, "makedepends");
-    let hostmakedepends = array_len(xbps, "hostmakedepends");
-    let functions = array_len(xbps, "functions");
-    let commands = phase_command_count(xbps);
-    Some(format!(
-        "xbps {depends} depend(s), {makedepends} makedepend(s), {hostmakedepends} hostmakedepend(s), {functions} function(s), {commands} command(s)"
-    ))
-}
-
-fn phase_command_count(value: &Value) -> usize {
-    value
-        .get("phase_commands")
-        .and_then(Value::as_array)
-        .map(|phases| {
-            phases
-                .iter()
-                .map(|phase| array_len(phase, "commands"))
-                .sum()
-        })
-        .unwrap_or(0)
-}
-
-fn array_len(value: &Value, key: &str) -> usize {
-    value
-        .get(key)
-        .and_then(Value::as_array)
-        .map(Vec::len)
-        .unwrap_or(0)
 }
 
 pub(crate) fn object_summary(action: &Value) -> Option<String> {

@@ -300,7 +300,9 @@ fn xbps_template_interbuild_uses_distfile_archive_source() {
         .current_dir(tempdir.path())
         .args([
             "-czf",
-            archive_path.to_str().unwrap(),
+            archive_path
+                .to_str()
+                .expect("test archive path should be UTF-8"),
             "xbps-archive-tool-0.1.0",
         ])
         .status()

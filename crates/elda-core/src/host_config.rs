@@ -71,6 +71,10 @@ pub struct ResolvedHostProfile {
 }
 
 impl ResolvedHostProfile {
+    pub fn profile_path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn packages_subdir(&self) -> &str {
         self.section
             .packages_subdir
@@ -103,31 +107,37 @@ impl ResolvedHostProfile {
     }
 
     pub fn resolve_base_url(&self) -> Option<String> {
-        if let Some(url) = &self.section.publish.base_url {
-            if !url.trim().is_empty() {
-                return Some(url.trim().to_owned());
-            }
+        if let Some(url) = &self.section.publish.base_url
+            && !url.trim().is_empty()
+        {
+            return Some(url.trim().to_owned());
         }
-        if let Some(env_name) = &self.section.publish.base_url_env {
-            if let Ok(value) = std::env::var(env_name) {
-                if !value.trim().is_empty() {
-                    return Some(value.trim().to_owned());
-                }
-            }
+        if let Some(env_name) = &self.section.publish.base_url_env
+            && let Ok(value) = std::env::var(env_name)
+            && !value.trim().is_empty()
+        {
+            return Some(value.trim().to_owned());
         }
         None
+    }
+
+    pub fn cache_populate_after_publish(&self) -> Option<&str> {
+        self.section.cache.populate_after_publish.as_deref()
+    }
+
+    pub fn cache_upload_command_env(&self) -> Option<&str> {
+        self.section.cache.upload_command_env.as_deref()
     }
 
     pub fn signing_key_path(&self) -> Option<PathBuf> {
         if let Some(path) = &self.section.signing_key {
             return Some(PathBuf::from(path));
         }
-        if let Some(env_name) = &self.section.signing_key_env {
-            if let Ok(path) = std::env::var(env_name) {
-                if !path.trim().is_empty() {
-                    return Some(PathBuf::from(path));
-                }
-            }
+        if let Some(env_name) = &self.section.signing_key_env
+            && let Ok(path) = std::env::var(env_name)
+            && !path.trim().is_empty()
+        {
+            return Some(PathBuf::from(path));
         }
         None
     }
@@ -170,19 +180,19 @@ pub fn load_host_profile(
     let config_path = root_dir.join("etc/elda/config.toml");
     if config_path.is_file() {
         let content = fs::read_to_string(&config_path)?;
-        if let Ok(parsed) = toml::from_str::<HostConfigFile>(&content) {
-            if parsed.host.profile.is_some() || parsed.host.tree.is_some() {
-                let name = parsed
-                    .host
-                    .profile
-                    .clone()
-                    .unwrap_or_else(|| "config".to_owned());
-                profiles.push(ResolvedHostProfile {
-                    name,
-                    path: config_path.clone(),
-                    section: parsed.host,
-                });
-            }
+        if let Ok(parsed) = toml::from_str::<HostConfigFile>(&content)
+            && (parsed.host.profile.is_some() || parsed.host.tree.is_some())
+        {
+            let name = parsed
+                .host
+                .profile
+                .clone()
+                .unwrap_or_else(|| "config".to_owned());
+            profiles.push(ResolvedHostProfile {
+                name,
+                path: config_path.clone(),
+                section: parsed.host,
+            });
         }
     }
 

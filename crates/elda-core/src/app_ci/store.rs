@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn ci_batch_file_component_preserves_mixed_case_and_rejects_empty() {
         assert_eq!(
-            safe_file_component("Release_Tools-1").unwrap(),
+            safe_file_component("Release_Tools-1").expect("mixed-case name should pass"),
             "Release_Tools-1"
         );
         safe_file_component("///").expect_err("empty sanitized name should fail");

@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -64,7 +65,7 @@ fn request_snapshot(
     }
 
     let tool = normalized_tool(policy)?;
-    let command = match snapshot_command(&tool, state_id, phase) {
+    let command = match snapshot_command(layout, &tool, state_id, phase) {
         Ok(command) => command,
         Err(error) => {
             return Some(SnapshotRecord {
@@ -92,9 +93,11 @@ fn normalized_tool(policy: &MutationPolicy) -> Option<String> {
 struct SnapshotCommand {
     program: PathBuf,
     args: Vec<String>,
+    snapshot_id_hint: Option<String>,
 }
 
 fn snapshot_command(
+    layout: &StateLayout,
     configured_tool: &str,
     state_id: &str,
     phase: SnapshotPhase,
@@ -114,7 +117,33 @@ fn snapshot_command(
                 "--description".to_owned(),
                 phase.description(state_id),
             ],
+            snapshot_id_hint: None,
         }),
+        "btrfs" => {
+            let snapshot_path = layout
+                .data_dir
+                .join("snapshots")
+                .join(format!("{state_id}-{}", phase.as_str()));
+            if let Some(parent) = snapshot_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!(
+                        "failed to create snapshot directory `{}`: {error}",
+                        parent.display()
+                    )
+                })?;
+            }
+            Ok(SnapshotCommand {
+                program,
+                args: vec![
+                    "subvolume".to_owned(),
+                    "snapshot".to_owned(),
+                    "-r".to_owned(),
+                    layout.root_dir.display().to_string(),
+                    snapshot_path.display().to_string(),
+                ],
+                snapshot_id_hint: Some(snapshot_path.display().to_string()),
+            })
+        }
         other => Err(format!(
             "snapshot tool `{other}` is not supported by the current backend"
         )),
@@ -131,7 +160,7 @@ fn run_snapshot_command(
             phase: phase.as_str().to_owned(),
             tool: tool.to_owned(),
             status: "captured".to_owned(),
-            snapshot_id: first_non_empty_line(&output.stdout),
+            snapshot_id: first_non_empty_line(&output.stdout).or(command.snapshot_id_hint),
             error: None,
         },
         Ok(output) => SnapshotRecord {

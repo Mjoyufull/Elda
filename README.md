@@ -247,7 +247,7 @@ These are **not** required to compile Elda. Install them when you use the matchi
 | `gh` | `elda forge fork` (GitHub CLI) |
 | `diff`, `less` (or `$PAGER` / `$ELDA_PAGER`) | Review diffs and `rc edit` |
 | `doas`, `sudo`, `run0`, or `su` | Live host `/usr` mode privilege escalation (one on `PATH`, or configure `[privilege].provider`) |
-| `snapper` | Optional Btrfs snapshot hooks when configured |
+| `snapper` or `btrfs` | Optional Btrfs snapshot hooks when configured |
 
 Network access is required for `elda sync`, remote binary lanes, and release-asset fetch unless you use `--offline` with a verified local cache/snapshot.
 

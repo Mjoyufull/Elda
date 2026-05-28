@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::process::Command;
-use std::sync::Arc;
 
 use elda_recipe::{BuildDefinition, PackageDefinition};
 
+use crate::BuildLineHook;
 use crate::error::BuildError;
 use crate::process::{run_command, run_command_inherited};
 
@@ -31,7 +31,7 @@ pub fn build_with_make(
     source_dir: &Path,
     stage_root: &Path,
     stream_output: bool,
-    line_hook: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<(), BuildError> {
     let mut make = Command::new("make");
     make.current_dir(source_dir);
@@ -69,7 +69,7 @@ pub fn build_with_make(
     Ok(())
 }
 
-fn emit_header(line_hook: &Option<Arc<dyn Fn(&str) + Send + Sync>>, label: &str) {
+fn emit_header(line_hook: &Option<BuildLineHook>, label: &str) {
     if let Some(hook) = line_hook {
         hook(label);
     }

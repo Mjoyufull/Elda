@@ -112,6 +112,7 @@ pub enum SubmissionMode {
 #[serde(rename_all = "lowercase")]
 pub enum SubmissionAuthKind {
     Token,
+    Bearer,
     Ssh,
     #[default]
     None,

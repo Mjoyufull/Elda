@@ -31,7 +31,7 @@ Status source used for this tracker:
 | [x] Direct git installs + multi build-system execution (`cargo/cmake/meson/make/go/zig/python/nimble`) | [~] Profile/machine-shape slice is complete for the current target roots, but broader daemon/system-management integration remains | [ ] Full typed trigger engine + provider-family/system-change handlers on live backend |
 | [x] Vendor workflow (`vendor add/import/export`) | [~] Install/bootstrap UX now has real review-gate, preflight, grouped progress, logging, better missing-remote guidance, and `elda doctor` bootstrap/release-readiness checks | [ ] Broader guided `setup` and install/takeover UX beyond the current `doctor` check |
 | [x] Sync/search/info from verified merged snapshots | [~] Interepo/migration architecture documented with full store-path normalization pipeline for nixpkgs | [ ] Interepo adapters + translation confidence flow + coexistence modes + full nixpkgs normalization (ELF + shebangs + wrappers + text + symlinks) |
-| [x] Trust model baseline: signed index, TOFU/pinned, explicit rotated-key acceptance, offline verified snapshots | [~] Replacement claim is still blocked by remaining pkgit-workflow coverage gaps from `stage.md` | [ ] Reach "pkgit replacement ready" gate and then full spec-complete gate |
+| [x] Trust model baseline: signed index, TOFU/pinned, explicit rotated-key acceptance, offline verified snapshots | [~] Replacement claim is still blocked by remaining pkgit-workflow coverage gaps from the replacement-readiness ledger | [ ] Reach "pkgit replacement ready" gate and then full spec-complete gate |
 | [x] Policy + introspection (`pin`, `hold`, `why`, `rdeps`, `autoremove`, `diff`, `downgrade`) | [~] File-size/code-standards cleanup improved, but latest scan still has 57 Rust files over the 350-line soft limit | [ ] Finish standards cleanup and keep large files split sustainably |
 | [x] Prefix-safe transaction + verify/recover + conffile behavior (`.eldanew`/`.eldasave`) | [~] The current `/usr` backend is real; broader system-management and later-phase Linux work remain | [ ] Finish broader daemon/system-management behavior on top of the backend |
 | [x] Full PubGrub-style dependency solver with provider-policy/config control | [~] The current `/usr` backend is real; broader system-management and later-phase Linux work remain | [ ] Finish broader daemon/system-management behavior on top of the backend |
@@ -118,8 +118,8 @@ Status source used for this tracker:
 
 ### 7) Replacement Readiness
 - [x] Current slice — Many pkgit-equivalent workflows are already real in prefix mode
-- [~] Partial — "Replacement ready" still blocked by the remaining workflow-coverage gaps called out in `stage.md`
-- [ ] Not started — Satisfy all replacement gates from `stage.md`
+- [~] Partial — "Replacement ready" still blocked by the remaining workflow-coverage gaps in the replacement-readiness ledger
+- [ ] Not started — Satisfy all replacement gates from the replacement-readiness ledger
 - [ ] Not started — After replacement gate, satisfy full spec-complete fork gates (Phases 9-12)
 
 ---
@@ -155,6 +155,8 @@ Use this as the immediate sprint board.
 - [x] Current slice — Break current Phase 10/UX focus into config/reporting, release-asset compatibility, and later discovery/TUI slices
 - [x] Current slice — Completed: ad hoc source-option UX, release-source compatibility, remote/interemote UX, config queue resolution, inspection surfaces, public README/USAGE/forge docs, fixtures/examples config refresh, and `man/elda.1`
 - [x] Current slice — Current docs/examples/manpage refresh recorded; remaining active tasks below are next-slice candidates, not part of this docs pass
+- [x] Current slice — Human-surface snapshot harness is wired into `elda-core`, covers 59 required CLI families, and verifies ASCII/NO_COLOR, no raw JSON fallback, and no legacy first-line `area: ok` preamble for command-specific frames
+- [x] Current slice — `ref/pkgit/` parity audit is reconciled, hosted `ci pr` auth supports bearer tokens, and system activation snapshots support direct `btrfs` alongside `snapper`
 
 Suggested immediate candidates (based on current blockers):
 - [x] Current slice — Unsupported runtime command paths fail closed; `elda doctor` exposes bootstrap/release-readiness state
@@ -193,5 +195,5 @@ Suggested immediate candidates (based on current blockers):
 - [ ] Not started — Every merged feature updates this file in the same PR
 - [ ] Not started — "In Progress" entries must have at least one concrete next task listed
 - [ ] Not started — "Done" entries must be code-backed and test-backed
-- [ ] Not started — Replacement-ready claim only flips after all `stage.md` gates are met
+- [ ] Not started — Replacement-ready claim only flips after all replacement-readiness gates are met
 - [ ] Not started — Full-fork-complete claim only flips after Phase 12 done

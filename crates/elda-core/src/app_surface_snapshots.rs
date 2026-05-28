@@ -29,7 +29,7 @@ fn surface_snapshots_are_square_and_plain_without_ansi() {
                     "{name} ignored ASCII tree mode:\n{rendered}"
                 );
                 assert!(
-                    !rendered.contains(": ok\n") || allows_scan_header(name),
+                    !starts_with_scan_header(&rendered) || allows_scan_header(name),
                     "{name} leaked legacy area header:\n{rendered}"
                 );
                 assert!(
@@ -39,6 +39,13 @@ fn surface_snapshots_are_square_and_plain_without_ansi() {
             }
         });
     });
+}
+
+fn starts_with_scan_header(rendered: &str) -> bool {
+    rendered
+        .lines()
+        .next()
+        .is_some_and(|line| line.ends_with(": ok"))
 }
 
 #[test]

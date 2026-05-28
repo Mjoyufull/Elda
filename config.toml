@@ -18,6 +18,7 @@ remote = "yoka-main"
 build_mode = "isolated"
 prefix = "/usr"
 allow_system_mode = false
+# none, snapper, btrfs, or an absolute path whose executable name is snapper/btrfs
 snapshot_tool = "none"
 auto_create_config = true
 mode_policy = "host"
@@ -129,6 +130,7 @@ allowed_protocols = ["https", "ssh", "file"]
 mode = "pr"
 auto_open = true
 auto_assign = false
+# none, token, bearer, or ssh
 auth = "none"
 token_env = ""
 # api_base = "https://api.github.com"

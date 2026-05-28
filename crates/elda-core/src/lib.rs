@@ -318,4 +318,6 @@ pub fn run(request: CommandRequest) -> Result<CommandReport, CoreError> {
 }
 
 #[cfg(test)]
+mod app_surface_snapshots;
+#[cfg(test)]
 mod tests;

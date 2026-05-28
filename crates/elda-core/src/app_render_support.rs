@@ -3,26 +3,21 @@ use serde_json::Value;
 use crate::CommandReport;
 use crate::app_render_tree::{FrameFooter, TreeStyle, frame_from_sections};
 
-/// Header + summary line(s) + blank line + one tree frame (UX §1.3 / §6).
+/// One tree frame for command-specific human output (UX §1.3 / §6).
 #[must_use]
 pub(crate) fn human_framed_report(
-    report: &CommandReport,
+    _report: &CommandReport,
     frame_title: impl Into<String>,
     sections: &[(String, Vec<String>)],
     footer: Option<FrameFooter>,
 ) -> String {
     let frame = frame_from_sections(frame_title.into(), sections, footer);
-    format!(
-        "{}\n{}\n\n{}",
-        render_header(report.area, report.status),
-        report.summary,
-        frame.render(TreeStyle::detect()),
-    )
+    frame.render(TreeStyle::detect())
 }
 
 #[must_use]
 pub(crate) fn render_header(area: &str, status: &str) -> String {
-    format!("{area}: {status}")
+    format!("{area} {status}")
 }
 
 pub(crate) fn render_section(title: &str, lines: &[String]) -> String {

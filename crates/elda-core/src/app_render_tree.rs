@@ -28,6 +28,15 @@ pub(crate) fn set_configured_tree_style(style: Option<TreeStyle>) {
     CONFIGURED_TREE_STYLE.with(|cell| cell.set(style));
 }
 
+#[cfg(test)]
+pub(crate) fn scoped_tree_style_for_tests<T>(style: Option<TreeStyle>, f: impl FnOnce() -> T) -> T {
+    let previous = configured_tree_style();
+    set_configured_tree_style(style);
+    let result = f();
+    set_configured_tree_style(previous);
+    result
+}
+
 impl TreeStyle {
     pub(crate) fn detect() -> Self {
         if let Some(style) = configured_tree_style() {

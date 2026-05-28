@@ -112,7 +112,7 @@ pub(super) fn render_metadata_review_frame(plan: &GeneratedRecipeReview) -> Stri
     let mut frame = Frame::new("Metadata Add");
     frame.kv("recipe", &plan.recipe_name);
     frame.kv("strategy", &plan.strategy_label);
-    frame.kv("output", &plan.recipe_dir.display().to_string());
+    frame.kv("output", plan.recipe_dir.display().to_string());
     if plan.missing_fields.is_empty() {
         frame.glyph_line(Glyph::Done, "required fields present");
     } else {

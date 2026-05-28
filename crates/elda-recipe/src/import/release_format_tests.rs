@@ -71,17 +71,18 @@ fn release_binary_lane_can_reuse_nix_metadata_without_overwriting_it() {
         ..super::metadata::GeneratedMetadata::default()
     };
 
-    let pkg_lua = super::render::render_pkg_lua_with_binary_lane(
-        "tool",
-        Some("https://github.com/owner/tool"),
-        &[],
-        "normal",
-        &super::strategy::SourceStrategy::NixFlake,
-        Some(&super::strategy::SourceStrategy::GithubRelease(option)),
-        "binary",
-        &metadata,
-        None,
-    );
+    let binary_strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua_with_binary_lane(super::render::PkgLuaRender {
+        recipe_name: "tool",
+        source_url: Some("https://github.com/owner/tool"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &super::strategy::SourceStrategy::NixFlake,
+        binary_strategy: Some(&binary_strategy),
+        default_lane: "binary",
+        metadata: &metadata,
+        git_ref: None,
+    });
 
     assert!(pkg_lua.contains(r#"description = "Metadata from nix""#));
     assert!(pkg_lua.contains(r#"licenses = { "MIT" }"#));
@@ -118,17 +119,18 @@ fn release_binary_lane_can_be_added_beside_aur_metadata() {
         ..super::metadata::GeneratedMetadata::default()
     };
 
-    let pkg_lua = super::render::render_pkg_lua_with_binary_lane(
-        "tool",
-        Some("https://gitlab.com/owner/tool"),
-        &[],
-        "normal",
-        &super::strategy::SourceStrategy::AurPkgbuild,
-        Some(&super::strategy::SourceStrategy::GithubRelease(option)),
-        "source",
-        &metadata,
-        None,
-    );
+    let binary_strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua_with_binary_lane(super::render::PkgLuaRender {
+        recipe_name: "tool",
+        source_url: Some("https://gitlab.com/owner/tool"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &super::strategy::SourceStrategy::AurPkgbuild,
+        binary_strategy: Some(&binary_strategy),
+        default_lane: "source",
+        metadata: &metadata,
+        git_ref: None,
+    });
 
     assert!(pkg_lua.contains(r#"description = "Metadata from PKGBUILD""#));
     assert!(pkg_lua.contains(r#"depends = { "glibc" }"#));

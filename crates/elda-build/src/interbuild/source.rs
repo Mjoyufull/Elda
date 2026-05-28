@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use tar::Archive;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
+use crate::BuildLineHook;
 use crate::error::BuildError;
 use crate::git::{ensure_git_protocol_allowed, redact_url_credentials};
 use crate::process::{emit_build_line, run_command};
@@ -26,7 +27,7 @@ pub fn materialize_or_use_checkout(
     work_root: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<PathBuf, BuildError> {
     if has_build_marker(checkout_dir) {
         return Ok(checkout_dir.to_path_buf());
@@ -52,7 +53,7 @@ fn materialize_upstream(
     work_root: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<PathBuf, BuildError> {
     let source_root = work_root.join(format!("{kind}-upstream"));
     match upstream {
@@ -84,7 +85,7 @@ fn clone_git_source(
     destination: &Path,
     offline: bool,
     allowed_git_protocols: &[String],
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<PathBuf, BuildError> {
     ensure_git_protocol_allowed(url, allowed_git_protocols)?;
     if offline && !is_local_location(url) {

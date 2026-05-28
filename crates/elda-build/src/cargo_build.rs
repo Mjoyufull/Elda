@@ -10,6 +10,7 @@ use serde::Deserialize;
 
 use elda_recipe::{BuildDefinition, PackageDefinition};
 
+use crate::BuildLineHook;
 use crate::error::BuildError;
 use crate::process::{command_failure_message, run_command, run_command_inherited};
 
@@ -34,7 +35,7 @@ pub fn build_with_cargo(
     source_dir: &Path,
     stage_root: &Path,
     stream_output: bool,
-    line_hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
+    line_hook: Option<BuildLineHook>,
 ) -> Result<(), BuildError> {
     let bins = resolve_cargo_bins(build, source_dir)?;
     let runner = cargo_runner(source_dir)?;
@@ -213,7 +214,7 @@ fn cargo_bins(source_dir: &Path) -> Result<Option<Vec<String>>, BuildError> {
         .packages
         .iter()
         .filter(|package| member_set.contains(package.id.as_str()))
-        .flat_map(|package| collect_package_bins(package))
+        .flat_map(collect_package_bins)
         .collect();
 
     if names.is_empty() {

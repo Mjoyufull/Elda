@@ -86,35 +86,47 @@ fn is_read_only(path: &[String]) -> bool {
                 | "autoremove"
                 | "fix-triggers"
         ),
-        [namespace, command] => match (namespace.as_str(), command.as_str()) {
+        [namespace, command] => matches!(
+            (namespace.as_str(), command.as_str()),
             (
-                "search" | "info" | "verify" | "reverify" | "diff" | "why" | "rdeps" | "versions"
-                | "files",
+                "search"
+                    | "info"
+                    | "verify"
+                    | "reverify"
+                    | "diff"
+                    | "why"
+                    | "rdeps"
+                    | "versions"
+                    | "files",
                 _,
-            ) => true,
-            ("review", _) => true,
-            ("git", "tags" | "releases" | "versions") => true,
-            ("rmt", "ls" | "info" | "preview" | "trust") => true,
-            (
-                "host",
-                "scan-tree" | "test-tree" | "diff-tree" | "client-bundle" | "status" | "doctor"
-                | "init-ci" | "print-cache-config",
-            ) => true,
-            ("publish", "plan" | "diff" | "finalize" | "sign") => true,
-            ("rc", "ls" | "show" | "diff" | "check" | "publish-ready") => true,
-            ("config", "pending" | "diff") => true,
-            ("trigger", "ls" | "info" | "diff") => true,
-            ("maint", "check") => true,
-            ("pf", "show") => true,
-            ("fl", "check" | "diff") => true,
-            ("cache", "ls") => true,
-            ("ext", "ls") => true,
-            ("daemon", "status") => true,
-            ("qa", _) => true,
-            ("forge", "search" | "browse") => true,
-            ("mg", "report") => true,
-            _ => false,
-        },
+            ) | ("review", _)
+                | ("git", "tags" | "releases" | "versions")
+                | ("rmt", "ls" | "info" | "preview" | "trust")
+                | (
+                    "host",
+                    "scan-tree"
+                        | "test-tree"
+                        | "diff-tree"
+                        | "client-bundle"
+                        | "status"
+                        | "doctor"
+                        | "init-ci"
+                        | "print-cache-config",
+                )
+                | ("publish", "plan" | "diff" | "finalize" | "sign")
+                | ("rc", "ls" | "show" | "diff" | "check" | "publish-ready")
+                | ("config", "pending" | "diff")
+                | ("trigger", "ls" | "info" | "diff")
+                | ("maint", "check")
+                | ("pf", "show")
+                | ("fl", "check" | "diff")
+                | ("cache", "ls")
+                | ("ext", "ls")
+                | ("daemon", "status")
+                | ("qa", _)
+                | ("forge", "search" | "browse")
+                | ("mg", "report")
+        ),
         _ => false,
     }
 }

@@ -53,15 +53,15 @@ pub fn version_details_human_lines() -> Vec<String> {
         if let Some(target) = build.get("target").and_then(Value::as_str) {
             lines.push(format!("  Target: {target}"));
         }
-        if let Some(date) = build.get("date").and_then(Value::as_str) {
-            if !date.is_empty() {
-                lines.push(format!("  Built: {date}"));
-            }
+        if let Some(date) = build.get("date").and_then(Value::as_str)
+            && !date.is_empty()
+        {
+            lines.push(format!("  Built: {date}"));
         }
-        if let Some(commit) = build.get("git_commit").and_then(Value::as_str) {
-            if !commit.is_empty() {
-                lines.push(format!("  Git commit: {commit}"));
-            }
+        if let Some(commit) = build.get("git_commit").and_then(Value::as_str)
+            && !commit.is_empty()
+        {
+            lines.push(format!("  Git commit: {commit}"));
         }
     }
 
