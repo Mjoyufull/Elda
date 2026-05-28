@@ -1,0 +1,29 @@
+[package]
+name = "elda-repo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+elda-recipe = { path = "../elda-recipe" }
+elda-types = { path = "../elda-types" }
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+ureq = "2.12.1"
+zstd.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,25 @@
+# Pinned production native remote.
+#
+# Equivalent CLI:
+#   elda rmt add yoka-main=https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst \
+#     --priority 100 --trust pinned \
+#     --trusted-key ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344 \
+#     --signature-url https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst.sig \
+#     --metadata-url https://raw.githubusercontent.com/Mjoyufull/Elda/dev/remote-metadata-v1.toml \
+#     --packages-url https://github.com/Mjoyufull/Elda.git \
+#     --channel stable
+
+name = "yoka-main"
+index_url = "https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst"
+channel = "stable"
+packages_url = "https://github.com/Mjoyufull/Elda.git"
+metadata_url = "https://raw.githubusercontent.com/Mjoyufull/Elda/dev/remote-metadata-v1.toml"
+signature_url = "https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst.sig"
+priority = 100
+enabled = true
+allow_stale = false
+trust = "pinned"
+trusted_keys = [
+  "ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344",
+]
+exclude = []

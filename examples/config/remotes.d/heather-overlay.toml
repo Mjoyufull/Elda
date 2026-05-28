@@ -1,0 +1,21 @@
+# Dynamic interemote: Gentoo overlay remote.
+#
+# This is not a signed Elda index. Elda clones the repository during preview or
+# sync, detects the Gentoo overlay shape, translates parseable ebuilds into
+# bounded `gentoo_overlay` package records, and skips packages listed in
+# `exclude`.
+#
+# Useful commands:
+#   elda rmt preview heather-overlay
+#   elda sync heather-overlay
+#   elda search foot
+
+name = "heather-overlay"
+index_url = "https://github.com/heather7283/heather7283-overlay"
+channel = "stable"
+priority = 120
+enabled = true
+trust = "tofu"
+trusted_keys = []
+allow_stale = false
+exclude = ["firefox", "vlc"]

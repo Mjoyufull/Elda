@@ -1,0 +1,319 @@
+pub(super) const SYNTAX_GREEN: (u8, u8, u8) = (152, 195, 121);
+pub(super) const PEACH_HAZARD: (u8, u8, u8) = (209, 154, 102);
+pub(super) const CORAL_RED: (u8, u8, u8) = (224, 108, 117);
+pub(super) const LAVENDER_VIOLET: (u8, u8, u8) = (198, 120, 221);
+pub(super) const GLACIER_BLUE: (u8, u8, u8) = (97, 175, 239);
+pub(super) const ASH_WHITE: (u8, u8, u8) = (171, 178, 191);
+pub(super) const CHALK_YELLOW: (u8, u8, u8) = (229, 192, 123);
+
+pub(super) const LOGO: &str = include_str!("../../../../assets/ASCIIlogo.txt");
+
+pub(super) const CORE_ROWS: &[HelpRow] = &[
+    HelpRow::new(
+        "i",
+        "<target...>",
+        "install package names, recipes, or git targets",
+    ),
+    HelpRow::new("ig", "<target...>", "install through the source lane"),
+    HelpRow::new("ib", "<pkg...>", "install through the binary lane"),
+    HelpRow::new(
+        "sync",
+        "",
+        "refresh configured remotes into the local snapshot",
+    ),
+    HelpRow::new(
+        "search",
+        "<query>",
+        "search synced package indexes (`--interactive` can install selected matches)",
+    ),
+    HelpRow::new(
+        "info",
+        "<pkg>",
+        "inspect installed or synced package metadata",
+    ),
+    HelpRow::new("ls", "", "scan installed packages in the current root"),
+    HelpRow::new("list", "[pkg...]", "show detailed installed package blocks"),
+    HelpRow::new(
+        "files",
+        "<pkg>",
+        "list owned paths for an installed package",
+    ),
+    HelpRow::new(
+        "files owner",
+        "<path>",
+        "show which installed package owns a managed path",
+    ),
+];
+
+pub(super) const STATE_ROWS: &[HelpRow] = &[
+    HelpRow::new("rm", "<pkg...>", "remove installed packages"),
+    HelpRow::new("u", "[pkg...]", "upgrade world or the selected closure"),
+    HelpRow::new(
+        "diff",
+        "<pkg>",
+        "compare live state or the next candidate manifest",
+    ),
+    HelpRow::new(
+        "verify",
+        "[pkg...]",
+        "verify managed files against recorded manifests",
+    ),
+    HelpRow::new(
+        "reverify",
+        "<pkg>",
+        "rerun verification for one installed package",
+    ),
+    HelpRow::new("why", "<pkg>", "explain why a package is present"),
+    HelpRow::new("rdeps", "<pkg>", "show reverse dependencies"),
+    HelpRow::new(
+        "versions",
+        "<repo-or-path>",
+        "list git-backed upstream version candidates",
+    ),
+    HelpRow::new(
+        "pin",
+        "<pkg>",
+        "pin an installed package to its current version",
+    ),
+    HelpRow::new("unpin", "<pkg>", "clear an exact-version pin"),
+    HelpRow::new("hold", "<pkg>", "block upgrades for a package"),
+    HelpRow::new("unhold", "<pkg>", "clear an upgrade hold"),
+    HelpRow::new("check", "", "show root health, journals, and safety issues"),
+    HelpRow::new("doctor", "", "check bootstrap and release-readiness state"),
+    HelpRow::new(
+        "version",
+        "",
+        "show Elda version, build, and schema details",
+    ),
+    HelpRow::new("recover", "", "repair or roll back incomplete transactions"),
+    HelpRow::new(
+        "rollback",
+        "[state-id]",
+        "restore a previously archived state",
+    ),
+    HelpRow::new(
+        "fix-triggers",
+        "",
+        "reconcile pending trigger work in the current slice",
+    ),
+    HelpRow::new("autoremove", "", "remove orphaned dependency packages"),
+    HelpRow::new(
+        "downgrade",
+        "<pkg> [version]",
+        "install an older cached or archived version",
+    ),
+    HelpRow::new(
+        "adopt",
+        "--from <pm> <pkg>",
+        "adopt one package from another package manager",
+    ),
+];
+
+pub(super) const NAMESPACE_ROWS: &[HelpRow] = &[
+    HelpRow::new(
+        "rmt add",
+        "<name=url>",
+        "register a remote index or interemote",
+    ),
+    HelpRow::new("rmt ls", "", "list configured remotes"),
+    HelpRow::new("rmt info", "<name>", "inspect a configured remote"),
+    HelpRow::new(
+        "rmt trust",
+        "<name>",
+        "inspect remote trust policy and state",
+    ),
+    HelpRow::new(
+        "rmt preview",
+        "<name>",
+        "preview an interemote package catalog",
+    ),
+    HelpRow::new("rmt enable", "<name>", "enable a configured remote"),
+    HelpRow::new("rmt disable", "<name>", "disable a configured remote"),
+    HelpRow::new("rmt set-priority", "<name> <n>", "set remote precedence"),
+    HelpRow::new("rmt rm", "<name>", "remove a configured remote"),
+    HelpRow::new(
+        "config pending/diff/apply/keep",
+        "<path|pkg>",
+        "inspect and resolve protected config sidecars",
+    ),
+    HelpRow::new(
+        "review ls/info/diff/forget",
+        "",
+        "inspect or clear recorded source-definition review stamps",
+    ),
+    HelpRow::new("init", "", "bootstrap Elda config and data directories"),
+    HelpRow::new(
+        "maint check/fix",
+        "[module]",
+        "check or repair recovery, triggers, and profile drift",
+    ),
+    HelpRow::new(
+        "trigger run/diff",
+        "<name>",
+        "run or compare one system trigger (system mode)",
+    ),
+    HelpRow::new(
+        "rc add/edit/check/format/normalize/ls/rm",
+        "...",
+        "manage local recipes and on-disk install catalog",
+    ),
+    HelpRow::new(
+        "vendor add/import/export",
+        "...",
+        "manage vendor binary recipes",
+    ),
+    HelpRow::new(
+        "forge search/browse/fork",
+        "...",
+        "discover forge packages and assets",
+    ),
+    HelpRow::new(
+        "git tags/releases",
+        "<repo-or-path>",
+        "inspect tags and release assets with host compatibility detail",
+    ),
+    HelpRow::new(
+        "appimage inspect",
+        "<path>",
+        "read SquashFS metadata from a Type 2 AppImage without executing it",
+    ),
+    HelpRow::new(
+        "pf apply/add/rm/...",
+        "...",
+        "manage machine profile and provider state",
+    ),
+    HelpRow::new(
+        "state show/export/import",
+        "...",
+        "inspect or move desired machine state",
+    ),
+    HelpRow::new("cache add/ls", "...", "register and inspect caches"),
+    HelpRow::new(
+        "daemon run/status/refresh",
+        "...",
+        "operate the background refresh surface",
+    ),
+    HelpRow::new("ci ...", "", "submission and binary publishing workflow"),
+    HelpRow::new("fl ...", "", "flag and variant inspection"),
+    HelpRow::new(
+        "mg ...",
+        "",
+        "whole-system migration and coexistence control",
+    ),
+    HelpRow::new("ext ls", "", "inspect installed extension backends"),
+    HelpRow::new(
+        "qa ...",
+        "",
+        "lint, build, smoke, and reproducibility tooling",
+    ),
+];
+
+pub(super) const FLAG_ROWS: &[HelpRow] = &[
+    HelpRow::new("--json", "", "emit machine-readable JSON output"),
+    HelpRow::new(
+        "--dry-run",
+        "",
+        "show the planned mutation without applying it",
+    ),
+    HelpRow::new(
+        "--offline",
+        "",
+        "use only cached payloads and verified local snapshots",
+    ),
+    HelpRow::new(
+        "--accept-rotated-key <remote>",
+        "",
+        "accept one signed TOFU key rotation for a remote",
+    ),
+    HelpRow::new(
+        "-S, --system",
+        "",
+        "request live host system mode for this invocation",
+    ),
+    HelpRow::new("-h, --help", "", "show this help screen"),
+    HelpRow::new(
+        "-V, --version",
+        "",
+        "show Elda version, build, and schema details",
+    ),
+    HelpRow::new("version", "", "same detailed version report as -V"),
+];
+
+pub(super) const EXAMPLES: &[ExampleRow] = &[
+    ExampleRow::new(
+        "elda i ripgrep",
+        "install a synced package with normal lane selection",
+    ),
+    ExampleRow::new(
+        "elda ig https://github.com/foo/bar",
+        "install a git target through the source path",
+    ),
+    ExampleRow::new(
+        "elda vendor add fsel-bin Mjoyufull/fsel@latest --binary fsel",
+        "track a GitHub release binary as a local recipe",
+    ),
+    ExampleRow::new(
+        "elda git tags https://github.com/foo/bar --max-tags 20",
+        "inspect upstream tags and normalized version confidence",
+    ),
+    ExampleRow::new(
+        "elda git releases Mjoyufull/fsel --max-releases 3",
+        "inspect release assets, host compatibility, and recommended payloads",
+    ),
+    ExampleRow::new(
+        "elda appimage inspect ./Foo-x86_64.AppImage",
+        "list embedded desktop, icons, and AppStream paths before packaging",
+    ),
+    ExampleRow::new(
+        "elda pf apply yoka-core --init dinit --foreign-arch i386",
+        "apply profile anchors and persist machine-shape policy",
+    ),
+    ExampleRow::new(
+        "elda pf add yoka-desktop-hyprland",
+        "append one profile anchor onto the current machine shape",
+    ),
+    ExampleRow::new(
+        "elda help <command>",
+        "show Clap-generated help for a specific command",
+    ),
+];
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct HelpRow {
+    pub(super) command: &'static str,
+    pub(super) args: &'static str,
+    pub(super) description: &'static str,
+}
+
+impl HelpRow {
+    const fn new(command: &'static str, args: &'static str, description: &'static str) -> Self {
+        Self {
+            command,
+            args,
+            description,
+        }
+    }
+
+    pub(super) fn label_width(&self) -> usize {
+        if self.args.is_empty() {
+            self.command.chars().count()
+        } else {
+            self.command.chars().count() + 1 + self.args.chars().count()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ExampleRow {
+    pub(super) command: &'static str,
+    pub(super) description: &'static str,
+}
+
+impl ExampleRow {
+    const fn new(command: &'static str, description: &'static str) -> Self {
+        Self {
+            command,
+            description,
+        }
+    }
+}

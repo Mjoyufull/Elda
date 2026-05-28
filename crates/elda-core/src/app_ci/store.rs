@@ -1,0 +1,200 @@
+use std::fs;
+
+use crate::app::AppContext;
+use crate::config::SubmissionMode;
+use crate::error::CoreError;
+
+use super::model::{CiBatchRecord, CiSubmissionRecord};
+use super::workspace::{
+    CiWorkspacePaths, current_unix_timestamp, list_json_records, read_json, write_json,
+};
+
+pub(super) fn load_batch(
+    workspace: &CiWorkspacePaths,
+    batch_name: &str,
+) -> Result<CiBatchRecord, CoreError> {
+    read_json(&batch_path(workspace, batch_name)?)
+}
+
+pub(super) fn save_batch(
+    workspace: &CiWorkspacePaths,
+    batch: &CiBatchRecord,
+) -> Result<(), CoreError> {
+    write_json(&batch_path(workspace, &batch.name)?, batch)
+}
+
+pub(super) fn load_batches(workspace: &CiWorkspacePaths) -> Result<Vec<CiBatchRecord>, CoreError> {
+    let mut batches = list_json_records::<CiBatchRecord>(&workspace.batches_dir)?;
+    batches.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(batches)
+}
+
+pub(super) fn save_submission(
+    workspace: &CiWorkspacePaths,
+    submission: &CiSubmissionRecord,
+) -> Result<(), CoreError> {
+    write_json(
+        &workspace
+            .submissions_dir
+            .join(format!("{}.json", submission.id)),
+        submission,
+    )
+}
+
+pub(super) fn load_submissions(
+    workspace: &CiWorkspacePaths,
+) -> Result<Vec<CiSubmissionRecord>, CoreError> {
+    let mut submissions = list_json_records::<CiSubmissionRecord>(&workspace.submissions_dir)?;
+    submissions.sort_by_key(|submission| submission.updated_at);
+    Ok(submissions)
+}
+
+pub(super) fn find_submission(
+    submissions: &[CiSubmissionRecord],
+    selection: &str,
+) -> Option<CiSubmissionRecord> {
+    submissions
+        .iter()
+        .find(|submission| {
+            submission.id == selection
+                || submission
+                    .packages
+                    .iter()
+                    .any(|package| package == selection)
+                || submission
+                    .requested_targets
+                    .iter()
+                    .any(|target| target == selection)
+        })
+        .cloned()
+}
+
+pub(super) fn local_recipe_names(app: &AppContext) -> Result<Vec<String>, CoreError> {
+    let mut names = fs::read_dir(&app.database.layout().recipes_dir)?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(|kind| kind.is_dir())
+                .map(|_| entry)
+        })
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    names.sort();
+    Ok(names)
+}
+
+pub(super) fn submission_id(targets: &[String]) -> String {
+    format!(
+        "{}-{}",
+        current_unix_timestamp(),
+        targets
+            .first()
+            .map(|target| sanitize_name(target))
+            .unwrap_or_else(|| "submission".to_owned())
+    )
+}
+
+pub(super) fn branch_name(targets: &[String], batch_name: Option<&str>) -> String {
+    if let Some(batch_name) = batch_name {
+        return format!("elda/batch/{}", safe_branch_component(batch_name, "batch"));
+    }
+
+    format!(
+        "elda/{}",
+        targets
+            .first()
+            .map(|target| safe_branch_component(target, "submission"))
+            .unwrap_or_else(|| "submission".to_owned())
+    )
+}
+
+fn batch_path(
+    workspace: &CiWorkspacePaths,
+    batch_name: &str,
+) -> Result<std::path::PathBuf, CoreError> {
+    let file_stem = safe_file_component(batch_name)?;
+    Ok(workspace.batches_dir.join(format!("{file_stem}.json")))
+}
+
+fn safe_file_component(value: &str) -> Result<String, CoreError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(CoreError::Operator(
+            "ci batch name must contain at least one safe file-name character".to_owned(),
+        ));
+    }
+    if trimmed
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
+    {
+        return Ok(trimmed.to_owned());
+    }
+
+    let suggested = sanitize_name(trimmed);
+    if suggested.is_empty() {
+        return Err(CoreError::Operator(format!(
+            "ci batch name `{value}` is not a safe file name"
+        )));
+    }
+    Err(CoreError::Operator(format!(
+        "ci batch name `{value}` is not a safe file name; use `{suggested}`"
+    )))
+}
+
+fn safe_branch_component(value: &str, fallback: &str) -> String {
+    let sanitized = sanitize_name(value);
+    if sanitized.is_empty() {
+        fallback.to_owned()
+    } else {
+        sanitized
+    }
+}
+
+fn sanitize_name(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_owned()
+}
+
+pub(super) fn submission_mode_name(mode: SubmissionMode) -> &'static str {
+    match mode {
+        SubmissionMode::Pr => "pr",
+        SubmissionMode::Push => "push",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{branch_name, safe_file_component};
+
+    #[test]
+    fn ci_batch_file_component_rejects_path_traversal() {
+        safe_file_component("release-tools").expect("safe name should pass");
+        safe_file_component("../outside").expect_err("traversal should fail");
+    }
+
+    #[test]
+    fn ci_batch_file_component_preserves_mixed_case_and_rejects_empty() {
+        assert_eq!(
+            safe_file_component("Release_Tools-1").expect("mixed-case name should pass"),
+            "Release_Tools-1"
+        );
+        safe_file_component("///").expect_err("empty sanitized name should fail");
+    }
+
+    #[test]
+    fn branch_name_uses_fallback_for_empty_sanitized_batch() {
+        assert_eq!(branch_name(&[], Some("///")), "elda/batch/batch");
+    }
+}

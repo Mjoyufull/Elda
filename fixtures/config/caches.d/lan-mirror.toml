@@ -1,0 +1,9 @@
+# Cache node for shared payload reuse on the LAN. Cache definitions are
+# additive: payload lookups consult every enabled cache before falling back to
+# the remote `index_url`.
+# Path: /etc/elda/caches.d/lan-mirror.toml
+
+name = "lan-mirror"
+base_url = "http://cache.lan.invalid:8080/elda"
+priority = 100
+enabled = true

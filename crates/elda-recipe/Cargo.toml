@@ -1,0 +1,22 @@
+[package]
+name = "elda-recipe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+elda-types = { path = "../elda-types" }
+rnix = "0.14.0"
+rowan = "0.16.1"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+ureq = "2.12.1"
+
+[dev-dependencies]
+[lints]
+workspace = true

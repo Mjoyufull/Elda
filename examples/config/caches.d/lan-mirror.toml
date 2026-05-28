@@ -1,0 +1,11 @@
+# LAN-wide payload cache. Cache documents are additive: every enabled cache
+# is consulted (in priority order, ties broken by the order Elda discovers
+# them) before falling back to the remote `packages_url`.
+#
+# `elda cache add lan-mirror=http://cache.lan.invalid:8080/elda` writes this
+# document. `elda cache ls` lists every registered cache.
+
+name = "lan-mirror"
+base_url = "http://cache.lan.invalid:8080/elda"
+priority = 100
+enabled = true

@@ -1,0 +1,376 @@
+.TH ELDA 1 "May 2026" "Elda 0.1.49-Sumomo" "User Commands"
+.SH NAME
+elda \- Unix-first package manager with native, git, binary, interbuild, and migration workflows
+.SH SYNOPSIS
+.B elda
+.RI [ global-options ]
+.I command
+.RI [ command-options ]
+.RI [ arguments ]
+.SH DESCRIPTION
+.B elda
+is a Linux-first package manager built around explicit package metadata, signed
+remotes, staged payloads, recorded file ownership, verification, and recoverable
+transactions.
+.PP
+Elda treats maintained recipes, direct git installs, vendor binaries, dynamic
+foreign source remotes, local profiles, and adopted packages as one package
+manager domain.
+.SH GLOBAL OPTIONS
+.TP
+.BR \-V ", " --version
+Print detailed release, build, component, and schema version information.
+.TP
+.B --json
+Emit structured machine-readable output when supported.
+.TP
+.B --dry-run
+Preview a mutating command without applying it.
+.TP
+.B --no-stream
+Suppress live progress events and print only the final report.
+.TP
+.B -S
+Request live host system mode for this invocation.
+.TP
+.B --offline
+Use only local payload/cache/snapshot data and fail if required data is missing.
+.TP
+.B --log-level " 0|1|2|3
+Override per-run session log verbosity for mutating commands.
+.TP
+.B --accept-rotated-key " REMOTE
+Accept one signed TOFU key rotation for the named remote.
+.SH PACKAGE LIFECYCLE
+.TP
+.B elda i PACKAGE...
+Install packages with normal lane selection.
+.TP
+.B elda ig PACKAGE...
+Install packages through the source lane.
+.TP
+.B elda ib PACKAGE...
+Install packages through the binary lane.
+.TP
+.B elda rm PACKAGE...
+Remove packages. Use \fB--cascade\fR only when reverse dependencies should also be removed.
+.TP
+.B elda u [PACKAGE...]
+Upgrade the world or named packages from synced metadata.
+.TP
+.B elda sync [REMOTE...]
+Refresh all enabled remotes or only the named remotes.
+.TP
+.B elda search QUERY
+Search synced package metadata.
+.TP
+.B elda init
+Create Elda config and data directories on a new root.
+.SH INSPECTION
+.TP
+.B elda ls
+List installed packages. Filters include \fB--explicit\fR, \fB--deps\fR, \fB--held\fR,
+\fB--pinned\fR, and \fB--source-kind\fR.
+.TP
+.B elda info PACKAGE
+Show package identity, source, dependency, provider, file, and system metadata.
+.TP
+.B elda files PACKAGE
+List owned files.
+.TP
+.B elda files owner PATH
+Show the package that owns a managed path.
+.TP
+.B elda files search QUERY
+Search installed managed paths.
+.TP
+.B elda why PACKAGE
+Explain why a package is installed.
+.TP
+.B elda rdeps PACKAGE
+Show reverse dependencies.
+.TP
+.B elda diff PACKAGE
+Compare installed files to the manifest; \fB--candidate\fR compares the next upgrade.
+.SH REMOTES AND CACHES
+.TP
+.B elda rmt add NAME=URL [--trust MODE] [--packages-url URL] [--channel CHANNEL]
+Register a native remote or dynamic interemote.
+.TP
+.B elda rmt preview NAME
+Preview a dynamic interemote catalog before syncing it.
+.TP
+.B elda rmt ls
+List configured remotes.
+.TP
+.B elda rmt info NAME
+Show configured and synced remote state.
+.TP
+.B elda rmt trust NAME
+Show configured trust policy and persisted verification state.
+.TP
+.B elda rmt rm NAME
+Remove a remote document.
+.TP
+.B elda cache add NAME=URL [--priority N]
+Register a content-addressed payload cache.
+.TP
+.B elda cache ls
+List configured cache nodes and policy.
+.SH HEALTH AND RECOVERY
+.TP
+.B elda doctor
+Check bootstrap paths, remotes, backend health, advisories, and release-readiness.
+.TP
+.B elda check
+Aggregated health: orphans, trust, triggers, adoption warnings.
+.TP
+.B elda verify [PACKAGE...]
+Verify installed files against manifests.
+.TP
+.B elda recover
+Recover interrupted transactions.
+.TP
+.B elda rollback [STATE]
+Reactivate an archived state when the backend supports it.
+.TP
+.B elda fix-triggers
+Reconcile pending system trigger work.
+.SH RECIPES AND METADATA
+.TP
+.B elda a URL_OR_PATH
+Generate or import local package metadata without installing.
+.TP
+.B elda rc add VALUE [--kind KIND] [--replace]
+Add or import local recipe metadata.
+.TP
+.B elda rc check [PACKAGE]
+Validate local recipes.
+.TP
+.B elda rc ls
+List local recipes and synced catalog names.
+.TP
+.B elda rc show PACKAGE
+Show local recipe metadata.
+.TP
+.B elda rc diff PACKAGE
+Compare local and synced recipe metadata.
+.TP
+.B elda rc publish-ready PACKAGE
+Report blockers before publishing a recipe.
+.TP
+.B elda rc rm PACKAGE
+Remove a local recipe tree when the package is not installed.
+.PP
+Generated or imported local metadata preserves existing files unless
+.B --replace
+is explicit.
+.SH REVIEW MEMORY
+.TP
+.B elda review ls
+List recorded source-definition review stamps.
+.TP
+.B elda review info PACKAGE
+Show review stamps for one package.
+.TP
+.B elda review diff PACKAGE
+Compare reviewed recipe content in a pager.
+.TP
+.B elda review forget PACKAGE
+Forget a recorded review stamp.
+.SH GIT AND RELEASES
+.TP
+.B elda git tags REPO [--with-releases]
+List git tags with normalized Elda version candidates.
+.TP
+.B elda git releases TARGET [--tag TAG]
+Inspect forge release assets and host compatibility.
+.TP
+.B elda versions REPO
+Alias for git tag version inspection.
+.SH VENDOR AND APPIMAGE
+.TP
+.B elda vendor add NAME SOURCE [--binary BIN] [--asset ASSET] [--replace]
+Create a local vendor binary recipe.
+.TP
+.B elda vendor import PATH [--replace]
+Import vendor lock or manifest metadata.
+.TP
+.B elda vendor export PATH [PACKAGE...]
+Export vendor recipe metadata.
+.TP
+.B elda appimage inspect PATH
+Inspect AppImage desktop/icon/metainfo integration data.
+.SH POLICY
+.TP
+.B elda downgrade PACKAGE [VERSION]
+Install an older archived/cached package version.
+.TP
+.B elda pin PACKAGE VERSION
+Pin a package to an exact version.
+.TP
+.B elda unpin PACKAGE
+Clear a version pin.
+.TP
+.B elda hold PACKAGE
+Hold a package against upgrade.
+.TP
+.B elda unhold PACKAGE
+Clear an upgrade hold.
+.TP
+.B elda autoremove
+Remove orphan dependency packages.
+.TP
+.B elda fl check [PACKAGE] [--use=+a,-b]
+Inspect resolved feature flags and variant identity.
+.TP
+.B elda fl diff [PACKAGE] [--use=+a,-b]
+Show flag drift against installed variant state.
+.SH CONFFILES
+.TP
+.B elda config pending
+List pending conffile resolution queue entries.
+.TP
+.B elda config diff PATH
+Show conffile drift for a managed path.
+.TP
+.B elda config apply PATH
+Accept the package version of a conffile.
+.TP
+.B elda config keep PATH
+Keep the operator-modified conffile.
+.SH TRIGGERS
+.TP
+.B elda trigger ls
+List system trigger state.
+.TP
+.B elda trigger info NAME
+Show one trigger record.
+.SH PROFILES AND STATE
+.TP
+.B elda pf apply PROFILE...
+Apply machine profile anchors.
+.TP
+.B elda pf show
+Show current profile and machine-shape state.
+.TP
+.B elda state show
+Show desired machine state summary.
+.TP
+.B elda state export
+Export desired machine state.
+.TP
+.B elda state import PATH
+Replay desired machine state through normal install paths.
+.SH MIGRATION
+.TP
+.B elda adopt --from PM PACKAGE
+Import one foreign package manager entry into Elda state metadata.
+.TP
+.B elda mg from PM
+Import whole-system installed metadata from pacman, apt, apk, xbps, or portage.
+.SH MAINTAINER HOSTING
+.TP
+.B elda host scan-tree PATH
+Parse and report publish-readiness for a recipe tree.
+.TP
+.B elda host test-tree PATH
+Validate a recipe tree (dry-run by default; \fB--install\fR for disposable-root smoke).
+.TP
+.B elda host doctor [--profile NAME]
+Check maintainer host profile paths and signing settings.
+.TP
+.B elda host client-bundle [PROFILE]
+Emit client remote registration snippets.
+.TP
+.B elda publish plan PATH [--channel CHANNEL]
+Plan index publication for a recipe tree.
+.TP
+.B elda publish run PATH [--channel CHANNEL]
+Build payloads and write channel-local index artifacts.
+.TP
+.B elda publish finalize [--channel CHANNEL]
+Rewrite production asset URLs after upload.
+.PP
+Maintainer profiles live under \fI/etc/elda/host.d/*.toml\fR. See
+\fBeldaforgehosting/\fR in the source repository.
+.SH CI, FORGE, AND EXTENSIONS
+.TP
+.B elda ci sub URL
+Submit a package to the local CI workspace.
+.TP
+.B elda ci run URL
+Run CI processing locally.
+.TP
+.B elda forge search QUERY
+Search forge metadata.
+.TP
+.B elda ext ls
+List registered extensions from \fIextensions.d\fR.
+.TP
+.B elda daemon status
+Report background refresh service state.
+.SH CONFIGURATION
+Elda reads:
+.PP
+.nf
+/etc/elda/config.toml
+/etc/elda/remotes.d/*.toml
+/etc/elda/caches.d/*.toml
+/etc/elda/extensions.d/*.toml
+/etc/elda/host.d/*.toml
+/etc/elda/recipes/<pkgname>/pkg.lua
+.fi
+.PP
+Repository samples:
+.PP
+.RS
+\fBconfig.toml\fR — copyable host default;
+\fBsu/config.toml\fR — \fBsu\fR privilege provider example;
+\fBexamples/config/\fR — annotated reference;
+\fBfixtures/config/\fR — lean test inputs.
+.RE
+.SH FILES
+.TP
+.I /etc/elda/config.toml
+Global Elda configuration.
+.TP
+.I /etc/elda/remotes.d/*.toml
+Remote and interemote documents.
+.TP
+.I /etc/elda/caches.d/*.toml
+Payload cache documents.
+.TP
+.I /etc/elda/extensions.d/*.toml
+Extension capability registrations.
+.TP
+.I /etc/elda/host.d/*.toml
+Maintainer publish and upload profiles.
+.TP
+.I /etc/elda/recipes/
+Local recipe trees.
+.TP
+.I /var/lib/elda/db/elda.sqlite
+Installed-state database.
+.SH EXAMPLES
+.nf
+elda -V
+elda rmt add yoka-main=https://github.com/Mjoyufull/Elda/releases/download/index/index-v1.json.zst \\
+  --trust pinned \\
+  --trusted-key ed25519:0011223344556677889900112233445566778899aabbccddeeff0011223344 \\
+  --packages-url https://github.com/Mjoyufull/Elda.git
+elda sync
+elda i fsel --dry-run
+elda i fsel
+elda doctor
+elda a https://github.com/Mjoyufull/fsel
+elda rmt add heather-overlay=https://github.com/heather7283/heather7283-overlay --exclude firefox vlc
+elda rmt preview heather-overlay
+.fi
+.SH AUTHORS
+Elda is developed by Rikona, GitHub user Mjoyufull.
+.SH SEE ALSO
+.BR git (1)
+.PP
+Project documentation: README.md, USAGE.md, SPEC.md, phase.md, checklist.md,
+examples/, fixtures/, su/config.toml, and eldaforgehosting/ in the source repository.

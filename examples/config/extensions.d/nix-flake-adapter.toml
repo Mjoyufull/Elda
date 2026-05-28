@@ -1,0 +1,16 @@
+# Nix flake interepo adapter. Discovery is explicit (SPEC §15) -- Elda does
+# not scan disk for adapters that are not enumerated in extensions.d/.
+#
+# Capabilities are capability-scoped: only the protocol surface listed below
+# is exposed to the adapter binary.
+
+name = "nix-flake-adapter"
+kind = "interepo-adapter"
+version = "0.1.0"
+enabled = true
+
+binary = "/usr/lib/elda/extensions/nix-flake-adapter"
+capabilities = [
+  "interepo-resolve",  # ask the adapter to resolve a flake URL into metadata
+  "interepo-fetch",    # ask the adapter to materialize the build result
+]

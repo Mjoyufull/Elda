@@ -1,0 +1,16 @@
+[package]
+name = "elda-appimage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+backhand = "0.25.1"
+elda-types = { path = "../elda-types" }
+goblin = "0.10.3"
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,142 @@
+# Annotated reference `/etc/elda/config.toml`
+#
+# Elda reads this file from `<root>/etc/elda/config.toml`. The sibling
+# directories `remotes.d/`, `caches.d/`, and `extensions.d/` are additive
+# drop-in directories; they are not embedded in this file.
+#
+# Minimal host install:
+#   sudo install -Dm0644 examples/config/config.toml /etc/elda/config.toml
+#
+# Then add at least one remote document under `/etc/elda/remotes.d/`, or use
+# `elda rmt add ...` to write one.
+
+[defaults]
+remote = "yoka-main"              # default remote name for commands that need one
+build_mode = "isolated"           # host, isolated, or remote
+prefix = "/usr"                   # /usr = system mode; anything else is prefix mode
+allow_system_mode = false          # set true or use `elda -S` for live-host mutation
+snapshot_tool = "snapper"         # none, snapper, btrfs, or executable path
+auto_create_config = true          # create missing default config under isolated roots
+mode_policy = "host"              # current host/profile capability label
+install_recommends = true
+refresh_weak_deps = false
+install_preference = "binary"     # binary or source
+
+[privilege]
+provider = "auto"                 # auto, doas, sudo, run0, su, none
+preserve_env = false
+interactive = true
+
+[profile]
+base = "yoka-core"
+native_arch = "amd64"
+foreign_arches = ["i386"]
+init = "dinit"
+
+[resolver.provider_preferences]
+# Virtual provider policy. The resolver tries these concrete packages first;
+# unresolved ambiguity still fails closed.
+gl-provider = ["mesa-provider", "zink-provider"]
+
+[flags.global]
+wayland = true
+x11 = false
+
+[flags.profile.yoka-desktop-hyprland]
+pipewire = true
+
+[flags.package.fsel]
+wayland = true
+
+[flags.package."firefox>=130"]
+mp4 = true
+
+[logging]
+dir = "~/.config/elda/logs"
+level = 0
+
+[display]
+default_mode = "human"            # human or json default for frontend output
+human_detail = "normal"           # compact, normal, or verbose
+# auto picks Unicode on capable terminals and ASCII otherwise.
+tree_chars = "auto"               # auto, unicode, ascii
+
+[capabilities]
+profile = "default-host"
+network_fetch = true
+network_publish = true
+local_editors = true
+local_exec_build = true
+system_activate = true
+profile_apply = true
+migration = true
+extension_runtime = true
+
+[metadata]
+# Link-driven metadata generation. Use `link_option_mode = "list-options"`
+# when you want Elda to show every detected source strategy before writing.
+# Existing local metadata is preserved unless the command includes `--replace`.
+link_option_mode = "priority"
+link_strategy_priority = [
+  "elda-native",
+  "nix_flake",
+  "gentoo_ebuild",
+  "aur_pkgbuild",
+  "xbps_template",
+  "cargo",
+  "cmake",
+  "meson",
+  "make",
+  "go",
+  "python",
+  "zig",
+  "nimble",
+  "git_release",
+  "git_source",
+]
+
+# Empty = built-in release asset order. A non-empty list is exhaustive: omitted
+# formats are not auto-selected as binary lanes from forge release summaries.
+release_binary_format_priority = [
+  "tar-gz",
+  "tar-xz",
+  "tar-zst",
+  "zip",
+  "raw-binary",
+  "deb",
+  "rpm",
+  "apk",
+  "pacman-package",
+  "app-image",
+  "unknown",
+]
+
+[git]
+tag_policy = "semver"
+include_prereleases = true
+strip_v_prefix = true
+allow_date_versions = true
+max_tags = 50
+allowed_protocols = ["https", "ssh", "file"]
+
+[submission]
+mode = "pr"
+auto_open = true
+auto_assign = false
+auth = "token"                    # none, token, bearer, or ssh
+token_env = "ELDA_GITHUB_TOKEN"
+api_base = "https://api.github.com"
+remote_name = "origin"
+base_branch = "main"
+
+[submission.remotes.yoka-staging]
+auto_open = false
+auto_assign = false
+auth = "token"
+token_env = "ELDA_STAGING_TOKEN"
+api_base = "https://gitea.yoka.invalid/api/v1"
+remote_name = "origin"
+base_branch = "dev"
+
+[trust]
+release_keys = []

@@ -1,0 +1,25 @@
+[package]
+name = "elda-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+default-run = "elda"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+elda-core = { path = "../elda-core" }
+elda-types = { path = "../elda-types" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "elda"
+path = "src/main.rs"

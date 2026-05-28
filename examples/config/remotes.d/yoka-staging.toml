@@ -1,0 +1,13 @@
+# TOFU staging remote. Disabled by default; enable it explicitly when you want
+# staged candidates in the merged snapshot.
+
+name = "yoka-staging"
+index_url = "https://github.com/Mjoyufull/Elda/releases/download/staging/index-v1.json.zst"
+channel = "staging"
+packages_url = "https://github.com/Mjoyufull/Elda.git"
+priority = 50
+enabled = false
+trust = "tofu"
+trusted_keys = []
+allow_stale = false
+exclude = []

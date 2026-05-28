@@ -1,0 +1,38 @@
+[workspace]
+members = ["crates/*", "xtask"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.49-Sumomo"
+edition = "2024"
+rust-version = "1.94"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+base64 = "0.22.1"
+clap = { version = "4.5.39", features = ["derive"] }
+ed25519-dalek = "2.2.0"
+fs4 = "0.13.1"
+pubgrub = "0.4.0"
+regex = "1.12.2"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+rustix = { version = "1.1.2", features = ["fs", "process"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.10.9"
+tar = "0.4.44"
+tempfile = "3.23.0"
+thiserror = "2.0.17"
+toml = "0.8.23"
+ureq = "2.12.1"
+zstd = "0.13.3"
+ctrlc = "3.4.7"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "deny"

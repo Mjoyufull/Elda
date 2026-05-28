@@ -1,0 +1,24 @@
+[package]
+name = "elda-install"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+elda-build = { path = "../elda-build" }
+elda-db = { path = "../elda-db" }
+elda-linux = { path = "../elda-linux" }
+elda-types = { path = "../elda-types" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

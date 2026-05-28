@@ -1,0 +1,12 @@
+# Legacy pkgit-style dependency hints. Elda's importer (`elda a <repo>` /
+# `elda rc add --import pkgit ./<repo>`) consumes this format and emits an
+# Elda-native pkg.lua skeleton with a metadata-review gate before write.
+#
+# Lines are `<git-url> [optional-ref]`. Comments start with `#`.
+
+https://github.com/mpv-player/mpv
+https://github.com/yt-dlp/yt-dlp
+https://github.com/FFmpeg/FFmpeg
+https://github.com/curl/curl
+https://github.com/quodlibet/mutagen           v1.47.0
+file:///srv/git/example-tool                   main

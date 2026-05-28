@@ -1,0 +1,12 @@
+# Dynamic interemote example: a Void-style srcpkgs tree.
+# Use `elda rmt preview blackhole-vl` before syncing it into local package records.
+
+name = "blackhole-vl"
+index_url = "https://github.com/Event-Horizon-VL/blackhole-vl"
+channel = "stable"
+priority = 130
+enabled = false
+trust = "tofu"
+trusted_keys = []
+allow_stale = false
+exclude = ["firefox", "vlc"]

@@ -1,0 +1,31 @@
+# Maintainer host profile (copy to $ELDA_ROOT/etc/elda/host.d/yoka.toml)
+
+[host]
+profile = "yoka"
+tree = "/home/maintainer/yoka-pkgs"
+packages_subdir = "packages"
+default_channel = "stable"
+signing_key = "/etc/elda/keys/yoka-publish.pem"
+# signing_key_env = "ELDA_SIGNING_KEY"
+
+[host.forge]
+remote = "origin"
+base_branch = "main"
+mr_mode = "single"
+token_env = "ELDA_GITHUB_TOKEN"
+
+[host.channels.stable]
+branch = "main"
+index_subpath = "stable"
+
+[host.channels.staging]
+branch = "staging"
+index_subpath = "staging"
+
+[host.publish]
+base_url_env = "ELDA_PUBLISH_BASE_URL"
+release_tag_template = "index-{{channel}}"
+
+[host.cache]
+populate_after_publish = "lan-mirror"
+upload_command_env = "ELDA_CACHE_UPLOAD"

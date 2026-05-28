@@ -1,0 +1,55 @@
+# Per-package CI policy file. Lives next to pkg.lua / build.lua under
+# packages/<pkgname>/ in the authoritative package-definition repo (SPEC §5.1
+# and §17.6). End-user `elda` does not consume this file directly; CI tooling
+# reads it when scheduling matrix builds and lock-record emission.
+
+[ci]
+# `default | smoke | full | release-only` -- selects which scheduler lane
+# this package belongs to. `default` is the normal monorepo build flow.
+policy = "default"
+
+# Topological build layer override. Leave unset to let the scheduler compute
+# it from the dependency graph. Override only for bootstrap pairs.
+# layer = 0
+
+[ci.matrix]
+# Architectures the scheduler should try to publish payloads for. The
+# scheduler narrows this to the intersection of these arches and the
+# `arch` array in pkg.lua.
+arch = ["amd64", "arm64"]
+
+# Build profile selected by the matrix job. Maps to a `[build_profile]`
+# section in scheduler config. `release` is the default.
+build_profile = "release"
+
+# Optional explicit compiler/toolchain pin. Useful when reproducing a
+# known-good build is more important than the latest toolchain.
+# toolchain = "rust-1.78"
+
+[ci.tests]
+# `none | smoke | full` -- how thoroughly the matrix job exercises the
+# package's `checkdepends` test surface.
+mode = "smoke"
+
+# Allow the matrix to publish a successful payload even when smoke tests
+# fail. Defaults to `false`. Use sparingly -- this hides regressions.
+allow_failure = false
+
+[ci.publish]
+# `binary | source-only`. Source-only maintained remotes still republish a
+# signed repo index after merge but skip payload artifacts; clients build
+# from the authoritative package-definition repo (SPEC §17.3).
+mode = "binary"
+
+# Channel(s) this package publishes to once the matrix succeeds.
+channels = ["stable"]
+
+# Keep the previous N successful payloads available for `elda downgrade`.
+# Older payloads are pruned by the publish workflow.
+retain = 4
+
+[ci.smoke]
+# Optional smoke command run against a freshly installed payload (in a
+# disposable test root) before publication is finalized.
+command = ["./scripts/smoke.sh"]
+timeout_seconds = 600

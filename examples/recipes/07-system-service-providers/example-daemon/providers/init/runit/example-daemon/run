@@ -1,0 +1,4 @@
+#!/bin/sh
+exec 2>&1
+exec chpst -u example-daemon /usr/bin/example-daemon \
+  --config /etc/example-daemon/example-daemon.conf

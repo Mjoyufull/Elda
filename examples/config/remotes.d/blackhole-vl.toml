@@ -1,0 +1,18 @@
+# Dynamic interemote: Void-style `srcpkgs` remote.
+#
+# Elda treats this as source metadata, not as a binary repo. Preview first,
+# then sync once the catalog/excludes look right.
+#
+# Useful commands:
+#   elda rmt preview blackhole-vl
+#   elda sync blackhole-vl
+
+name = "blackhole-vl"
+index_url = "https://github.com/Event-Horizon-VL/blackhole-vl"
+channel = "stable"
+priority = 130
+enabled = false
+trust = "tofu"
+trusted_keys = []
+allow_stale = false
+exclude = ["firefox", "vlc"]

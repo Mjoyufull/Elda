@@ -1,0 +1,50 @@
+[defaults]
+remote = "yoka-main"
+build_mode = "isolated"
+prefix = "/usr"
+allow_system_mode = false
+snapshot_tool = "none"
+auto_create_config = true
+mode_policy = "host"
+install_recommends = true
+refresh_weak_deps = false
+install_preference = "binary"
+
+[privilege]
+provider = "doas"
+preserve_env = false
+interactive = true
+
+[profile]
+base = "yoka-core"
+native_arch = "amd64"
+foreign_arches = ["i386"]
+init = "dinit"
+
+[metadata]
+link_option_mode = "priority"
+link_strategy_priority = [
+  "elda-native",
+  "nix_flake",
+  "gentoo_ebuild",
+  "aur_pkgbuild",
+  "xbps_template",
+  "cargo",
+  "cmake",
+  "meson",
+  "make",
+  "go",
+  "python",
+  "zig",
+  "nimble",
+  "git_release",
+  "git_source",
+]
+
+[git]
+tag_policy = "semver"
+include_prereleases = true
+strip_v_prefix = true
+allow_date_versions = true
+max_tags = 50
+allowed_protocols = ["https", "ssh", "file"]

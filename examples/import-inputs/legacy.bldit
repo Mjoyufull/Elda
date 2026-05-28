@@ -1,0 +1,11 @@
+# Legacy pkgit `bldit` shell entrypoint. Preserved as ingest material:
+# Elda's importer normalizes this into either a declarative `build.system`
+# in pkg.lua (when the legacy script is recognizably `cargo build`,
+# `meson setup`, `make`, etc.) or a sandboxed `build.lua` fallback.
+#
+# Authors who want a clean Elda-native recipe should not write new bldit
+# files; this format is import / fallback territory only.
+
+bldit() {
+  cargo build --release --features pcre2
+}

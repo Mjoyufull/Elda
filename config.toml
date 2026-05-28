@@ -1,0 +1,149 @@
+# Elda sample `/etc/elda/config.toml`
+#
+# This file matches the runtime `Config` shape in `crates/elda-core/src/config.rs`.
+# Elda reads it from `<root>/etc/elda/config.toml`; on a live host that is
+# `/etc/elda/config.toml`.
+#
+# Drop-in documents live beside it:
+#   /etc/elda/remotes.d/*.toml
+#   /etc/elda/caches.d/*.toml
+#   /etc/elda/extensions.d/*.toml
+#   /etc/elda/recipes/<pkgname>/pkg.lua
+#
+# Copy only the sections you need. The examples under `examples/config/` are
+# more heavily annotated; this root file is the practical default.
+
+[defaults]
+remote = "yoka-main"
+build_mode = "isolated"
+prefix = "/usr"
+allow_system_mode = false
+# none, snapper, btrfs, or an absolute path whose executable name is snapper/btrfs
+snapshot_tool = "none"
+auto_create_config = true
+mode_policy = "host"
+install_recommends = true
+refresh_weak_deps = false
+install_preference = "binary"
+
+[privilege]
+# One of: auto, doas, sudo, run0, su, none
+provider = "auto"
+preserve_env = false
+interactive = true
+
+[profile]
+base = "yoka-core"
+native_arch = "amd64"
+foreign_arches = ["i386"]
+init = "dinit"
+
+[resolver.provider_preferences]
+# gl-provider = ["mesa-provider", "zink-provider"]
+
+[flags.global]
+wayland = true
+x11 = false
+
+[flags.profile.yoka-desktop-hyprland]
+pipewire = true
+
+[flags.package.fsel]
+wayland = true
+
+# Version-scoped package flag override. Applies only when the resolved
+# candidate satisfies the atom constraint.
+[flags.package."firefox>=130"]
+mp4 = true
+
+[logging]
+# `~/` resolves to the invoking user's config area when Elda re-execs through
+# sudo/doas using SUDO_UID/SUDO_USER/DOAS_USER.
+dir = "~/.config/elda/logs"
+# 0 = no per-run session log; 1-3 = increasing detail for mutating commands.
+level = 0
+
+[display]
+default_mode = "human"
+human_detail = "normal"
+# auto, unicode, or ascii
+tree_chars = "auto"
+
+[capabilities]
+profile = "default-host"
+network_fetch = true
+network_publish = true
+local_editors = true
+local_exec_build = true
+system_activate = true
+profile_apply = true
+migration = true
+extension_runtime = true
+
+[metadata]
+# Used by `elda a <link>`, `elda add <link>`, and raw-link `elda i <link>`.
+# Existing local metadata is preserved unless the command includes `--replace`.
+link_option_mode = "priority"
+link_strategy_priority = [
+  "elda-native",
+  "nix_flake",
+  "gentoo_ebuild",
+  "aur_pkgbuild",
+  "xbps_template",
+  "cargo",
+  "cmake",
+  "meson",
+  "make",
+  "go",
+  "python",
+  "zig",
+  "nimble",
+  "git_release",
+  "git_source",
+]
+
+# Empty = built-in default: archives and distro-native payloads before AppImages.
+# A non-empty list is exhaustive for automatic git-release binary selection.
+# release_binary_format_priority = [
+#   "tar-gz",
+#   "tar-xz",
+#   "tar-zst",
+#   "zip",
+#   "raw-binary",
+#   "deb",
+#   "rpm",
+#   "apk",
+#   "pacman-package",
+#   "app-image",
+#   "unknown",
+# ]
+
+[git]
+tag_policy = "semver"
+include_prereleases = true
+strip_v_prefix = true
+allow_date_versions = true
+max_tags = 50
+allowed_protocols = ["https", "ssh", "file"]
+
+[submission]
+mode = "pr"
+auto_open = true
+auto_assign = false
+# none, token, bearer, or ssh
+auth = "none"
+token_env = ""
+# api_base = "https://api.github.com"
+remote_name = "origin"
+base_branch = "main"
+
+# Optional per-remote override:
+# [submission.remotes.origin]
+# auth = "token"
+# token_env = "ELDA_GITHUB_TOKEN"
+# api_base = "https://api.github.com"
+# base_branch = "dev"
+
+[trust]
+# Future release-asset signature enforcement can read named trust anchors here.
+release_keys = []
