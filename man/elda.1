@@ -337,7 +337,9 @@ Repository samples:
 .SH FILES
 .TP
 .I /etc/elda/config.toml
-Global Elda configuration.
+Global Elda configuration. The \fB[trust].release_keys\fR list holds trusted
+release-asset signing keys; declared release signature sidecars fail closed
+when the needed key is missing unless an interactive operator imports it.
 .TP
 .I /etc/elda/remotes.d/*.toml
 Remote and interemote documents.
@@ -353,10 +355,6 @@ Maintainer publish and upload profiles.
 .TP
 .I /etc/elda/recipes/
 Local recipe trees.
-.TP
-.I /etc/elda/config.toml [trust].release_keys
-Trusted release-asset signing keys. Declared release signature sidecars fail
-closed when the needed key is missing unless an interactive operator imports it.
 .TP
 .I /var/lib/elda/db/elda.sqlite
 Installed-state database.

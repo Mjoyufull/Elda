@@ -195,7 +195,7 @@ commands can emit **post-transaction advisories** (reboot required, kernel follo
 
 ```sh
 sudo elda init                    # create layout + default config if missing
-sudo install -Dm0644 examples/config/config.toml /etc/elda/config.toml
+sudo install -Dm0644 config.toml /etc/elda/config.toml
 sudo install -d /etc/elda/remotes.d /etc/elda/caches.d /etc/elda/recipes
 
 elda rmt add yoka-main=https://example.invalid/index-v1.json.zst \

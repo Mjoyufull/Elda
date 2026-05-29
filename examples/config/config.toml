@@ -4,8 +4,8 @@
 # directories `remotes.d/`, `caches.d/`, and `extensions.d/` are additive
 # drop-in directories; they are not embedded in this file.
 #
-# Minimal host install:
-#   sudo install -Dm0644 examples/config/config.toml /etc/elda/config.toml
+# First-time host setup should copy the conservative root `config.toml`.
+# Copy this annotated reference only after reviewing its example choices.
 #
 # Then add at least one remote document under `/etc/elda/remotes.d/`, or use
 # `elda rmt add ...` to write one.
