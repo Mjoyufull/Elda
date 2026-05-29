@@ -809,7 +809,7 @@ Consider adding GitHub Actions for:
 - Testing (`cargo test --workspace`)
 - Release builds (`cargo build -p elda-cli --release`)
 
-Example `.github/workflows/ci.yml` structure:
+Example CI workflow structure:
 ```yaml
 name: CI
 on: [push, pull_request]

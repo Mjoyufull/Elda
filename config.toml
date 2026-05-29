@@ -145,5 +145,7 @@ base_branch = "main"
 # base_branch = "dev"
 
 [trust]
-# Future release-asset signature enforcement can read named trust anchors here.
+# Trusted release-asset signing keys. When a recipe declares a release
+# signature sidecar and the key is missing, install fails closed or asks an
+# interactive operator to import the key before continuing.
 release_keys = []

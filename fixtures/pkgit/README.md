@@ -1,18 +1,12 @@
 # `pkgit` reference fixtures
 
-These files are legacy `pkgit` reference input for Elda.
+These files are `pkgit` reference input for Elda. They model upstream pkgit
+behavior and formats; they are not a checkout of pkgit and they are not used as
+local runtime code.
 
 They are not runtime assets for Elda yet.
-They exist so the rewrite has concrete samples for the `pkgit` behavior we are preserving at the UX layer or importing into normalized metadata.
-
-Source references:
-
-- `pkgit/src/getDeps.nim`
-- `pkgit/src/buildPkg.nim`
-- `pkgit/src/installPkg.nim`
-- `pkgit/src/searchPkgs.nim`
-- `pkgit/src/listPkgs.nim`
-- `pkgit/README.md`
+They exist so the rewrite has concrete samples for the `pkgit` behavior we are
+preserving at the UX layer or importing into normalized metadata.
 
 Fixture groups:
 

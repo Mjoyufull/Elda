@@ -14,7 +14,7 @@
 //! the `ProgressUnit` units) are part of the documented runtime contract but
 //! have no producer wired in yet. They are intentionally retained on the
 //! enum so renderers can match exhaustively as soon as the install lane
-//! emits them; see `eldainstallaztionuxandcliimprovements.md` §13.
+//! emits them.
 #![allow(dead_code)]
 
 use std::sync::Arc;

@@ -122,10 +122,10 @@ Drop-ins:
 | `[logging]` | Session logs for mutating commands (`level` 1–3, or `--log-level`) |
 | `[display]` | Human vs machine output, tree characters for live progress |
 | `[metadata]` | Order Elda tries strategies for `elda a` / raw-link installs |
-| `[trust].release_keys` | Keys for signed release assets when recipes declare signatures |
+| `[trust].release_keys` | Trusted keys for signed release assets; declared sidecars fail closed when keys are missing |
 
-Copy [config.toml](./config.toml) or [examples/config/](./examples/config/) as a starting
-point. [su/config.toml](./su/config.toml) shows a host-oriented privilege layout.
+Use [examples/config/](./examples/config/) as a starting point. [su/config.toml](./su/config.toml)
+shows a host-oriented privilege layout.
 
 **Remotes** are signed indexes plus optional `packages_url` (git repo of recipes). **Caches**
 are optional HTTP mirrors keyed by payload SHA256—lookups only; `elda sync` never reads a cache
@@ -195,7 +195,7 @@ commands can emit **post-transaction advisories** (reboot required, kernel follo
 
 ```sh
 sudo elda init                    # create layout + default config if missing
-sudo install -Dm0644 config.toml /etc/elda/config.toml
+sudo install -Dm0644 examples/config/config.toml /etc/elda/config.toml
 sudo install -d /etc/elda/remotes.d /etc/elda/caches.d /etc/elda/recipes
 
 elda rmt add yoka-main=https://example.invalid/index-v1.json.zst \
@@ -328,7 +328,7 @@ elda u fsel --to-tag v3.4.0      # move a git package to a new ref
 ```
 
 `elda u` compares installed versions to the **current synced snapshot** for each remote. It does
-not auto-upgrade held packages or respect pins unless you change policy.
+not auto-upgrade held packages or packages blocked by pins unless you change policy.
 
 ### Pin, hold, downgrade
 
