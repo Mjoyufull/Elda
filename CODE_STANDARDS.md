@@ -1035,7 +1035,7 @@ Every decision record should capture:
 ### Decision Record Rules
 
 - keep records short and readable
-- store them with the repo, typically under `docs/adr/` or `decisions/`
+- store them with the repo in a clearly named decision-record location
 - accepted records are not silently rewritten; create a new one that supersedes the old one
 - link code reviews and follow-up changes back to relevant records
 

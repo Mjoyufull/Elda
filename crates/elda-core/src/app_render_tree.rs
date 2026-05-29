@@ -6,9 +6,8 @@
 //!
 //! All static renderers must format frames through this module so that the
 //! Unicode/ASCII fallback decision lives in one place. A few row variants
-//! and the `Bullet` glyph are part of the documented frame surface from
-//! `eldainstallaztionuxandcliimprovements.md` §13.4 but not yet consumed by
-//! every handler. They stay on the API so the pattern matches in renderers
+//! and the `Bullet` glyph are part of the documented frame surface but not yet
+//! consumed by every handler. They stay on the API so the pattern matches in renderers
 //! stay exhaustive as the static-frame sweep lands.
 #![allow(dead_code)]
 

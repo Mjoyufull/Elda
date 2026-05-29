@@ -304,6 +304,10 @@ Run CI processing locally.
 .TP
 .B elda forge search QUERY
 Search forge metadata.
+.PP
+Hosted review configuration supports \fBauth = "token"\fR, \fB"bearer"\fR,
+\fB"ssh"\fR, or \fB"none"\fR. Bearer mode sends an
+\fBAuthorization: Bearer ...\fR header.
 .TP
 .B elda ext ls
 List registered extensions from \fIextensions.d\fR.
@@ -333,7 +337,9 @@ Repository samples:
 .SH FILES
 .TP
 .I /etc/elda/config.toml
-Global Elda configuration.
+Global Elda configuration. The \fB[trust].release_keys\fR list holds trusted
+release-asset signing keys; declared release signature sidecars fail closed
+when the needed key is missing unless an interactive operator imports it.
 .TP
 .I /etc/elda/remotes.d/*.toml
 Remote and interemote documents.
@@ -373,4 +379,4 @@ Elda is developed by Rikona, GitHub user Mjoyufull.
 .BR git (1)
 .PP
 Project documentation: README.md, USAGE.md, SPEC.md, phase.md, checklist.md,
-examples/, fixtures/, su/config.toml, and eldaforgehosting/ in the source repository.
+config.toml, examples/, fixtures/, su/config.toml, and eldaforgehosting/ in the source repository.

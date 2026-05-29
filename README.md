@@ -108,7 +108,7 @@ Legend: `[x]` done in the current slice · `[~]` partial · `[ ]` not started
 - [x] `pkg.lua` / `build.lua` — parse, validate, install; flags, provider assets, meta/profile packages
 - [x] Source lanes — git, local recipes, synced `packages_url` trees; Cargo, CMake, Meson, Make, Go, Python, Zig, Nimble
 - [x] Binary lanes — URLs, forge `release_asset`, GPKG, AppImage + `appimage inspect`, vendor add/import/export
-- [x] Signed remotes — TOFU/pinned trust, channels, key rotation, offline snapshots, cache priority and cleanup
+- [x] Signed remotes — TOFU/pinned trust, channels, key rotation, release-asset signature keys, offline snapshots, cache priority and cleanup
 - [x] Interemotes — dynamic Gentoo/XBPS git remotes, `rmt preview`/`trust`/`info`, `--exclude`, `sync <remote>` deltas
 - [x] Solver — install/upgrade/downgrade; pins, holds, providers, weak deps, replaces; `why` / `rdeps` / `autoremove`
 - [x] SQLite state — ownership, manifests, `files search`, verify/recover, conffile queue, prefix rollback
@@ -116,7 +116,7 @@ Legend: `[x]` done in the current slice · `[~]` partial · `[ ]` not started
 - [x] Profiles — `pf` edit/apply, machine shape, init/foreign-arch policy, `state export`/`import`
 - [x] Inspection — `rc show`/`diff`/`publish-ready`, `config pending`/`diff`/`apply`, `trigger ls/info`, `doctor`
 - [x] Review — generated-metadata and interbuild gates, `review ls/info/forget/diff`, content-addressed stamps
-- [x] Forge — `ci`/`forge`/`qa`, local publish (lock/index/sidecars), hosted `ci pr`; `elda-populate` cache mirror
+- [x] Forge — `ci`/`forge`/`qa`, local publish (lock/index/sidecars), hosted `ci pr` with token/bearer auth; `elda-populate` cache mirror
 - [x] Interbuild — bounded Nix flake, Gentoo overlay, AUR PKGBUILD, XBPS template parsers + review metadata
 - [~] Operator bootstrap — preflight, live progress, privilege handoff; full setup/takeover still open
 - [~] Migration — `mg from` / `adopt` for pacman, apt, apk, xbps, portage DBs; no live file takeover yet
@@ -207,7 +207,7 @@ Shared workspace dependencies:
 | `anyhow` | CLI error context (`elda-cli`) |
 | `clap` | CLI parsing |
 | `serde` / `serde_json` | Reports, manifests, metadata |
-| `toml` | `config.toml`, remote documents |
+| `toml` | Configuration and remote documents |
 | `rusqlite` (bundled SQLite) | Installed-state DB |
 | `pubgrub` | Install/upgrade dependency solver |
 | `rustix` | Filesystem and process helpers |
@@ -283,7 +283,9 @@ Runtime paths:
 ```
 
 The [su/config.toml](./su/config.toml) file is a copyable `/etc/elda/config.toml`
-example for hosts that use `su` as the privilege provider.
+example for hosts that use `su` as the privilege provider. `[trust].release_keys`
+holds trusted release-asset signing keys; recipes that declare signature sidecars fail closed
+when the needed key is missing unless an interactive operator imports it at the install gate.
 
 ## Package Definition Example
 
@@ -342,6 +344,7 @@ More complete package examples are in [examples/recipes](./examples/recipes). An
 - [USAGE.md](./USAGE.md) - operator workflows and CLI examples
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - how to contribute (setup, PRs, testing)
 - [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md) - branching, releases, and review workflow
+- [CODE_STANDARDS.md](./CODE_STANDARDS.md) - Rust structure, quality, and testing standards
 - [eldaforgehosting/](./eldaforgehosting/README.md) - native forge, remote, index, cache, and publish hosting
 - [phase.md](./phase.md) - implementation order and current status
 - [checklist.md](./checklist.md) - development tracker

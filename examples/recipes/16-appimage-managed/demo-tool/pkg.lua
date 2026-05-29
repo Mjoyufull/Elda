@@ -2,7 +2,7 @@
 --
 -- Managed AppImage lane: the `.AppImage` file is stored under
 -- `usr/lib/elda/appimages/<name>/<epoch>:<version>-<rel>/payload/` and a symlink
--- launcher is placed in `usr/bin/` (see Elda `eldastudyappimages.md`).
+-- launcher is placed in `usr/bin/`.
 --
 -- Use `integration = "desktop"` only when you want a minimal `.desktop` stub;
 -- icons and AppStream still require recipe-side assets today.
