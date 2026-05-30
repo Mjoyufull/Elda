@@ -453,8 +453,8 @@ Summary (detail in [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md)):
 
 1. Merge `main` into `dev` so docs are current
 2. Create `release/<version>-<codename>` from `dev`
-3. Bump version in workspace `Cargo.toml`, `man/elda.1`, `phase.md` (header + §9 Changelog), and README if needed
-4. Run `cargo test --workspace` and release build on the release branch
+3. Bump version in workspace `Cargo.toml`, `man/elda.1`, `RELEASE_LOG.md`, `phase.md`, and README if needed
+4. Run `cargo test --workspace` and `cargo build -p elda-cli --release` on the release branch
 5. Merge release branch to `main`, tag **version number only** (e.g. `0.1.50`), publish GitHub release with title `[0.1.50-Sumomo]`
 6. Merge release branch back to `dev`, delete release branch
 

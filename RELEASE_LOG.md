@@ -165,7 +165,7 @@ Current git tag: `0.1.49`
 
 ### Contributors
 
-- @Mjoyufull
+- `@Mjoyufull`
 
 ### Compatibility
 

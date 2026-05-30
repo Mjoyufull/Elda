@@ -2,28 +2,49 @@
 
 > A Manual for Maintaining Sensible Git Discipline Without Sacrificing Productive Chaos
 
-**Document Version:** 1.4.1  
-**Last Updated:** 2026-04-14  
+**Document Version:** 1.5.0  
+**Last Updated:** 2026-05-30  
 **Audience:** Future me, contributors, and anyone brave enough to work on these projects
+
+> [!WARNING]
+> **Examples are illustrative, not prescriptive**
+> File paths, commands, binaries, and tooling in this document (e.g. `fsel`, `cargo`, `Cargo.toml`, `fsel.1`, `flake.nix`, `RELEASELOG.md`) are **examples** from real projects. Your repo may use different names, layouts, build systems, licenses, or release artifacts. Follow the *workflow rules* here; substitute your project's actual files and commands wherever examples appear.
+
+---
+
+## Scope & Customization
+
+This file is the **generic canonical standard** — a reusable base for repos that share the same Git workflow. It stays project-agnostic except where concrete examples clarify the rules.
+
+**Per-repo customization**
+
+- Repos with stronger differences (other languages, monorepos, different release layout, etc.) may maintain their **own customized copy** of `PROJECT_STANDARDS.md`. That copy overrides this generic version for that repo.
+- Other documents may exist alongside this one in any given repo (e.g. `CODE_STANDARDS.md`, `SPEC.md`, `CONTRIBUTING.md`, `USAGE.md`, `phase.md`, audit templates). Which files exist and what they contain is **repo-specific**; absence or extra files is normal.
+- Do **not** rewrite this generic document to match one project's paths, license, tooling, or metadata when working elsewhere. Do **not** "restore" project-specific content into the generic standard unless explicitly asked to update the template itself.
+
+**For agents and editors**
+
+When updating standards docs, change only what the task requests. Do not bulk-replace example names, revert license or `Last Updated` metadata, deduplicate unrelated sections, or merge in another project's fork of this file unless that is the stated goal.
 
 ---
 
 ## Table of Contents
 
-1. [Philosophy & Principles](#philosophy--principles)
-2. [Related Documentation](#related-documentation)
-3. [Branching Strategy](#branching-strategy)
-4. [Workflow Overview](#workflow-overview)
-5. [Feature Branch Development](#feature-branch-development)
-6. [Commit Discipline](#commit-discipline)
-7. [Pull Request Process](#pull-request-process)
-8. [Code Review & Collaboration Standards](#code-review--collaboration-standards)
-9. [Release Management](#release-management)
-10. [Versioning Scheme](#versioning-scheme)
-11. [Documentation Standards](#documentation-standards)
-12. [What Not To Do](#what-not-to-do)
-13. [Example Workflows](#example-workflows)
-14. [Tooling & Automation](#tooling--automation)
+1. [Scope & Customization](#scope--customization)
+2. [Philosophy & Principles](#philosophy--principles)
+3. [Related Documentation](#related-documentation)
+4. [Branching Strategy](#branching-strategy)
+5. [Workflow Overview](#workflow-overview)
+6. [Feature Branch Development](#feature-branch-development)
+7. [Commit Discipline](#commit-discipline)
+8. [Pull Request Process](#pull-request-process)
+9. [Code Review & Collaboration Standards](#code-review--collaboration-standards)
+10. [Release Management](#release-management)
+11. [Versioning Scheme](#versioning-scheme)
+12. [Documentation Standards](#documentation-standards)
+13. [What Not To Do](#what-not-to-do)
+14. [Example Workflows](#example-workflows)
+15. [Tooling & Automation](#tooling--automation)
 
 ---
 
@@ -53,11 +74,13 @@ This workflow accommodates:
 
 ## Related Documentation
 
-This document defines the technical Git workflow. See also:
+This document defines the technical Git workflow. Individual repos may include some or all of the following; names and presence vary:
 
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contributor guide for external contributors (setup, standards, templates)
-- **[README.md](./README.md)** - Project overview and quick start
-- **[USAGE.md](./USAGE.md)** - Detailed user documentation
+- **CONTRIBUTING.md** — contributor setup and templates (if present)
+- **README.md** — project overview and quick start
+- **USAGE.md** — detailed user documentation (if present)
+- **CODE_STANDARDS.md** — code quality and structure (if present)
+- **SPEC.md** or other planning docs — product or technical spec (if present)
 
 ---
 
@@ -196,8 +219,7 @@ git checkout -b feat/detach-mode
 - "wip" and "temp fix" are valid local commits.
 - Code explains *what*, commits should explain *why*.
 - Work offline freely — rebase and clean up later.
-- **When you're online and actively coding, open a draft PR early** and push commits to it instead of working in silence. That gives the team visibility into what you're tackling so nobody duplicates effort on the same area.
-- **When you are online and actively coding**, open a **draft PR** early and push commits to it. That gives the team visibility so nobody else starts the same work in parallel. Silence on a branch is how duplicate effort happens.
+- **When you're online and actively coding**, open a **draft PR** early and push commits to it instead of working in silence. That gives the team visibility so nobody else starts the same work in parallel. Silence on a branch is how duplicate effort happens.
 
 Example:
 
@@ -222,13 +244,7 @@ Before opening a PR:
    git rebase -i origin/dev
    ```
 
-3. Run all checks:
-   ```bash
-   cargo fmt
-   cargo clippy
-   cargo test
-   cargo build --release
-   ```
+3. Run all checks using your project's standard commands (e.g. for Rust: `cargo fmt`, `cargo clippy`, `cargo test`, `cargo build --release`).
 
 4. Push branch:
    ```bash
@@ -327,9 +343,9 @@ Brief description of what this PR does and why.
 - Updated documentation
 
 ## Testing
-1. Build with cargo build --release
-2. Run fsel --cclip and verify tags appear
-3. Test tag persistence across sessions
+1. Build with your project's release command (e.g. `cargo build --release`)
+2. Exercise the changed behavior manually or with automated tests
+3. Confirm user-facing docs match the new behavior
 
 ## Breaking Changes
 None
@@ -428,8 +444,7 @@ Example response to contributor:
 
 ### Sanity Checks
 
-Integrate automated checks:
-- `cargo fmt`, `cargo clippy`
+Integrate automated checks appropriate to your stack (e.g. for Rust: `cargo fmt`, `cargo clippy`)
 - Commit message linter (optional)
 - GitHub branch protection:
   - Require 1 review before merge (for code PRs; docs PRs to main may be configured per preference)
@@ -453,6 +468,10 @@ A maintainer creates a release branch when:
 
 ### Preparation
 
+> [!NOTE]
+> **Example release prep files**
+> The file list below uses common Rust/Nix layout as an example. Your repo may use different paths (monorepo `Cargo.toml`, `man/elda.1`, `package.json`, etc.). Update whatever files in *your* repo carry version or release metadata.
+
 1. **Merge main into dev** so dev has the latest docs (docs live on main and are synced to dev via main → dev).
 2. Ensure all feature PRs for the release are merged into dev.
 3. Confirm all tests pass on dev.
@@ -462,11 +481,11 @@ A maintainer creates a release branch when:
    git pull origin dev
    git checkout -b release/v3.0.0-kiwicrab  # Replace with actual version
    ```
-5. Update version references on the release branch:
-   - `Cargo.toml` (root directory)
-   - `flake.nix` (root directory)
+5. Update version references on the release branch (examples — use your repo's actual files):
+   - `Cargo.toml` (root or workspace manifest)
+   - `flake.nix` or other packaging manifests
    - `README.md` (installation instructions, if needed)
-   - Man pages (`fsel.1` or similar)
+   - Man pages (e.g. `fsel.1`, `man/elda.1`, or similar)
    - Example configs if they contain version info
 6. Commit version bump:
    ```bash
@@ -474,11 +493,7 @@ A maintainer creates a release branch when:
    ```
 7. Prepare release notes using the [Release body template](#release-body-template) below; update **RELEASELOG.md** on the release branch with the release title and body, adding a `---` separator above the previous release(s).
 8. Verify [Semantic Versioning 2.0.0](https://semver.org/) compliance.
-9. Run final tests on the release branch:
-   ```bash
-   cargo test
-   cargo build --release
-   ```
+9. Run final tests on the release branch using your project's standard commands (e.g. `cargo test`, `cargo build --release`).
 
 ### Process
 
@@ -644,8 +659,8 @@ If you maintain permanent branches for LTS and "next" (or similar) cycles, treat
 
 1. `README.md` — overview, install, usage
 2. `USAGE.md` — detailed guide (if needed)
-3. `LICENSE` — BSD-2-Clause or similar
-4. **RELEASELOG.md** — in-repo release log. We do not keep CHANGELOG.md. On each release branch, prepend the release title and body to RELEASELOG.md, with a `---` separator between each release (newest at top).
+3. `LICENSE` — project license (SPDX identifier in source headers where applicable)
+4. **RELEASELOG.md** — in-repo release log (name may vary by repo; we do not keep CHANGELOG.md). On each release branch, prepend the release title and body to the release log, with a `---` separator between each release (newest at top).
 
 ### Code Docs
 
@@ -781,6 +796,10 @@ For trivial typo fixes, maintainers may push directly to main and then merge mai
 ---
 
 ## Tooling & Automation
+
+> [!NOTE]
+> **Example tooling**
+> Git aliases, hooks, and CI snippets below assume a Rust project. Adapt commands and workflow files to your stack.
 
 ### Git Aliases
 
