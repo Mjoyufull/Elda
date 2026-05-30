@@ -543,7 +543,11 @@ These are implementation choices, not spec holes.
 - Implemented fail-closed handling for `any = { ... }` dependency alternatives and unique virtual `provides`, so unattended installs no longer silently pick the first matching provider.
 - Added package-level conflict validation to install and upgrade planning.
 - Upgrades now carry newly required hard dependencies forward from the same synced snapshot and still do not auto-add newly introduced weak dependencies.
+- Changed the default privilege frontend policy from a hardcoded `doas` assumption to `provider = "auto"`.
+- Documented and implemented provider detection in the order `doas`, `sudo`, `run0`, then `su`, with last-resort `su` support wired in the CLI frontend.
+- Explicit provider settings now fall back to the detected-provider order when the requested binary is unavailable, and the frontend reports that fallback instead of surfacing a raw missing-provider failure.
 - Added end-to-end tests for recommends behavior, unique/ambiguous provider handling, conflict failures, and closure-aware upgrades.
+- Verified the privilege-provider change with workspace fmt/tests/clippy plus a rebuilt host CLI smoke where `elda -S ls` reaches the detected `sudo` path instead of failing on missing `doas`.
 
 ### v0.1.13 - 2026-04-12
 
@@ -559,13 +563,6 @@ These are implementation choices, not spec holes.
 - Implemented frontend privilege-provider re-exec for live host operations using the configured `doas` / `sudo` / `run0` provider path, with clear errors when the provider is unavailable or disabled.
 - Changed the host-root failure mode from raw permission-denied bootstrap errors to direct operator-facing messages that explain whether Elda is gated out of system mode or missing its configured privilege provider.
 - Updated the public config docs and sample config to document the new system-mode gate.
-
-### v0.1.15 - 2026-04-12
-
-- Changed the default privilege frontend policy from a hardcoded `doas` assumption to `provider = "auto"`.
-- Documented and implemented provider detection in the order `doas`, `sudo`, `run0`, then `su`, with last-resort `su` support now wired in the CLI frontend.
-- Explicit provider settings now fall back to the detected-provider order when the requested binary is unavailable, and the frontend reports that fallback instead of surfacing a raw missing-provider failure.
-- Verified the change with workspace fmt/tests/clippy plus a rebuilt host CLI smoke where `elda -S ls` now reaches the real `sudo` path on this machine instead of failing on missing `doas`.
 
 ### v0.1.16 - 2026-04-12
 

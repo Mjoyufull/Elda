@@ -322,9 +322,6 @@ These releases were development checkpoints before the first public Sumomo tag. 
 ### v0.1.15 - 2026-04-13
 
 - Replaced install dry-run skeletons with closure-aware install plans, weak dependency handling, alternatives, virtual provides, conflicts, and closure-aware upgrades.
-
-### v0.1.15 - 2026-04-12
-
 - Changed privilege defaults to `provider = "auto"` and added provider detection for doas, sudo, run0, and su.
 
 ### v0.1.14 - 2026-04-12
