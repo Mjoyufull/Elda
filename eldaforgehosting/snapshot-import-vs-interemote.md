@@ -2,7 +2,7 @@
 
 | | Snapshot import (`elda a`) | Interemote (`rmt add` + `sync`) |
 | --- | --- | --- |
-| Updates from upstream | No — local editable copy | Yes — each `sync` refreshes |
+| Updates from upstream | No - local editable copy | Yes - each `sync` refreshes |
 | Signed Elda index | Not required | Native remotes need one; interemotes generate from Git |
 | Use case | Try a foreign URL once, edit locally | Track Gentoo overlay / `srcpkgs` long-term |
 | Remote document | N/A | `index_url` points at upstream Git |

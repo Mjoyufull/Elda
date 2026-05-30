@@ -1,15 +1,15 @@
 # Pattern: AUR-Style Source-Only Remote
 
-**Goal:** Community or team maintains `pkg.lua` in Git; users install with `elda i` and build locally—no published binaries required.
+**Goal:** Community or team maintains `pkg.lua` in Git; users install with `elda i` and build locally - no published binaries required.
 
 ## Architecture
 
 ```text
-[Maintainers] → Git push → packages/<pkg>/pkg.lua
+[Maintainers] -> Git push -> packages/<pkg>/pkg.lua
                 ↓
          CI signs index-v1.json.zst
                 ↓
-[Clients] elda sync → elda i pkg (source lane)
+[Clients] elda sync -> elda i pkg (source lane)
 ```
 
 ## Maintainer Steps
@@ -42,7 +42,7 @@ elda i fsel
 
 ## Optional: Interemote Instead
 
-If upstream is already a Gentoo overlay, you may **consume** it as an interemote instead of mirroring recipes—see [../interemote-foreign-repos.md](../interemote-foreign-repos.md).
+If upstream is already a Gentoo overlay, you may **consume** it as an interemote instead of mirroring recipes - see [../interemote-foreign-repos.md](../interemote-foreign-repos.md).
 
 ## Docs
 

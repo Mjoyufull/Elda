@@ -36,7 +36,7 @@ You can run **binhost-only**:
 
 1. Build elsewhere (CI, local).
 2. Upload payloads + signed index to static storage.
-3. Clients never need a forge—only `rmt add` + `sync`.
+3. Clients never need a forge - only `rmt add` + `sync`.
 
 Optional second remote with `packages_url` if you also ship source lanes.
 

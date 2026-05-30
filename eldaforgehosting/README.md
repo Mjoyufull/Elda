@@ -48,17 +48,17 @@ Platform guides cover **where to put** the recipe repo, signed index, payloads, 
 
 ## Core Topics (Platform-Agnostic)
 
-1. [Core model](./core-model.md) — forge vs remote vs cache vs interemote
-2. [Repository layout](./repository-layout.md) — `packages/<pkgname>/`, published index tree, cache digests
-3. [Getting recipes into Git](./getting-recipes-into-git.md) — `rc add`, `elda a`, `ci sub`, vendor, bulk import
+1. [Core model](./core-model.md) - forge vs remote vs cache vs interemote
+2. [Repository layout](./repository-layout.md) - `packages/<pkgname>/`, published index tree, cache digests
+3. [Getting recipes into Git](./getting-recipes-into-git.md) - `rc add`, `elda a`, `ci sub`, vendor, bulk import
 4. [Source-only native remote](./source-only-native-remote.md)
 5. [Binary / binhost native remote](./binary-binhost-remote.md)
 6. [Trust and signing](./trust-and-signing.md)
 7. [Cache server](./cache-server.md)
 8. [Interemote foreign repos](./interemote-foreign-repos.md)
 9. [Snapshot import vs interemote](./snapshot-import-vs-interemote.md)
-10. [Host maintainer tools](./host-maintainer-tools.md) — `host *`, `publish *`, `/etc/elda/host.d/`
-11. [Maintainer workflow](./maintainer-workflow.md) — `ci sub`, `ci run`, publish steps
+10. [Host maintainer tools](./host-maintainer-tools.md) - `host *`, `publish *`, `/etc/elda/host.d/`
+11. [Maintainer workflow](./maintainer-workflow.md) - `ci sub`, `ci run`, publish steps
 12. [Client setup recipes](./client-setup.md)
 13. [Recommended defaults](./recommended-defaults.md)
 14. [Reference files in this repo](./reference-files.md)
@@ -73,8 +73,8 @@ Platform guides cover **where to put** the recipe repo, signed index, payloads, 
 
 ## Related Operator Docs
 
-- [USAGE.md](../USAGE.md) — day-to-day commands
-- [README.md](../README.md) — project entrypoint
-- [phase.md](../phase.md) — implementation status for hosting and runtime slices
-- [examples/config/](../examples/config/) — sample `remotes.d`, `caches.d`, `config.toml`, host profiles
-- [examples/recipes/](../examples/recipes/) — recipe authoring examples
+- [USAGE.md](../USAGE.md) - day-to-day commands
+- [README.md](../README.md) - project entrypoint
+- [phase.md](../phase.md) - implementation status for hosting and runtime slices
+- [examples/config/](../examples/config/) - sample `remotes.d`, `caches.d`, `config.toml`, host profiles
+- [examples/recipes/](../examples/recipes/) - recipe authoring examples

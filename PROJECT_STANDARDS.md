@@ -3,7 +3,7 @@
 > A Manual for Maintaining Sensible Git Discipline Without Sacrificing Productive Chaos
 
 **Document Version:** 1.4.1  
-**Last Updated:** 2026-05-18  
+**Last Updated:** 2026-04-14  
 **Audience:** Future me, contributors, and anyone brave enough to work on these projects
 
 ---
@@ -35,7 +35,7 @@
 2. **dev is the integration branch.** All code (feature) branches merge here first; release branches are created from dev.
 3. **main and dev do not merge directly for code.** Code reaches main only via release or hotfix branches. Main is merged into dev after a hotfix (to sync the fix) or after docs land on main (to sync the docs).
 4. **All code changes go through pull requests.** No exceptions. Even for solo work.
-5. **Releases are the record; `phase.md` §9 Changelog is the in-repo log.** GitHub releases are the canonical record. We do not keep a separate `CHANGELOG.md`; on each release branch, prepend the release title and body to **`phase.md` §9 Changelog**, with a `---` separator between entries (newest at top).
+5. **Releases are the record; RELEASELOG.md is the in-repo log.** GitHub releases are the canonical record. We do not keep CHANGELOG.md; we keep RELEASELOG.md, updated on each release branch with the release title and body, with a `---` separator between each release.
 6. **Commit messages matter at release time.** During development, commit as suits your workflow. Before merging, clean them up.
 7. **Flow over formality.** Discipline exists to enable productivity, not strangle it.
 8. **Reviews are conversations, not commands.** The goal is to improve, not to dictate.
@@ -55,11 +55,9 @@ This workflow accommodates:
 
 This document defines the technical Git workflow. See also:
 
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — contributor guide (setup, PR flow, testing)
-- **[CODE_STANDARDS.md](./CODE_STANDARDS.md)** — Rust structure, quality, and testing standards
-- **[SPEC.md](./SPEC.md)** — product and CLI behavior contract
-- **[README.md](./README.md)** — project overview and quick start
-- **[USAGE.md](./USAGE.md)** — operator workflows and CLI examples
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contributor guide for external contributors (setup, standards, templates)
+- **[README.md](./README.md)** - Project overview and quick start
+- **[USAGE.md](./USAGE.md)** - Detailed user documentation
 
 ---
 
@@ -198,6 +196,8 @@ git checkout -b feat/detach-mode
 - "wip" and "temp fix" are valid local commits.
 - Code explains *what*, commits should explain *why*.
 - Work offline freely — rebase and clean up later.
+- **When you're online and actively coding, open a draft PR early** and push commits to it instead of working in silence. That gives the team visibility into what you're tackling so nobody duplicates effort on the same area.
+- **When you are online and actively coding**, open a **draft PR** early and push commits to it. That gives the team visibility so nobody else starts the same work in parallel. Silence on a branch is how duplicate effort happens.
 
 Example:
 
@@ -252,11 +252,11 @@ type(optional-scope): short description
 Examples:
 
 ```bash
-feat(install): persist interbuild review stamps across runs
-fix(solver): reject invalid replaces cycles in the dependency graph
-refactor(render): split extended install plan rendering
-docs(usage): document disposable-root install workflow
-chore: bump workspace version to 0.1.50-Sumomo
+feat(detach): implement --detach flag with systemd-run support
+fix(db): enforce foreign key constraints properly
+refactor(cache): move batch operations to separate module
+docs(usage): add examples for dmenu mode
+chore: update flake.nix to use naersk
 ```
 
 | Type | Meaning |
@@ -327,9 +327,9 @@ Brief description of what this PR does and why.
 - Updated documentation
 
 ## Testing
-1. cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
-2. cargo test --workspace (or targeted elda-core tests)
-3. cargo run -p elda-cli -- <subcommand> --help and manual path exercised
+1. Build with cargo build --release
+2. Run fsel --cclip and verify tags appear
+3. Test tag persistence across sessions
 
 ## Breaking Changes
 None
@@ -340,10 +340,12 @@ Closes #42
 
 ### Draft Pull Requests
 
-Use draft PRs for early feedback:
-- Open as draft when code is incomplete but you want early review
+Use draft PRs for early feedback and visibility:
+- **Default when online:** open a draft PR as soon as you start meaningful work on a branch, then keep pushing commits. Others can see you're on it before they pick up overlapping tasks.
+- Open as draft when code is incomplete but you want early review or coordination
 - Mark ready for review when complete
 - Useful for architectural discussions before full implementation
+- Working only on a local branch with no PR is fine for short offline bursts; for sustained online work, prefer a draft PR so the repo doesn't look idle while two people unknowingly build the same thing
 
 ### Work-in-Progress PRs
 
@@ -447,7 +449,7 @@ A maintainer creates a release branch when:
 
 **Important:** Release branches freeze a specific point in dev, allowing ongoing PRs to continue merging into dev without affecting the release preparation. Release branches are for version bumps and docs only — no code changes (see [Release Branches](#release-branches): if you find a bug, fix in dev and either merge dev into the release branch or ship without the fix).
 
-**Tags are created during the release stage:** When you are ready to release, you create the release branch, do version bumps and final testing, then merge the release branch to main. Only after that merge do you create the tag and publish the release. The release (GitHub release) is the canonical record of what shipped; **`phase.md` §9 Changelog** is updated on each release branch with the title and body (see [Documentation Standards](#documentation-standards)). The tag is a simple version-number pointer to that commit.
+**Tags are created during the release stage:** When you are ready to release, you create the release branch, do version bumps and final testing, then merge the release branch to main. Only after that merge do you create the tag and publish the release. The release (GitHub release) is the canonical record of what shipped; RELEASELOG.md in the repo is updated on each release branch with the title and body (see [Documentation Standards](#documentation-standards)). The tag is a simple version-number pointer to that commit.
 
 ### Preparation
 
@@ -458,19 +460,19 @@ A maintainer creates a release branch when:
    ```bash
    git checkout dev
    git pull origin dev
-   git checkout -b release/0.1.50-Sumomo  # Replace with actual version-codename
+   git checkout -b release/v3.0.0-kiwicrab  # Replace with actual version
    ```
 5. Update version references on the release branch:
-   - Workspace `Cargo.toml` (`[workspace.package].version`)
-   - `man/elda.1` (version string in `.TH` / synopsis if present)
-   - `phase.md` (header **Version:** line)
-   - `README.md` (version callouts, if needed)
-   - Example configs only if they embed a version string
+   - `Cargo.toml` (root directory)
+   - `flake.nix` (root directory)
+   - `README.md` (installation instructions, if needed)
+   - Man pages (`fsel.1` or similar)
+   - Example configs if they contain version info
 6. Commit version bump:
    ```bash
-   git commit -am "chore: bump version to 0.1.50-Sumomo"
+   git commit -am "chore: bump version to 3.0.0-kiwicrab"
    ```
-7. Prepare release notes using the [Release body template](#release-body-template) below; prepend the release title and body to **`phase.md` §9 Changelog** on the release branch, with a `---` separator above the previous entry.
+7. Prepare release notes using the [Release body template](#release-body-template) below; update **RELEASELOG.md** on the release branch with the release title and body, adding a `---` separator above the previous release(s).
 8. Verify [Semantic Versioning 2.0.0](https://semver.org/) compliance.
 9. Run final tests on the release branch:
    ```bash
@@ -484,20 +486,20 @@ A maintainer creates a release branch when:
 # 1. Merge release branch to main (prefer fast-forward)
 git checkout main
 git pull origin main
-git merge --ff-only release/0.1.50-Sumomo
+git merge --ff-only release/v3.0.0-kiwicrab
 
 # 2. Tag the release (tag = version number only, no codename)
-git tag -a 0.1.50 -m "0.1.50"
+git tag -a 3.0.0 -m "3.0.0"
 git push origin main --tags
 
 # 3. Merge release branch back to dev (so dev has the version bump)
 git checkout dev
-git merge release/0.1.50-Sumomo
+git merge release/v3.0.0-kiwicrab
 git push origin dev
 
 # 4. Delete the release branch only after it is merged to both main and dev
-git branch -d release/0.1.50-Sumomo
-git push origin --delete release/0.1.50-Sumomo
+git branch -d release/v3.0.0-kiwicrab
+git push origin --delete release/v3.0.0-kiwicrab
 ```
 
 **Always merge the release branch to both main and dev before deleting it.** If you already deleted the release branch, merge main into dev once as a one-off recovery.
@@ -513,16 +515,16 @@ If `--ff-only` fails, rebase the **release branch** onto latest `main`, then ret
 
 ### GitHub Release
 
-**Release title:** Use exactly `[version-codename]` in brackets, e.g. `[0.1.50-Sumomo]`. No date or extra text in the title.
+**Release title:** Use exactly `[version-codename]` in brackets, e.g. `[3.0.0-kiwicrab]`. No date or extra text in the title.
 
-**Git tag:** Use the version number only (no codename), e.g. `0.1.50`, `0.1.49`. Create the tag on main after the release branch is merged; then create the GitHub release from that tag and paste the release body below (same content as in `phase.md` §9 Changelog for this release).
+**Git tag:** Use the version number only (no codename), e.g. `3.0.0`, `2.5.0`, `2.4.0`. Create the tag on main after the release branch is merged; then create the GitHub release from that tag and paste the release body below (same content as in RELEASELOG.md for this release).
 
 ### Release body template
 
-The release body (and the block you add to `phase.md` §9 Changelog) uses this structure (omit sections that don’t apply). Prefer bullets under each heading; use sub-bullets for detail. Optionally cite PRs (e.g. “from pr #23”).
+The release body (and the block you add to RELEASELOG.md) uses this structure (omit sections that don’t apply). Prefer bullets under each heading; use sub-bullets for detail. Optionally cite PRs (e.g. “from pr #23”).
 
 ```markdown
-[0.1.50-Sumomo] Latest
+[3.0.0-kiwicrab] Latest
 
 Breaking changes
 
@@ -570,7 +572,7 @@ Contributors
 
 Compatibility
 
-- Language/runtime: e.g. Rust 1.94+ (unchanged).
+- Language/runtime: e.g. Rust 1.90+ (unchanged).
 - Platforms: e.g. GNU/Linux and *BSD (unchanged).
 - Config / database: compatible or breaking summary.
 - Breaking: if applicable, what users must do (back up, re-pin, etc.).
@@ -592,11 +594,11 @@ Compatibility
 
 Semantic Versioning 2.0.0 + optional codename.
 
-**Display version (codename):** `major.minor.patch-codename`, e.g. `0.1.50-Sumomo`.
+**Display version (codename):** `major.minor.patch-codename`, e.g. `3.0.0-kiwicrab`.
 
-**Git tag:** Version number only — `0.1.50`, `0.1.49`. No codename and no `v` prefix unless the project convention is to use `v`.
+**Git tag:** Version number only — `3.0.0`, `2.5.0`, `2.2.3`. No codename and no `v` prefix unless the project convention is to use `v` (e.g. `v3.0.0`).
 
-**Release title (GitHub / `phase.md` §9):** `[version-codename]` in brackets, e.g. `[0.1.50-Sumomo]`.
+**Release title (GitHub / RELEASELOG.md):** `[version-codename]` in brackets, e.g. `[3.0.0-kiwicrab]`.
 
 ### Semantic Versioning Rules
 
@@ -614,10 +616,11 @@ Semantic Versioning 2.0.0 + optional codename.
 - **Only maintainers** choose and update codenames
 - Codenames persist across MINOR and PATCH versions within same MAJOR version
 
-**Examples (Elda):**
-- `0.1.49-Sumomo`, `0.1.50-Sumomo`, `0.1.51-Sumomo` all use **Sumomo** on the `0.1.x` line
-- When `1.0.0` is released, maintainers choose a new codename for the `1.x` line
-- Then `1.0.0-<name>`, `1.1.0-<name>`, … share that codename until the next MAJOR bump
+**Examples:**
+- `2.0.0-seedclay`, `2.1.0-seedclay`, `2.5.0-seedclay` all use "seedclay"
+- When `3.0.0` is released, new codename chosen: `3.0.0-kiwicrab`
+- Then `3.0.0-kiwicrab`, `3.1.0-kiwicrab`, `3.2.0-kiwicrab` all use "kiwicrab"
+- When `4.0.0` is released, new codename chosen again
 
 ### Pre-release Suffixes
 
@@ -627,7 +630,7 @@ For unstable or beta releases:
 - `v2.0.0-rc.1` (release candidate)
 
 These can be combined with codenames:
-- `0.2.0-alpha-Sumomo`
+- `v3.0.0-alpha-kiwicrab`
 
 ### LTS and next / parallel release lines
 
@@ -641,8 +644,8 @@ If you maintain permanent branches for LTS and "next" (or similar) cycles, treat
 
 1. `README.md` — overview, install, usage
 2. `USAGE.md` — detailed guide (if needed)
-3. `LICENSE` — AGPL-3.0-or-later
-4. **`phase.md` §9 Changelog** — in-repo release log. We do not keep a separate `CHANGELOG.md`. On each release branch, prepend the release title and body to §9, with a `---` separator between entries (newest at top).
+3. `LICENSE` — BSD-2-Clause or similar
+4. **RELEASELOG.md** — in-repo release log. We do not keep CHANGELOG.md. On each release branch, prepend the release title and body to RELEASELOG.md, with a `---` separator between each release (newest at top).
 
 ### Code Docs
 
@@ -699,32 +702,32 @@ git push origin feat/detach-mode
 # 1. Create release branch from dev
 git checkout dev
 git pull origin dev
-git checkout -b release/0.1.50-Sumomo
+git checkout -b release/3.0.0-kiwicrab
 
-# 2. Update workspace Cargo.toml, man/elda.1, phase.md header + §9 Changelog, README if needed
+# 2. Update version numbers in Cargo.toml, flake.nix, etc.
 # ... edit files ...
-git commit -am "chore: bump version to 0.1.50-Sumomo"
+git commit -am "chore: bump version to 3.0.0-kiwicrab"
 
 # 3. Final testing
-cargo build -p elda-cli --release
-cargo test --workspace
+cargo build --release
+cargo test
 
 # 4. Merge to main (prefer fast-forward), tag (version number only), then create GitHub release
 git checkout main
 git pull origin main
-git merge --ff-only release/0.1.50-Sumomo
-git tag -a 0.1.50 -m "0.1.50"
+git merge --ff-only release/3.0.0-kiwicrab
+git tag -a 3.0.0 -m "3.0.0"
 git push origin main --tags
-# Create GitHub release: tag 0.1.50, title [0.1.50-Sumomo], body = release notes from template
+# Create GitHub release: tag 3.0.0, title [3.0.0-kiwicrab], body = release notes from template
 
 # 5. Merge back to dev
 git checkout dev
-git merge release/0.1.50-Sumomo
+git merge release/3.0.0-kiwicrab
 git push origin dev
 
 # 6. Clean up
-git branch -d release/0.1.50-Sumomo
-git push origin --delete release/0.1.50-Sumomo
+git branch -d release/3.0.0-kiwicrab
+git push origin --delete release/3.0.0-kiwicrab
 ```
 
 ### Hotfix
@@ -741,14 +744,14 @@ git commit -am "fix: prevent cache corruption"
 git push origin hotfix/cache
 # Open PR to main
 
-# Maintainer: add version bump (workspace Cargo.toml, man/elda.1, phase.md, etc.) on hotfix branch, then merge PR
-# ... bump to 0.1.51, commit, push ...
+# Maintainer: add version bump (Cargo.toml, README, etc.) on hotfix branch, then merge PR
+# ... bump to 3.0.1, commit, push ...
 # Merge PR to main
 
 # Maintainer: tag and release (no release branch)
-git tag -a 0.1.51 -m "0.1.51"
+git tag -a 3.0.1 -m "3.0.1"
 git push origin main --tags
-# Create GitHub release: title [0.1.51-Sumomo], body = release notes
+# Create GitHub release: title [3.0.1-kiwicrab], body = release notes
 
 # Merge main into dev
 git checkout dev
@@ -797,19 +800,19 @@ Example `.git/hooks/pre-commit`:
 
 ```bash
 #!/bin/bash
-cargo fmt --all -- --check || exit 1
-cargo clippy --workspace --all-targets -- -D warnings || exit 1
+cargo fmt -- --check || exit 1
+cargo clippy -- -D warnings || exit 1
 ```
 
 ### Continuous Integration
 
 Consider adding GitHub Actions for:
-- Automated formatting checks (`cargo fmt --all -- --check`)
-- Linting (`cargo clippy --workspace --all-targets -- -D warnings`)
-- Testing (`cargo test --workspace`)
-- Release builds (`cargo build -p elda-cli --release`)
+- Automated formatting checks (`cargo fmt --check`)
+- Linting (`cargo clippy`)
+- Testing (`cargo test`)
+- Release builds (`cargo build --release`)
 
-Example CI workflow structure:
+Example `.github/workflows/ci.yml` structure:
 ```yaml
 name: CI
 on: [push, pull_request]
@@ -836,7 +839,7 @@ This workflow forces sanity:
 - dev is your proving ground for code
 - main is sacred: releases and living docs
 - Reviews are collaborative, not confrontational
-- `phase.md` §9 Changelog and GitHub releases are the record; tags point at releases
+- RELEASELOG.md and GitHub releases are the record; tags point at releases
 
 Future you: if it's 2am and you're wondering how to do this properly — do it this way. You'll thank yourself later.
 

@@ -1,6 +1,6 @@
 # Binary / Binhost Native Remote
 
-Use this when you publish **prebuilt payloads** (binhost-style) in addition to—or instead of—expecting every client to build from source.
+Use this when you publish **prebuilt payloads** (binhost-style) in addition to - or instead of - expecting every client to build from source.
 
 ## Everything From Source-Only, Plus
 

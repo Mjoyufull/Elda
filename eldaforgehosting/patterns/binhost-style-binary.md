@@ -5,11 +5,11 @@
 ## Architecture
 
 ```text
-[CI] build → payload + minisig → upload origin
+[CI] build -> payload + minisig -> upload origin
               ↓
          sign index (asset_url, sha256, payload_sig)
               ↓
-[Clients] sync → cache try → asset_url fallback → install
+[Clients] sync -> cache try -> asset_url fallback -> install
 ```
 
 ## Maintainer Steps
