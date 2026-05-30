@@ -31,11 +31,11 @@ elda host push-recipes --profile yoka-main
 elda host link ./packages
 ```
 
-- `scan-tree` — parse and `rc publish-ready` status for every package under the tree.
-- `test-tree` — dry-run validation by default; `--install` opt-in disposable-root install smoke.
-- `diff-tree` — packages changed since a git ref (for publish planning).
-- `push-recipes` — push recipe commits to the configured forge remote.
-- `link` — sync a maintainer tree into the local CI workspace.
+- `scan-tree` - parse and `rc publish-ready` status for every package under the tree.
+- `test-tree` - dry-run validation by default; `--install` opt-in disposable-root install smoke.
+- `diff-tree` - packages changed since a git ref (for publish planning).
+- `push-recipes` - push recipe commits to the configured forge remote.
+- `link` - sync a maintainer tree into the local CI workspace.
 
 ## Publish pipeline
 
@@ -78,6 +78,6 @@ Prints example nginx/Caddy/static-server rules for content-addressed `GET /<sha2
 
 ## Channel model
 
-Use **one recipe monorepo** with **separate branches and signed indexes per channel** (`main` →
-`stable`, `staging` → `staging`, …). Clients register separate remotes (or URLs) with matching
+Use **one recipe monorepo** with **separate branches and signed indexes per channel** (`main` ->
+`stable`, `staging` -> `staging`, ...). Clients register separate remotes (or URLs) with matching
 `channel =` values. See [patterns/hybrid-staging-stable.md](./patterns/hybrid-staging-stable.md).

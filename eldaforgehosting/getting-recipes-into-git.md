@@ -25,7 +25,7 @@ Metadata-first import from a URL (branch, tag, or raw repo):
 
 ```sh
 elda a https://github.com/upstream/project
-# review gate → local packages/<pkgname>/ with generated or merged metadata
+# review gate -> local packages/<pkgname>/ with generated or merged metadata
 ```
 
 One-time snapshot: edit locally, commit to **your** recipe repo, publish index pointing at your `repo_commit`.
@@ -45,12 +45,12 @@ Configure `[submission]` in `config.toml` (see platform guides under [platforms/
 
 ## 4. Vendor / Import Workflows
 
-- `elda vendor add` / `vendor import` — vendor trees with metadata replacement policy
-- Bulk snapshot import — one-time many-package import with review gates (not a living remote)
+- `elda vendor add` / `vendor import` - vendor trees with metadata replacement policy
+- Bulk snapshot import - one-time many-package import with review gates (not a living remote)
 
-## 5. Interemote → Local Recipe (Advanced)
+## 5. Interemote -> Local Recipe (Advanced)
 
-Sync an overlay interemote, then copy or adapt generated metadata into your native repo if you want a **frozen** native index instead of dynamic translation. Most teams either stay on interemotes or maintain a native repo—not both for the same package name without priority policy.
+Sync an overlay interemote, then copy or adapt generated metadata into your native repo if you want a **frozen** native index instead of dynamic translation. Most teams either stay on interemotes or maintain a native repo - not both for the same package name without priority policy.
 
 ## 6. Fork an Existing Forge Repo
 

@@ -26,7 +26,7 @@ elda rmt add yoka-main=https://static.example.com/elda/index-v1.json.zst \
 
 - Prefer **native index** `asset_url` fields for prebuilt payloads.
 - For upstream projects on SourceHut, `release_asset` metadata can target tag artifacts when checksum sidecars exist.
-- Richer SourceHut ecosystem metadata beyond tag artifacts remains bounded; see [gitstuffeld.md](../../gitstuffeld.md).
+- Richer SourceHut ecosystem metadata beyond tag artifacts remains bounded in the current release.
 
 ## CI / Builds
 

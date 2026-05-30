@@ -1,7 +1,7 @@
 # `pkgit` reference fixtures
 
 These files are `pkgit` reference input for Elda. They model upstream pkgit
-behavior and formats; they are not a checkout of pkgit and they are not used as
+behavior and formats; they are not a pkgit checkout and they are not used as
 local runtime code.
 
 They are not runtime assets for Elda yet.

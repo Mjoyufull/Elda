@@ -31,10 +31,10 @@ Before contributing, please:
 1. Read [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md) for Git workflow, branching, and releases
 2. Read [CODE_STANDARDS.md](./CODE_STANDARDS.md) for Rust structure, testing, and implementation style
 3. Check existing [issues](https://github.com/Mjoyufull/Elda/issues) and [pull requests](https://github.com/Mjoyufull/Elda/pulls) to avoid duplicating work
-4. Understand that **all code changes go through pull requests** — no exceptions
+4. Understand that **all code changes go through pull requests** - no exceptions
 5. **Fork the repository** if you do not have write access (most contributors)
 
-For Project and CLI behavior questions, [SPEC.md](./SPEC.md) is the written contract. If something is not specified there, do not guess in code or docs — note the gap and ask in an issue or discussion.
+For Project and CLI behavior questions, [SPEC.md](./SPEC.md) is the written contract. If something is not specified there, do not guess in code or docs - note the gap and ask in an issue or discussion.
 
 ### Key Resources
 
@@ -65,9 +65,9 @@ Elda is a Rust workspace. You will need:
 
 The full workspace test suite may invoke host build tools when integration tests exercise those lanes. You do not need every tool unless you are working on or running tests for that area:
 
-- **zig**, **nimble**, **make**, **sh** — build-system integration tests
-- **pacman**, **portage**, **xbps**, or other distro tooling — only when working on interbuild or migration adapters for that backend
-- **GPG** / signing material — publish and trust workflows
+- **zig**, **nimble**, **make**, **sh** - build-system integration tests
+- **pacman**, **portage**, **xbps**, or other distro tooling - only when working on interbuild or migration adapters for that backend
+- **GPG** / signing material - publish and trust workflows
 
 For day-to-day CLI work, building `elda-cli` and running disposable-root tests in `elda-core` is usually enough.
 
@@ -178,7 +178,7 @@ When adding behavior, put types and shared logic in the smallest crate that owns
 
 ### Documentation Changes
 
-**Docs go to `main`.** Documentation-only changes (typos, grammar, operator clarifications, example fixes) use a branch from **`main`** and a PR **targeting `main`** — not `dev`. After merge to `main`, a maintainer merges `main` into `dev` so `dev` stays in sync.
+**Docs go to `main`.** Documentation-only changes (typos, grammar, operator clarifications, example fixes) use a branch from **`main`** and a PR **targeting `main`** - not `dev`. After merge to `main`, a maintainer merges `main` into `dev` so `dev` stays in sync.
 
 **Criteria for docs-only:**
 
@@ -211,13 +211,13 @@ git push origin docs/fix-usage-install-loop
 | **main** | Tagged releases and living docs. Code reaches `main` only via release or hotfix branches. |
 | **dev** | Integration branch for all code work. |
 
-| Type | Naming | Base → Target |
+| Type | Naming | Base -> Target |
 |------|--------|----------------|
-| Feature | `feat/name` | `dev` → `dev` |
-| Fix | `fix/name` | `dev` → `dev` |
-| Refactor | `refactor/name` | `dev` → `dev` |
-| Docs | `docs/name` | `main` → `main` |
-| Chore | `chore/name` | `dev` → `dev` |
+| Feature | `feat/name` | `dev` -> `dev` |
+| Fix | `fix/name` | `dev` -> `dev` |
+| Refactor | `refactor/name` | `dev` -> `dev` |
+| Docs | `docs/name` | `main` -> `main` |
+| Chore | `chore/name` | `dev` -> `dev` |
 | Release | `release/0.1.50-Sumomo` | maintainer only |
 
 Full workflow detail: [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md).
@@ -453,8 +453,8 @@ Summary (detail in [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md)):
 
 1. Merge `main` into `dev` so docs are current
 2. Create `release/<version>-<codename>` from `dev`
-3. Bump version in workspace `Cargo.toml`, `man/elda.1`, `phase.md` (header + §9 Changelog), and README if needed
-4. Run `cargo test --workspace` and release build on the release branch
+3. Bump version in workspace `Cargo.toml`, `man/elda.1`, `RELEASE_LOG.md`, `phase.md`, and README if needed
+4. Run `cargo test --workspace` and `cargo build -p elda-cli --release` on the release branch
 5. Merge release branch to `main`, tag **version number only** (e.g. `0.1.50`), publish GitHub release with title `[0.1.50-Sumomo]`
 6. Merge release branch back to `dev`, delete release branch
 
@@ -483,8 +483,8 @@ Summary (detail in [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md)):
 
 ## Getting Help
 
-- **Issues** — bugs and feature requests
-- **PR comments** — questions about a specific change
+- **Issues** - bugs and feature requests
+- **PR comments** - questions about a specific change
 
 **Q: Typo in README only?**  
 A: Branch from `main`, PR to `main`.
@@ -510,10 +510,10 @@ See [LICENSE](./LICENSE).
 - [Rust Book](https://doc.rust-lang.org/book/)
 - [Conventional Commits](https://www.conventionalcommits.org/)
 - [Semantic Versioning](https://semver.org/)
-- [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md) — branching, releases, review policy
-- [CODE_STANDARDS.md](./CODE_STANDARDS.md) — Rust implementation standards
-- [SPEC.md](./SPEC.md) — product contract
-- [USAGE.md](./USAGE.md) — operator workflows
+- [PROJECT_STANDARDS.md](./PROJECT_STANDARDS.md) - branching, releases, review policy
+- [CODE_STANDARDS.md](./CODE_STANDARDS.md) - Rust implementation standards
+- [SPEC.md](./SPEC.md) - product contract
+- [USAGE.md](./USAGE.md) - operator workflows
 
 **Questions?** Open an [issue](https://github.com/Mjoyufull/Elda/issues) 
 Thank you for contributing to Elda.

@@ -1,6 +1,6 @@
 # Pattern: Hybrid Staging + Stable Channels
 
-**Goal:** Same recipe Git monorepo, **separate branches and signed indexes** per channel (`main` / `staging` / …), different trust posture. This is the default channel model for native Elda hosting—not “one branch only.”
+**Goal:** Same recipe Git monorepo, **separate branches and signed indexes** per channel (`main` / `staging` / ...), different trust posture. This is the default channel model for native Elda hosting - not "one branch only."
 
 ## Two Remotes, One `packages_url`
 

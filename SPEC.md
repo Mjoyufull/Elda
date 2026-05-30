@@ -1,4 +1,4 @@
-# Elda — Specification
+# Elda - Specification
 **Version:** 0.1.49-Sumomo
 **Date:** 2026-05-18
 **Status:** Draft
@@ -231,8 +231,8 @@ Supported source-kind contracts:
 | --- | --- | --- |
 | `url_archive` | `url`, `sha256` | Direct vendor or upstream archive fetch. Optional fields may describe archive stripping, binary selection, file renames, or subdirectory selection. |
 | `github_release` | `repo`, `tag` or `release = "latest"`, `asset`, `sha256` | GitHub release-backed binary/vendor source selected by repo/tag/asset. It accepts the same extraction-selection fields as `url_archive`. |
-| `release_asset` | `provider`, `repo`, `tag` or `release = "latest"`, `asset`, `sha256`; optional `host` | Provider-neutral forge release binary (GitLab, Gitea, Forgejo, SourceHut, `direct`, etc.) using the same asset/checksum and multi-arch `assets = { … }` authoring rules as `github_release` where applicable. |
-| `appimage` | `binary`, `sha256`, and either direct `url` **or** release-style fields (`repo`, `tag` or `release`, `asset`, optional `provider`, optional `host`; multi-arch `assets = { … }` like `github_release`) | **Type 2** AppImage passthrough: checksum-verified payload stored under `usr/lib/elda/appimages/<pkgname>/<epoch:pkgver-pkgrel>/payload/`, stable launcher as `usr/bin/<binary>` → symlink to that payload. Desktop integration (`.desktop`, icons, `usr/share/metainfo`) is staged by **reading the embedded SquashFS only** (no execution of the AppImage runtime). Optional `integration = "none"` skips that integration; omitting `integration` or `integration = "desktop"` enables it. Does not use archive strip/subdir/rename fields. |
+| `release_asset` | `provider`, `repo`, `tag` or `release = "latest"`, `asset`, `sha256`; optional `host` | Provider-neutral forge release binary (GitLab, Gitea, Forgejo, SourceHut, `direct`, etc.) using the same asset/checksum and multi-arch `assets = { ... }` authoring rules as `github_release` where applicable. |
+| `appimage` | `binary`, `sha256`, and either direct `url` **or** release-style fields (`repo`, `tag` or `release`, `asset`, optional `provider`, optional `host`; multi-arch `assets = { ... }` like `github_release`) | **Type 2** AppImage passthrough: checksum-verified payload stored under `usr/lib/elda/appimages/<pkgname>/<epoch:pkgver-pkgrel>/payload/`, stable launcher as `usr/bin/<binary>` -> symlink to that payload. Desktop integration (`.desktop`, icons, `usr/share/metainfo`) is staged by **reading the embedded SquashFS only** (no execution of the AppImage runtime). Optional `integration = "none"` skips that integration; omitting `integration` or `integration = "desktop"` enables it. Does not use archive strip/subdir/rename fields. |
 | `git` | `url`, one of `rev` / `tag` / `branch` | Normal git-source recipe. Declarative metadata plus optional `build.lua` define how the checkout is staged. Optional fields may restrict `subdir`, shallow fetch depth, or submodule behavior. |
 | `nix_flake` | `url`; optional `rev`, `lockfile`, `installable` | Git-backed interbuild source normalized through the `nix_flake` contract in §12.1. Persisted install provenance becomes `source_kind = interbuild`. |
 | `gentoo_overlay` | `url`, `package`; optional `rev`, `binhost`, `use` | Git-backed interbuild source normalized through the `gentoo_overlay` contract in §12.2. Persisted install provenance becomes `source_kind = interbuild`. |
@@ -494,7 +494,7 @@ Every dependency family (`depends`, `makedepends`, `checkdepends`, `recommends`,
 The `when` predicate is a comma-separated list of `+flag` (must be enabled) and `-flag` (must be
 disabled) atoms. Empty predicates, unknown flag names, and contradictory atoms (e.g. `+x,-x`) are
 recipe-time errors. Conditional dependencies that fail their predicate are *invisible* to the
-resolver — they do not contribute synthetic providers, do not consume choice slots, and do not
+resolver - they do not contribute synthetic providers, do not consume choice slots, and do not
 appear in the resulting plan.
 
 ### 7.4 Variant Identity Contract
@@ -1039,7 +1039,7 @@ Curated first-party shim set:
 - `toolchain-funcs`
 - `xdg`
 
-## 13. Interepo — Foreign Repository Consumption
+## 13. Interepo - Foreign Repository Consumption
 Interepo packages are translated into native Elda metadata and then handled by the normal resolver, transaction engine, and ownership model. Translation preserves foreign repo identity, translation ruleset identity, and verification confidence as first-class provenance.
 
 ### 13.1 Adapter Model
@@ -1360,8 +1360,8 @@ Command distinctions:
 Rules:
 - all read-only commands should support `--json`
 - mutating commands should support `--dry-run`; when combined with `--json`, they emit the planned transaction instead of human text
-- mutating commands may write one persistent per-run session log when `[logging].level` is `1`–`3` (default `0` disables session log files); `--log-level 0|1|2|3` overrides the config default for that invocation
-- when session logging uses a `~/…` directory and Elda runs as root via `sudo`/`doas`, that path resolves from the invoking user (`SUDO_UID` / `SUDO_USER` / `DOAS_USER` and `/etc/passwd`) so logs land under the operator's config home instead of `/root/.config` when resolution succeeds
+- mutating commands may write one persistent per-run session log when `[logging].level` is `1`-`3` (default `0` disables session log files); `--log-level 0|1|2|3` overrides the config default for that invocation
+- when session logging uses a `~/...` directory and Elda runs as root via `sudo`/`doas`, that path resolves from the invoking user (`SUDO_UID` / `SUDO_USER` / `DOAS_USER` and `/etc/passwd`) so logs land under the operator's config home instead of `/root/.config` when resolution succeeds
 - ambiguous provider or source selection in non-interactive mode is a hard error
 - exit codes are stable enough for scripting: `0` success, `1` operator/runtime failure, `2` resolution or validation failure, `3` trust/auth failure
 
@@ -1676,7 +1676,7 @@ allow_stale = false
 exclude = ["firefox", "vlc"]
 ```
 
-`[metadata].release_binary_format_priority` lists forge-release payload format identifiers in preference order (`tar-gz`, `tar-xz`, `tar-zst`, `zip`, `raw-binary`, `deb`, `rpm`, `apk`, `pacman-package`, `app-image`, `unknown`, with aliases such as `appimage` normalized to `app-image`). An **empty** list means “use implementation defaults.” A **non-empty** list is exhaustive for automatic binary selection from release summaries: formats not listed are not auto-chosen.
+`[metadata].release_binary_format_priority` lists forge-release payload format identifiers in preference order (`tar-gz`, `tar-xz`, `tar-zst`, `zip`, `raw-binary`, `deb`, `rpm`, `apk`, `pacman-package`, `app-image`, `unknown`, with aliases such as `appimage` normalized to `app-image`). An **empty** list means "use implementation defaults." A **non-empty** list is exhaustive for automatic binary selection from release summaries: formats not listed are not auto-chosen.
 
 Provider policy uses `[resolver.provider_preferences]`. Each key is a virtual dependency or
 `provides` name, and each value is an ordered list of concrete package names. The resolver tries

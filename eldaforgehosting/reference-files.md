@@ -14,10 +14,10 @@
 
 Remote examples:
 
-- `examples/config/remotes.d/yoka-main.toml` — source-capable pinned remote
-- `examples/config/remotes.d/yoka-staging.toml` — staging channel
-- `examples/config/remotes.d/heather-overlay.toml` — Gentoo interemote
-- `examples/config/remotes.d/blackhole-vl.toml` — Void-style interemote
+- `examples/config/remotes.d/yoka-main.toml` - source-capable pinned remote
+- `examples/config/remotes.d/yoka-staging.toml` - staging channel
+- `examples/config/remotes.d/heather-overlay.toml` - Gentoo interemote
+- `examples/config/remotes.d/blackhole-vl.toml` - Void-style interemote
 
 Cache examples:
 
@@ -26,4 +26,4 @@ Cache examples:
 
 Host profile example:
 
-- `examples/config/host.d/yoka.toml.example` — copy to `/etc/elda/host.d/yoka.toml`
+- `examples/config/host.d/yoka.toml.example` - copy to `/etc/elda/host.d/yoka.toml`

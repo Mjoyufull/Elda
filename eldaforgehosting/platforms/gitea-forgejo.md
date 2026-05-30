@@ -39,7 +39,7 @@ Forgejo uses the same Gitea-compatible API v1 surface for PR creation in the cur
 
 ## Releases
 
-Gitea/Forgejo release assets are supported for `release_asset` binary lanes when metadata names the host. Publish payloads via forge releases **or** static URLs in the native index—both work if URLs are stable.
+Gitea/Forgejo release assets are supported for `release_asset` binary lanes when metadata names the host. Publish payloads via forge releases **or** static URLs in the native index - both work if URLs are stable.
 
 ## Why Split Index From Forge
 

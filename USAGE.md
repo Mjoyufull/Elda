@@ -2,7 +2,7 @@
 
 This guide explains how to run a machine day to day with Elda as the package manager: what
 Elda records, how installs actually land on disk, and which commands to use in which order.
-Command names are listed where they help, but the goal is understanding—not a cheat sheet.
+Command names are listed where they help, but the goal is understanding - not a cheat sheet.
 
 Exact behavior contracts live in [SPEC.md](./SPEC.md). Native hosting, indexes, and publish
 pipelines are in [eldaforgehosting/](./eldaforgehosting/README.md). Worked recipes and config
@@ -26,7 +26,7 @@ dependency edges, manifest hashes, and which activation backend owns the files.
 
 **World** (`/var/lib/elda/db/world`) is the set of packages you intend to keep: everything
 installed with reason `base` or `explicit`. Dependency-only packages (`dep`) are derived from
-the graph; they are not world anchors. `elda autoremove` removes orphans—packages nothing in
+the graph; they are not world anchors. `elda autoremove` removes orphans - packages nothing in
 world or active profiles still requires.
 
 **Transactions** wrap mutations. Each install/remove/upgrade writes a journal under
@@ -119,7 +119,7 @@ Drop-ins:
 | `[flags.*]` | Feature flags that change dependency resolution and `variant_id` |
 | `[resolver.provider_preferences]` | Which virtual provider wins when several packages provide the same name |
 | `[git]` | Tag policy, allowed protocols for git clones |
-| `[logging]` | Session logs for mutating commands (`level` 1–3, or `--log-level`) |
+| `[logging]` | Session logs for mutating commands (`level` 1-3, or `--log-level`) |
 | `[display]` | Human vs machine output, tree characters for live progress |
 | `[metadata]` | Order Elda tries strategies for `elda a` / raw-link installs |
 | `[trust].release_keys` | Trusted keys for signed release assets; declared sidecars fail closed when keys are missing |
@@ -128,7 +128,7 @@ Use [examples/config/](./examples/config/) as a starting point. [su/config.toml]
 shows a host-oriented privilege layout.
 
 **Remotes** are signed indexes plus optional `packages_url` (git repo of recipes). **Caches**
-are optional HTTP mirrors keyed by payload SHA256—lookups only; `elda sync` never reads a cache
+are optional HTTP mirrors keyed by payload SHA256 - lookups only; `elda sync` never reads a cache
 as a package index.
 
 ---
@@ -137,12 +137,12 @@ as a package index.
 
 A typical session on a machine that already has Elda configured:
 
-1. **Refresh metadata** — `elda sync` (all remotes) or `elda sync yoka-main` (named only).
-2. **See what changed** — read sync summary (add/remove counts, stale remotes, trust issues).
-3. **Plan a change** — `elda i <pkg> --dry-run` or `elda u --dry-run` before mutating.
-4. **Apply** — run without `--dry-run`; watch live progress on a TTY (or `--no-stream` in CI).
-5. **Verify** — `elda check`, `elda verify <pkg>`, or `elda doctor` after large changes.
-6. **Read advisories** — human success output lists reboot/restart hints when kernel, init, or
+1. **Refresh metadata** - `elda sync` (all remotes) or `elda sync yoka-main` (named only).
+2. **See what changed** - read sync summary (add/remove counts, stale remotes, trust issues).
+3. **Plan a change** - `elda i <pkg> --dry-run` or `elda u --dry-run` before mutating.
+4. **Apply** - run without `--dry-run`; watch live progress on a TTY (or `--no-stream` in CI).
+5. **Verify** - `elda check`, `elda verify <pkg>`, or `elda doctor` after large changes.
+6. **Read advisories** - human success output lists reboot/restart hints when kernel, init, or
    boot assets changed.
 
 ```sh
@@ -153,8 +153,8 @@ elda i hyprland
 elda check
 ```
 
-Use `elda doctor` when bootstrap paths, remotes, trust, or release-readiness look wrong—it is
-the aggregated “is this root healthy?” command, not a substitute for `elda check` after every
+Use `elda doctor` when bootstrap paths, remotes, trust, or release-readiness look wrong - it is
+the aggregated "is this root healthy?" command, not a substitute for `elda check` after every
 small install.
 
 ---
@@ -175,7 +175,7 @@ elda --json version       # automation
 | `--dry-run` | Plan only; no journal commit |
 | `--no-stream` | Suppress live progress; print final report once |
 | `--offline` | Sync/install uses cached verified snapshots and local payloads only |
-| `--log-level 0–3` | Per-run session log verbosity (overrides `[logging].level`) |
+| `--log-level 0-3` | Per-run session log verbosity (overrides `[logging].level`) |
 | `-S` | One-shot system mode on the live host |
 | `--accept-rotated-key <remote>` | Confirm TOFU key rotation for that remote |
 
@@ -216,11 +216,11 @@ verification state. `elda cache ls` shows cache policy and usage.
 
 **Trust models:**
 
-- **Pinned** — you supply trusted keys up front; safest for production remotes.
-- **TOFU** — first successful sync can enroll a key; later rotations need explicit operator
+- **Pinned** - you supply trusted keys up front; safest for production remotes.
+- **TOFU** - first successful sync can enroll a key; later rotations need explicit operator
   confirmation (`--accept-rotated-key`) in non-interactive paths.
 
-**Channels** — each remote document selects a channel (`stable`, `staging`, …). The index must
+**Channels** - each remote document selects a channel (`stable`, `staging`, ...). The index must
 publish that channel; Elda fails closed if you request a channel the remote does not ship.
 
 ---
@@ -233,7 +233,7 @@ publish that channel; Elda fails closed if you request a channel the remote does
 | --- | --- | --- |
 | Synced name | `elda i ripgrep` | Resolve from local snapshot of remote index |
 | Local recipe | `elda i ./examples/recipes/02-source-cargo/ripgrep` | Use `pkg.lua` under recipes dir |
-| Git URL | `elda i https://github.com/org/repo` | Metadata strategy → review → build/install |
+| Git URL | `elda i https://github.com/org/repo` | Metadata strategy -> review -> build/install |
 | Explicit lane | `elda ig foo` / `elda ib foo` | Force source or binary |
 
 Lane selection for maintained packages follows `install_preference`, remote priority, and
@@ -250,7 +250,7 @@ elda i foo --use=+wayland,-x11    # one-shot flag override (see flags section)
 - **Hard dependencies** (`depends`) are installed automatically and recorded as `dep`.
 - **Recommends** install by default when satisfiable (`install_recommends = true`); disable in
   config or per command when you want a minimal closure.
-- **Conflicts** and **replaces** are enforced at plan time—ambiguous or illegal plans fail
+- **Conflicts** and **replaces** are enforced at plan time - ambiguous or illegal plans fail
   closed with a structured blocked report.
 - **Virtual providers** (`provides`) are resolved using remote priority and
   `[resolver.provider_preferences]`; ambiguity without policy is an error.
@@ -278,7 +278,7 @@ elda git releases Mjoyufull/fsel --tag v3.3.1
 ```
 
 VCS-style installed packages stay pinned to the commit installed until you explicitly upgrade
-with a new ref (`elda u pkg --to-tag …`).
+with a new ref (`elda u pkg --to-tag ...`).
 
 ### Metadata without installing (`elda a` / `elda add`)
 
@@ -343,7 +343,7 @@ elda downgrade hyprland 0:0.44.0-1
 elda downgrade fsel --to-tag v3.2.0
 ```
 
-**Pin** — stay on an exact version. **Hold** — skip upgrades during `elda u`. **Downgrade** —
+**Pin** - stay on an exact version. **Hold** - skip upgrades during `elda u`. **Downgrade** -
 install an older cached/archived build; reverse dependencies are checked.
 
 ### Orphans
@@ -412,7 +412,7 @@ elda config apply /etc/foo.conf  # accept the package version (merge policy appl
 elda config keep /etc/foo.conf   # keep your modified copy
 ```
 
-Resolve conffiles before assuming a upgrade “failed”—sometimes activation succeeded but conffiles
+Resolve conffiles before assuming a upgrade "failed" - sometimes activation succeeded but conffiles
 await a decision.
 
 ---
@@ -431,7 +431,7 @@ elda fix-triggers              # reconcile drifted trigger state
 
 `elda pf show` lists pending init/provider transitions and activation class (`live`,
 `restart-required`, `relog-required`, `reboot-required`). Kernel/init/boot changes are honest
-**reboot-required**—Elda updates on-disk state; it does not hot-swap a running kernel.
+**reboot-required** - Elda updates on-disk state; it does not hot-swap a running kernel.
 
 ---
 
@@ -454,7 +454,7 @@ elda pf add-foreign-arch i386
 `pf apply` installs profile packages and records them as world anchors. Policy fields persist
 in the profile-state record and feed `pf show` / `state export`.
 
-**Desired-state documents** capture intent for reproducibility—not a disk image:
+**Desired-state documents** capture intent for reproducibility - not a disk image:
 
 ```sh
 elda state show
@@ -488,12 +488,12 @@ Per-package overrides use `[flags.package."name"]` or version atoms like
 
 ## Remotes, sync, and offline use
 
-**Native remote** — `index_url` points at a signed `index-v1.json.zst` (plus `.sig`). Optional
+**Native remote** - `index_url` points at a signed `index-v1.json.zst` (plus `.sig`). Optional
 `packages_url` enables source builds from a pinned recipe git commit in the index.
 
-**Interemote** — `index_url` is a git URL to an overlay or `srcpkgs` tree. Sync runs bounded
+**Interemote** - `index_url` is a git URL to an overlay or `srcpkgs` tree. Sync runs bounded
 parsers (Gentoo overlay, Void-style templates, etc.) and merges translated metadata into the
-local snapshot—no foreign `emerge` / `xbps-src` at sync time.
+local snapshot - no foreign `emerge` / `xbps-src` at sync time.
 
 ```sh
 elda rmt preview heather-overlay
@@ -550,7 +550,7 @@ CI/index publication.
 
 ## Vendor binaries and AppImages
 
-**Vendor** — pin third-party release binaries as local recipes:
+**Vendor** - pin third-party release binaries as local recipes:
 
 ```sh
 elda vendor add rg-bin BurntSushi/ripgrep@14.1.0 --binary rg
@@ -558,7 +558,7 @@ elda vendor import vendor.lock.json
 elda vendor export vendor.lock.json
 ```
 
-**AppImage** — inspect before authoring `source.kind = "appimage"` recipes:
+**AppImage** - inspect before authoring `source.kind = "appimage"` recipes:
 
 ```sh
 elda appimage inspect ./AppName.AppImage
@@ -578,9 +578,9 @@ elda mg from pacman                 # whole-system metadata import
 
 **Important:** Adoption records what the foreign PM believes is installed; it does not
 silently take over files on disk. Path collisions fail closed. `mg lock` / `mg unlock` for live
-coexistence are not fully landed—treat migration as metadata-first today.
+coexistence are not fully landed - treat migration as metadata-first today.
 
-Use `elda check` for adoption warnings (including “zombie” adoptions with no upgrade path).
+Use `elda check` for adoption warnings (including "zombie" adoptions with no upgrade path).
 
 ---
 
@@ -634,7 +634,7 @@ Extensions are gated by `[capabilities].extension_runtime` in config.
 - Use `--no-stream` in CI logs to avoid cursor control sequences.
 - Parse exit codes; trust failures are distinct from resolution failures.
 - Session logs (when enabled) appear in `[logging].dir`; paths are echoed in human success output.
-- Bare query `elda foo` only works in human mode—scripts should call `elda search foo --json`.
+- Bare query `elda foo` only works in human mode - scripts should call `elda search foo --json`.
 
 ---
 
