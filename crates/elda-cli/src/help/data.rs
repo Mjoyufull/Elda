@@ -15,7 +15,7 @@ pub(super) const CORE_ROWS: &[HelpRow] = &[
         "install package names, recipes, or git targets",
     ),
     HelpRow::new("ig", "<target...>", "install through the source lane"),
-    HelpRow::new("ib", "<pkg...>", "install through the binary lane"),
+    HelpRow::new("ib", "<target...>", "install through the binary lane"),
     HelpRow::new(
         "sync",
         "",

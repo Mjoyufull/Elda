@@ -19,8 +19,8 @@ pub use format::{
 pub use import::{
     GitRefKind, GitRefRequest, ImportOptions, ImportReport, ImportResult, SnapshotImportReport,
     SourceOptionReport, add_recipe, add_recipe_with_options, add_recipe_with_priority,
-    default_release_binary_format_priority, effective_release_binary_format_priority,
-    infer_recipe_name, is_git_like_target,
+    arch_package_source_url, default_release_binary_format_priority,
+    effective_release_binary_format_priority, infer_recipe_name, is_git_like_target,
 };
 pub use model::{
     BuildDefinition, DependencyBody, DependencyEntry, FlagPredicate, FlagPredicateAtom,

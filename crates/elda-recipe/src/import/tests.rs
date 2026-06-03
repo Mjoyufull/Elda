@@ -108,6 +108,62 @@ fn add_recipe_priority_can_prefer_native_build_over_flake() {
 }
 
 #[test]
+fn add_recipe_records_cargo_build_intent() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let source = tempdir.path().join("cargo-tool");
+    fs::create_dir_all(source.join("src/bin")).expect("source dirs should exist");
+    fs::write(
+        source.join("Cargo.toml"),
+        "[package]\nname = \"cargo-tool\"\nversion = \"0.1.0\"\n[[bin]]\nname = \"admin\"\n",
+    )
+    .expect("Cargo.toml should exist");
+    fs::write(source.join("src/main.rs"), "fn main() {}\n").expect("main should exist");
+    fs::write(source.join("src/bin/side.rs"), "fn main() {}\n").expect("side should exist");
+
+    let report = expect_single(
+        add_recipe(
+            tempdir.path().join("recipes").as_path(),
+            path_str(&source),
+            None,
+        )
+        .expect("cargo scaffold should succeed"),
+    );
+    let pkg_lua =
+        fs::read_to_string(report.recipe_dir.join("pkg.lua")).expect("pkg.lua should exist");
+
+    assert!(pkg_lua.contains(r#"build = {"#));
+    assert!(pkg_lua.contains(r#"system = "cargo""#));
+    assert!(pkg_lua.contains(r#"bins = { "admin", "cargo-tool", "side" }"#));
+}
+
+#[test]
+fn add_recipe_records_python_script_build_intent() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let source = tempdir.path().join("python-tool");
+    fs::create_dir_all(&source).expect("source dir should exist");
+    fs::write(
+        source.join("pyproject.toml"),
+        "[project]\nname = \"python-tool\"\nversion = \"0.1.0\"\n[project.scripts]\npytool = \"tool:main\"\n",
+    )
+    .expect("pyproject should exist");
+
+    let report = expect_single(
+        add_recipe(
+            tempdir.path().join("recipes").as_path(),
+            path_str(&source),
+            None,
+        )
+        .expect("python scaffold should succeed"),
+    );
+    let pkg_lua =
+        fs::read_to_string(report.recipe_dir.join("pkg.lua")).expect("pkg.lua should exist");
+
+    assert!(pkg_lua.contains(r#"build = {"#));
+    assert!(pkg_lua.contains(r#"system = "python""#));
+    assert!(pkg_lua.contains(r#"bins = { "pytool" }"#));
+}
+
+#[test]
 fn add_recipe_priority_can_prefer_pkgbuild_over_flake() {
     let tempdir = TempDir::new().expect("tempdir should exist");
     let source = tempdir.path().join("aur-mixed-source");
@@ -185,6 +241,77 @@ source=('https://example.invalid/aur-fields.tar.gz')
     assert!(pkg_lua.contains(r#"provides = { "aur-fields" }"#));
     assert!(pkg_lua.contains(r#"conflicts = { "old-aur-fields" }"#));
     assert!(pkg_lua.contains(r#"replaces = { "older-aur-fields" }"#));
+}
+
+#[test]
+fn add_recipe_prefers_expanded_srcinfo_metadata_for_pkgbuilds() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let source = tempdir.path().join("aur-srcinfo-fields");
+    fs::create_dir_all(&source).expect("source dir should exist");
+    fs::write(
+        source.join("PKGBUILD"),
+        r#"_owner=example
+pkgname=aur-srcinfo-fields
+pkgver=1.2.3
+pkgrel=4
+pkgdesc="AUR field sample (prebuilt binary)"
+url="https://example.invalid/${_owner}/${pkgname}"
+license=('MIT')
+depends=('glibc' 'libgcc')
+source=('https://example.invalid/aur-srcinfo-fields.tar.gz')
+"#,
+    )
+    .expect("PKGBUILD should exist");
+    fs::write(
+        source.join(".SRCINFO"),
+        "pkgbase = aur-srcinfo-fields\n\tpkgdesc = AUR field sample (prebuilt binary)\n\tpkgver = 1.2.3\n\tpkgrel = 4\n\turl = https://example.invalid/example/aur-srcinfo-fields\n\tlicense = MIT\n\tdepends = glibc\n\tdepends = libgcc\n",
+    )
+    .expect(".SRCINFO should exist");
+
+    let report = expect_single(
+        add_recipe(
+            tempdir.path().join("recipes").as_path(),
+            path_str(&source),
+            None,
+        )
+        .expect("PKGBUILD scaffold should succeed"),
+    );
+    let pkg_lua =
+        fs::read_to_string(report.recipe_dir.join("pkg.lua")).expect("pkg.lua should exist");
+
+    assert!(pkg_lua.contains(r#"description = "AUR field sample (prebuilt binary)""#));
+    assert!(pkg_lua.contains(r#"upstream = "https://example.invalid/example/aur-srcinfo-fields""#));
+    assert!(pkg_lua.contains(r#"depends = { "glibc", "libgcc" }"#));
+}
+
+#[test]
+fn add_recipe_emits_binary_lane_for_srcinfo_archive() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let source = tempdir.path().join("aur-fields-bin");
+    fs::create_dir_all(&source).expect("source dir should exist");
+    fs::write(source.join("PKGBUILD"), "pkgname=aur-fields-bin\n").expect("PKGBUILD should exist");
+    fs::write(
+        source.join(".SRCINFO"),
+        "pkgbase = aur-fields-bin\n\tpkgname = aur-fields-bin\n\tpkgver = 1.2.3\n\tpkgrel = 1\n\tpkgdesc = Demo binary\n\turl = https://example.invalid/demo\n\tlicense = MIT\n\tprovides = demo=1.2.3\n\tsource_x86_64 = demo.tar.xz::https://example.invalid/demo-x86_64.tar.xz\n\tsha256sums_x86_64 = aaaa\n",
+    )
+    .expect(".SRCINFO should exist");
+
+    let report = expect_single(
+        add_recipe(
+            tempdir.path().join("recipes").as_path(),
+            path_str(&source),
+            None,
+        )
+        .expect("PKGBUILD scaffold should succeed"),
+    );
+    let pkg_lua =
+        fs::read_to_string(report.recipe_dir.join("pkg.lua")).expect("pkg.lua should exist");
+
+    assert!(pkg_lua.contains(r#"default_lane = "binary""#));
+    assert!(pkg_lua.contains(r#"kind = "aur_pkgbuild""#));
+    assert!(pkg_lua.contains(r#"kind = "url_archive""#));
+    assert!(pkg_lua.contains(r#"url = "https://example.invalid/demo-x86_64.tar.xz""#));
+    assert!(pkg_lua.contains(r#"binary = "demo""#));
 }
 
 #[test]
@@ -376,11 +503,13 @@ fn add_recipe_source_option_rejects_missing_option_index() {
 #[test]
 fn add_recipe_git_ref_option_renders_tag_instead_of_default_branch() {
     let tempdir = TempDir::new().expect("tempdir should exist");
+    let source = tempdir.path().join("tagged-tool");
+    fs::create_dir_all(&source).expect("source dir should exist");
 
     let report = expect_single(
         super::add_recipe_with_options(
             tempdir.path().join("recipes").as_path(),
-            "https://example.invalid/tagged-tool.git",
+            path_str(&source),
             None,
             &super::ImportOptions {
                 strategy_priority: vec!["git_source".to_owned()],
@@ -400,4 +529,19 @@ fn add_recipe_git_ref_option_renders_tag_instead_of_default_branch() {
 
     assert!(pkg_lua.contains(r#"tag = "v1.2.3""#));
     assert!(!pkg_lua.contains("branch = \"main\""));
+}
+
+#[test]
+fn arch_package_page_maps_to_official_packaging_git_source() {
+    assert_eq!(
+        super::detect::arch_package_source_url(
+            "https://archlinux.org/packages/extra-testing/x86_64/anki/"
+        )
+        .as_deref(),
+        Some("https://gitlab.archlinux.org/archlinux/packaging/packages/anki.git")
+    );
+    assert!(
+        super::detect::arch_package_source_url("https://archlinux.org/packages/extra/x86_64/")
+            .is_none()
+    );
 }

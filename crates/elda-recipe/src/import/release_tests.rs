@@ -188,25 +188,96 @@ fn github_release_strategy_renders_pinned_binary_metadata_when_checksum_exists()
         signature: None,
     };
     let metadata = super::metadata::GeneratedMetadata::default();
-    let pkg_lua = super::render::render_pkg_lua(
-        "fsel",
-        Some("https://github.com/Mjoyufull/fsel"),
-        &[],
-        "normal",
-        &super::strategy::SourceStrategy::GithubRelease(option),
-        &metadata,
-        None,
-    );
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "fsel",
+        source_url: Some("https://github.com/Mjoyufull/fsel"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
 
     assert!(pkg_lua.contains(r#"kind = "github_release""#));
     assert!(pkg_lua.contains(r#"repo = "Mjoyufull/fsel""#));
     assert!(pkg_lua.contains(r#"tag = "v3.4.1""#));
     assert!(pkg_lua.contains(r#"asset = "fsel-v3.4.1-x86_64-unknown-linux-gnu.tar.gz""#));
+    assert!(!pkg_lua.contains(r#"binary = "fsel""#));
     assert!(pkg_lua.contains(
         r#"sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa""#
     ));
     assert!(!pkg_lua.contains("url = \"https://github.com/Mjoyufull/fsel\""));
     assert!(!pkg_lua.contains("branch = \"main\""));
+}
+
+#[test]
+fn github_raw_binary_release_strategy_renders_asset_based_rename() {
+    let option = super::release_options::ReleaseOption {
+        provider: "github".to_owned(),
+        host: None,
+        repo: "Wraient/curd".to_owned(),
+        tag: "v1.5.2".to_owned(),
+        asset: "curd-linux-x86_64".to_owned(),
+        compatibility: "native-partial".to_owned(),
+        sha256: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()),
+        signature: None,
+    };
+    let metadata = super::metadata::GeneratedMetadata::default();
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "curd",
+        source_url: Some("https://github.com/Wraient/curd"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
+
+    assert!(pkg_lua.contains(r#"asset = "curd-linux-x86_64""#));
+    assert!(pkg_lua.contains(r#"upstream = "https://github.com/Wraient/curd""#));
+    assert!(pkg_lua.contains(r#"rename = "curd""#));
+    assert!(!pkg_lua.contains(r#"binary = "curd""#));
+}
+
+#[test]
+fn generated_release_metadata_uses_source_url_as_upstream_when_metadata_is_blank() {
+    let option = super::release_options::ReleaseOption {
+        provider: "github".to_owned(),
+        host: None,
+        repo: "owner/tool".to_owned(),
+        tag: "v1.0.0".to_owned(),
+        asset: "tool-linux-x86_64".to_owned(),
+        compatibility: "native-exact".to_owned(),
+        sha256: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()),
+        signature: None,
+    };
+    let metadata = super::metadata::GeneratedMetadata {
+        upstream: Some("   ".to_owned()),
+        ..super::metadata::GeneratedMetadata::default()
+    };
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "tool",
+        source_url: Some("https://github.com/owner/tool.git"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
+
+    assert!(pkg_lua.contains(r#"upstream = "https://github.com/owner/tool""#));
 }
 
 #[test]
@@ -222,15 +293,19 @@ fn github_appimage_release_strategy_renders_appimage_kind_and_derived_binary() {
         signature: None,
     };
     let metadata = super::metadata::GeneratedMetadata::default();
-    let pkg_lua = super::render::render_pkg_lua(
-        "demo",
-        Some("https://github.com/owner/demo"),
-        &[],
-        "normal",
-        &super::strategy::SourceStrategy::GithubRelease(option),
-        &metadata,
-        None,
-    );
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "demo",
+        source_url: Some("https://github.com/owner/demo"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
 
     assert!(pkg_lua.contains(r#"kind = "appimage""#));
     assert!(pkg_lua.contains(r#"binary = "demo-2.0.0-x86_64-unknown-linux-gnu""#));
@@ -280,15 +355,19 @@ fn gitlab_release_strategy_renders_provider_neutral_metadata_when_checksum_exist
         signature: None,
     };
     let metadata = super::metadata::GeneratedMetadata::default();
-    let pkg_lua = super::render::render_pkg_lua(
-        "tool",
-        Some("https://gitlab.com/owner/tool"),
-        &[],
-        "normal",
-        &super::strategy::SourceStrategy::GithubRelease(option),
-        &metadata,
-        None,
-    );
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "tool",
+        source_url: Some("https://gitlab.com/owner/tool"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
 
     assert!(pkg_lua.contains(r#"kind = "release_asset""#));
     assert!(pkg_lua.contains(r#"provider = "gitlab""#));
@@ -310,15 +389,19 @@ fn self_hosted_gitlab_release_strategy_renders_host_metadata() {
         signature: None,
     };
     let metadata = super::metadata::GeneratedMetadata::default();
-    let pkg_lua = super::render::render_pkg_lua(
-        "tool",
-        Some("https://gitlab.example.invalid/team/tool"),
-        &[],
-        "normal",
-        &super::strategy::SourceStrategy::GithubRelease(option),
-        &metadata,
-        None,
-    );
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "tool",
+        source_url: Some("https://gitlab.example.invalid/team/tool"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
 
     assert!(pkg_lua.contains(r#"kind = "release_asset""#));
     assert!(pkg_lua.contains(r#"provider = "gitlab""#));
@@ -408,15 +491,19 @@ fn sourcehut_release_option_renders_provider_neutral_metadata() {
         signature: Some("tool-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.minisig".to_owned()),
     };
     let metadata = super::metadata::GeneratedMetadata::default();
-    let pkg_lua = super::render::render_pkg_lua(
-        "tool",
-        Some("https://git.sr.ht/~chris/tool"),
-        &[],
-        "normal",
-        &super::strategy::SourceStrategy::GithubRelease(option),
-        &metadata,
-        None,
-    );
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "tool",
+        source_url: Some("https://git.sr.ht/~chris/tool"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
 
     assert!(pkg_lua.contains(r#"kind = "release_asset""#));
     assert!(pkg_lua.contains(r#"provider = "sourcehut""#));

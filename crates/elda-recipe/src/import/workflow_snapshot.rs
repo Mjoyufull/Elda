@@ -5,7 +5,7 @@ use crate::error::RecipeError;
 
 use super::legacy::copy_dir_recursive;
 use super::model::{GitRefKind, GitRefRequest, ImportOptions, SnapshotImportReport};
-use super::render::render_pkg_lua;
+use super::render::{PkgLuaRender, render_pkg_lua};
 
 pub(super) fn import_snapshot(
     recipes_dir: &Path,
@@ -75,15 +75,18 @@ pub(super) fn import_snapshot(
                 value: rev.clone(),
             });
 
-            let mut pkg_lua = render_pkg_lua(
-                &candidate.name,
-                Some(source_url),
-                &[],
-                "package",
-                &strategy,
-                &metadata,
-                git_ref.as_ref(),
-            );
+            let mut pkg_lua = render_pkg_lua(PkgLuaRender {
+                recipe_name: &candidate.name,
+                source_url: Some(source_url),
+                legacy_pkgdeps: &[],
+                recipe_kind: "package",
+                source_strategy: &strategy,
+                binary_strategy: None,
+                default_lane: "source",
+                metadata: &metadata,
+                build_intent: None,
+                git_ref: git_ref.as_ref(),
+            });
             pkg_lua = inject_snapshot_provenance(&pkg_lua, source_url, source_commit.as_deref());
 
             fs::write(recipe_staging_dir.join("pkg.lua"), pkg_lua)?;

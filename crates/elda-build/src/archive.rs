@@ -1,20 +1,16 @@
 mod release_url;
 mod source;
+mod tar_select;
 
 use std::fs;
-use std::io::BufReader;
 use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::path::Path;
 
-use flate2::read::GzDecoder;
-use liblzma::read::XzDecoder;
-use tar::Archive;
-use zstd::stream::read::Decoder as ZstdDecoder;
-
 use elda_recipe::{RecipeDocument, ScalarValue};
 use release_url::resolve_release_asset_url;
+use tar_select::{infer_archive_kind, stage_binary_from_tar};
 
 use crate::binary_fetch::fetch_binary_source;
 use crate::error::BuildError;
@@ -242,171 +238,6 @@ fn stage_plain_binary(
     Ok(())
 }
 
-fn stage_binary_from_tar(
-    source: &elda_recipe::SourceDefinition,
-    downloaded_path: &Path,
-    bin_dir: &Path,
-    kind: ArchiveKind,
-) -> Result<(), BuildError> {
-    let requested_binary = string_field(source, "binary")?;
-    let install_name = string_field_optional(source, "rename")
-        .map(ToOwned::to_owned)
-        .or_else(|| {
-            Path::new(requested_binary)
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .ok_or_else(|| {
-            BuildError::Invalid(format!(
-                "binary source `{}` requires a valid `binary` path",
-                source.kind
-            ))
-        })?;
-    let destination = bin_dir.join(install_name);
-    let requested_path = Path::new(requested_binary);
-    let basename_only = !requested_binary.contains('/');
-    let mut matched = false;
-
-    match kind {
-        ArchiveKind::Tar => {
-            let file = fs::File::open(downloaded_path)?;
-            extract_tar_binary(
-                Archive::new(BufReader::new(file)),
-                requested_path,
-                basename_only,
-                &destination,
-                &mut matched,
-            )?;
-        }
-        ArchiveKind::TarGz => {
-            let file = fs::File::open(downloaded_path)?;
-            extract_tar_binary(
-                Archive::new(GzDecoder::new(BufReader::new(file))),
-                requested_path,
-                basename_only,
-                &destination,
-                &mut matched,
-            )?;
-        }
-        ArchiveKind::TarZst => {
-            let file = fs::File::open(downloaded_path)?;
-            let decoder = ZstdDecoder::new(BufReader::new(file))?;
-            extract_tar_binary(
-                Archive::new(decoder),
-                requested_path,
-                basename_only,
-                &destination,
-                &mut matched,
-            )?;
-        }
-        ArchiveKind::TarXz => {
-            let file = fs::File::open(downloaded_path)?;
-            extract_tar_binary(
-                Archive::new(XzDecoder::new(BufReader::new(file))),
-                requested_path,
-                basename_only,
-                &destination,
-                &mut matched,
-            )?;
-        }
-    }
-
-    if !matched {
-        return Err(BuildError::Invalid(format!(
-            "archive `{}` does not contain requested binary `{requested_binary}`",
-            downloaded_path.display()
-        )));
-    }
-
-    fs::set_permissions(&destination, fs::Permissions::from_mode(0o755))?;
-    Ok(())
-}
-
-fn extract_tar_binary<R: std::io::Read>(
-    mut archive: Archive<R>,
-    requested_path: &Path,
-    basename_only: bool,
-    destination: &Path,
-    matched: &mut bool,
-) -> Result<(), BuildError> {
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        if !entry.header().entry_type().is_file() {
-            continue;
-        }
-
-        let path = entry.path()?.into_owned();
-        let is_match = if basename_only {
-            path.file_name() == requested_path.file_name()
-        } else {
-            path == requested_path
-        };
-        if !is_match {
-            continue;
-        }
-
-        if *matched {
-            if destination.exists() {
-                fs::remove_file(destination)?;
-            }
-            return Err(BuildError::Invalid(format!(
-                "archive contains multiple matches for `{}`; use an explicit binary path",
-                requested_path.display()
-            )));
-        }
-
-        entry.unpack(destination)?;
-        *matched = true;
-    }
-
-    Ok(())
-}
-
-/// Classify tarball compression from a filename or URL last segment.
-///
-/// Payloads in the content-addressed cache are stored as `<sha256>` with no
-/// extension, so callers must fall back to the download URL or recipe `asset`.
-fn archive_kind_from_name(name: &str) -> Option<ArchiveKind> {
-    if name.ends_with(".tar") {
-        Some(ArchiveKind::Tar)
-    } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
-        Some(ArchiveKind::TarGz)
-    } else if name.ends_with(".tar.zst") || name.ends_with(".tzst") {
-        Some(ArchiveKind::TarZst)
-    } else if name.ends_with(".tar.xz") || name.ends_with(".txz") {
-        Some(ArchiveKind::TarXz)
-    } else {
-        None
-    }
-}
-
-fn infer_archive_kind(
-    downloaded_path: &Path,
-    source_url: &str,
-    source: &elda_recipe::SourceDefinition,
-) -> Option<ArchiveKind> {
-    if let Some(name) = downloaded_path.file_name().and_then(|n| n.to_str())
-        && let Some(kind) = archive_kind_from_name(name)
-    {
-        return Some(kind);
-    }
-
-    if let Some(segment) = source_url.rsplit('/').next() {
-        let base = segment.split('?').next().unwrap_or(segment);
-        if let Some(kind) = archive_kind_from_name(base) {
-            return Some(kind);
-        }
-    }
-
-    if let Some(asset) = string_field_optional(source, "asset")
-        && let Some(kind) = archive_kind_from_name(asset)
-    {
-        return Some(kind);
-    }
-
-    None
-}
-
 fn string_field<'a>(
     source: &'a elda_recipe::SourceDefinition,
     key: &str,
@@ -426,57 +257,12 @@ fn string_field_optional<'a>(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ArchiveKind {
-    Tar,
-    TarGz,
-    TarZst,
-    TarXz,
-}
-
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
     use std::path::Path;
 
-    use elda_recipe::{ScalarValue, SourceDefinition};
-
-    use super::{ArchiveKind, infer_archive_kind};
-
-    fn source_with_asset(asset: &str) -> SourceDefinition {
-        SourceDefinition {
-            kind: "github_release".to_owned(),
-            fields: BTreeMap::from([
-                ("asset".to_owned(), ScalarValue::String(asset.to_owned())),
-                ("sha256".to_owned(), ScalarValue::String("x".to_owned())),
-            ]),
-            github_release_assets: BTreeMap::new(),
-            default_lane: None,
-            lanes: BTreeMap::new(),
-        }
-    }
-
-    #[test]
-    fn infer_archive_kind_falls_back_to_url_when_cache_file_is_sha256_named() {
-        let url = "https://github.com/example/p/releases/download/v1/p-1.0-x86_64-unknown-linux-gnu.tar.xz";
-        let source = source_with_asset("ignored-if-url-matches.tar.gz");
-        let path = Path::new(
-            "/var/cache/elda/src/62ede54ea3e30ae00b378bf7337f0e6ec1cbbb32f328d06cbd9084622e31e2d4",
-        );
-        assert_eq!(
-            infer_archive_kind(path, url, &source),
-            Some(ArchiveKind::TarXz)
-        );
-    }
-
-    #[test]
-    fn infer_archive_kind_uses_asset_when_url_has_no_suffix() {
-        let source = source_with_asset("bundle.tar.gz");
-        let path = Path::new("/tmp/abc123def456");
-        assert_eq!(
-            infer_archive_kind(path, "https://example.invalid/dl/abc", &source),
-            Some(ArchiveKind::TarGz)
-        );
+    fn demo_appimage_fixture() -> Option<std::path::PathBuf> {
+        std::env::var_os("ELDA_APPIMAGE_TEST_FIXTURE").map(std::path::PathBuf::from)
     }
 
     #[cfg(unix)]
@@ -484,16 +270,13 @@ mod tests {
     fn appimage_url_lane_stages_payload_symlink_and_desktop_integration() {
         use elda_recipe::parse_pkg_lua;
         use std::fs;
-        use std::path::PathBuf;
         use tempfile::tempdir;
 
         use crate::manifest::sha256_file;
 
-        let demo_fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../ref/gearlever/src/assets/demo.AppImage");
-        if !demo_fixture.is_file() {
+        let Some(demo_fixture) = demo_appimage_fixture().filter(|path| path.is_file()) else {
             return;
-        }
+        };
 
         let tmp = tempdir().expect("tempdir");
         let fixture = tmp.path().join("demo.AppImage");
@@ -581,16 +364,13 @@ mod tests {
     fn appimage_integration_none_skips_desktop_files() {
         use elda_recipe::parse_pkg_lua;
         use std::fs;
-        use std::path::PathBuf;
         use tempfile::tempdir;
 
         use crate::manifest::sha256_file;
 
-        let demo_fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../ref/gearlever/src/assets/demo.AppImage");
-        if !demo_fixture.is_file() {
+        let Some(demo_fixture) = demo_appimage_fixture().filter(|path| path.is_file()) else {
             return;
-        }
+        };
 
         let tmp = tempdir().expect("tempdir");
         let fixture = tmp.path().join("demo.AppImage");

@@ -29,7 +29,7 @@ pub(super) fn read_generated_metadata(
     };
     match strategy {
         SourceStrategy::GentooEbuild { package } => gentoo_metadata(source_dir, package),
-        SourceStrategy::AurPkgbuild => aur_metadata(&source_dir.join("PKGBUILD")),
+        SourceStrategy::AurPkgbuild => aur_metadata(source_dir),
         SourceStrategy::XbpsTemplate { package } => {
             let path = if source_dir.join(package).join("template").is_file() {
                 source_dir.join(package).join("template")
@@ -41,12 +41,17 @@ pub(super) fn read_generated_metadata(
         SourceStrategy::NixFlake => nix_metadata(&source_dir.join("flake.nix")),
         SourceStrategy::EldaNative { .. }
         | SourceStrategy::Git
-        | SourceStrategy::GithubRelease(_) => GeneratedMetadata::default(),
+        | SourceStrategy::GithubRelease(_)
+        | SourceStrategy::UrlArchive(_) => GeneratedMetadata::default(),
     }
 }
 
-fn aur_metadata(path: &Path) -> GeneratedMetadata {
-    let contents = read_file(path);
+fn aur_metadata(source_dir: &Path) -> GeneratedMetadata {
+    if let Some(metadata) = super::metadata_srcinfo::read_srcinfo_metadata(source_dir) {
+        return metadata;
+    }
+
+    let contents = read_file(&source_dir.join("PKGBUILD"));
     GeneratedMetadata {
         description: assignment_value(&contents, "pkgdesc"),
         licenses: array_values(&contents, "license"),

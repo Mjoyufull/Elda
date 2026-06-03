@@ -147,6 +147,57 @@ fn vendor_add_and_install_local_binary_recipe() {
 }
 
 #[test]
+fn install_replace_reinstalls_same_version_explicit_target() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let first = create_script_binary(tempdir.path(), "replace-source-one", "old payload");
+    write_local_binary_recipe(tempdir.path(), "replace-tool", &first, &[]);
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["replace-tool".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("first install should succeed");
+    assert_eq!(
+        run_installed_binary(tempdir.path(), "/opt/elda/bin/replace-tool"),
+        "old payload"
+    );
+
+    let second = create_script_binary(tempdir.path(), "replace-source-two", "new payload");
+    write_local_binary_recipe(tempdir.path(), "replace-tool", &second, &[]);
+    let report = run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["replace-tool".to_owned(), "--replace".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("replace install should restage even when version is unchanged");
+
+    let install = report.details.as_ref().and_then(|details| {
+        details
+            .get("installs")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|installs| installs.first())
+    });
+    assert_eq!(
+        install.and_then(|install| install.get("action")),
+        Some(&serde_json::Value::String("reinstall-explicit".to_owned()))
+    );
+    assert_eq!(
+        run_installed_binary(tempdir.path(), "/opt/elda/bin/replace-tool"),
+        "new payload"
+    );
+}
+
+#[test]
 fn vendor_export_and_import_round_trip_through_core_handlers() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/opt/elda");

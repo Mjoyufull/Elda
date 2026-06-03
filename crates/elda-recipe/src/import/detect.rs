@@ -10,6 +10,21 @@ pub fn is_git_like_target(input: &str) -> bool {
         || input.ends_with(".git")
 }
 
+pub fn arch_package_source_url(input: &str) -> Option<String> {
+    let path = input.strip_prefix("https://archlinux.org/packages/")?;
+    let mut segments = path.trim_end_matches('/').split('/');
+    let _repo = segments.next()?;
+    let _arch = segments.next()?;
+    let package = segments.next()?;
+    if package.is_empty() || segments.next().is_some() {
+        return None;
+    }
+
+    Some(format!(
+        "https://gitlab.archlinux.org/archlinux/packaging/packages/{package}.git"
+    ))
+}
+
 pub fn infer_recipe_name(source: &str) -> String {
     let trimmed = source.trim_end_matches('/');
     trimmed

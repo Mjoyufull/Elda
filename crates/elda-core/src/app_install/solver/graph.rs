@@ -16,6 +16,7 @@ use crate::error::CoreError;
 use elda_recipe::{DependencyBody, DependencyEntry};
 use elda_types::{ConstraintVersion, PackageVersion};
 
+use super::platform_capability::satisfies as host_platform_capability_satisfies;
 use super::types::{SolverPackage, SolverVersion};
 
 pub(crate) type SolverRange = Ranges<SolverVersion>;
@@ -287,6 +288,10 @@ impl<'a> SolverGraphBuilder<'a> {
                     SolverRange::empty()
                 },
             });
+        }
+
+        if host_platform_capability_satisfies(&constraint) {
+            return self.wrap_choice_edge(plan, Vec::new(), true, &constraint.name);
         }
 
         let packages = self.provider_package_names(&constraint.name, value)?;

@@ -317,6 +317,12 @@ pkg = {
     },
   },
 
+  build = {
+    system = "cargo",
+    bins = { "fd" },
+    tests = false,
+  },
+
   depends = {},
   recommends = {},
   provides = {},
@@ -335,6 +341,12 @@ pkg = {
   subpackages = {},
 }
 ```
+
+`build.bins` declares the intended launcher output for source lanes. Binary tar archives should
+declare `source.binary` when the archive has more than one executable; if they omit it, Elda only
+auto-selects a single executable candidate from the verified tar payload. Plain release assets that
+are already executable files use `rename` for the installed command name. Generated recipes keep a
+discovered homepage when one exists; otherwise raw link imports use the source URL as `upstream`.
 
 More complete package examples are in [examples/recipes](./examples/recipes). Annotated configuration and fixture-style samples live under [examples/config](./examples/config).
 

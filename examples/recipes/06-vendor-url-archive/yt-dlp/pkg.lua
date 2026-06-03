@@ -4,6 +4,10 @@
 -- that is not hosted as a GitHub release asset; it accepts the same
 -- extraction-selection fields (`strip_components`, `subdir`, `binary`,
 -- `rename`) as `github_release`.
+--
+-- `binary` is explicit here because maintained recipes should not rely on
+-- archive guessing when the layout is known. If `binary` is omitted, Elda only
+-- auto-selects from a tar archive when exactly one executable candidate exists.
 pkg = {
   name = "yt-dlp",
   description = "Feature-rich command-line audio/video downloader.",

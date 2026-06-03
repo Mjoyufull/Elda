@@ -53,6 +53,7 @@ impl AppContext {
                 provider_group: origin.and_then(|origin| origin.provider_group.clone()),
                 dependencies: package.dependencies.clone(),
                 already_installed,
+                force_reinstall: explicit_target.is_some() && request.replace,
             });
         }
 

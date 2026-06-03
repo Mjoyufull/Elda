@@ -55,22 +55,61 @@ impl ReleaseOption {
             .as_ref()
             .map(|signature| format!("    signature = \"{}\",\n", escape_lua_string(signature)))
             .unwrap_or_default();
-        let binary_line = if self.source_kind() == "appimage" {
-            format!(
-                "    binary = \"{}\",\n",
-                escape_lua_string(&launcher_name_from_appimage_asset(&self.asset))
-            )
-        } else {
-            String::new()
-        };
+        let install_fields = self.install_fields();
         format!(
-            "{provider_line}{host_line}    repo = \"{}\",\n    tag = \"{}\",\n    asset = \"{}\",\n    sha256 = \"{}\",\n{signature_line}{binary_line}",
+            "{provider_line}{host_line}    repo = \"{}\",\n    tag = \"{}\",\n    asset = \"{}\",\n    sha256 = \"{}\",\n{signature_line}{install_fields}",
             escape_lua_string(&self.repo),
             escape_lua_string(&self.tag),
             escape_lua_string(&self.asset),
             escape_lua_string(self.sha256.as_deref().unwrap_or_default()),
         )
     }
+
+    fn install_fields(&self) -> String {
+        if self.source_kind() == "appimage" {
+            let binary = launcher_name_from_appimage_asset(&self.asset);
+            return format!("    binary = \"{}\",\n", escape_lua_string(&binary));
+        }
+
+        if payload_format_kebab(&self.asset.to_ascii_lowercase()) == "raw-binary" {
+            let rename = launcher_name_from_raw_asset(&self.repo, &self.asset);
+            return format!("    rename = \"{}\",\n", escape_lua_string(&rename));
+        }
+
+        String::new()
+    }
+}
+
+fn launcher_name_from_repo(repo: &str) -> String {
+    repo.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(repo)
+        .trim_end_matches(".git")
+        .to_owned()
+}
+
+fn launcher_name_from_raw_asset(repo: &str, asset: &str) -> String {
+    let repo_launcher = launcher_name_from_repo(repo);
+    let basename = asset
+        .rsplit_once('/')
+        .map(|(_, tail)| tail)
+        .unwrap_or(asset)
+        .trim_end_matches(".exe");
+    if basename.eq_ignore_ascii_case(&repo_launcher) {
+        return repo_launcher;
+    }
+
+    let lower = basename.to_ascii_lowercase();
+    let repo_lower = repo_launcher.to_ascii_lowercase();
+    if lower
+        .strip_prefix(&repo_lower)
+        .is_some_and(|tail| tail.starts_with('-') || tail.starts_with('_'))
+    {
+        return repo_launcher;
+    }
+
+    basename.to_owned()
 }
 
 fn launcher_name_from_appimage_asset(asset: &str) -> String {

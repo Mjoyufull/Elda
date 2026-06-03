@@ -234,10 +234,11 @@ publish that channel; Elda fails closed if you request a channel the remote does
 | Synced name | `elda i ripgrep` | Resolve from local snapshot of remote index |
 | Local recipe | `elda i ./examples/recipes/02-source-cargo/ripgrep` | Use `pkg.lua` under recipes dir |
 | Git URL | `elda i https://github.com/org/repo` | Metadata strategy -> review -> build/install |
+| Arch package page | `elda ig https://archlinux.org/packages/extra/x86_64/anki/` | Follow the official packaging Git source -> PKGBUILD review -> source build |
 | Explicit lane | `elda ig foo` / `elda ib foo` | Force source or binary |
 
-Lane selection for maintained packages follows `install_preference`, remote priority, and
-recipe `default_lane`. Overrides:
+Lane selection for maintained packages follows the explicit command (`ig` / `ib`), an explicit
+`--prefer-*` flag, recipe `default_lane`, then `defaults.install_preference` (binary by default).
 
 ```sh
 elda i foo --prefer-source
@@ -248,6 +249,8 @@ elda i foo --use=+wayland,-x11    # one-shot flag override (see flags section)
 ### Dependency behavior
 
 - **Hard dependencies** (`depends`) are installed automatically and recorded as `dep`.
+- **Unversioned platform runtime capabilities** such as `glibc`, `libgcc`, and `libstdc++` on a GNU host are
+  satisfied by the running host; they are not looked up as Elda recipes.
 - **Recommends** install by default when satisfiable (`install_recommends = true`); disable in
   config or per command when you want a minimal closure.
 - **Conflicts** and **replaces** are enforced at plan time - ambiguous or illegal plans fail
@@ -268,6 +271,7 @@ elda i https://github.com/Mjoyufull/fsel
 elda i https://github.com/Mjoyufull/fsel --to-tag v3.3.1
 elda i https://github.com/Mjoyufull/fsel --to-rev abcdef1
 elda i https://github.com/Mjoyufull/fsel --strategy git_release
+elda ib https://github.com/orhun/ratty
 ```
 
 Inspect upstream before committing:
@@ -279,6 +283,15 @@ elda git releases Mjoyufull/fsel --tag v3.3.1
 
 VCS-style installed packages stay pinned to the commit installed until you explicitly upgrade
 with a new ref (`elda u pkg --to-tag ...`).
+
+When a checksum-backed forge release archive is detected, generated metadata records the expected
+launcher name and defaults plain `elda i` to the binary lane. Use `ig` to force a source build.
+Generated link metadata uses the source URL as `upstream` when parser-backed metadata does not
+provide a homepage, so raw git and forge-release imports do not start with a blank upstream field.
+For AUR `-bin` recipes, Elda also reads expanded `.SRCINFO` metadata and uses a native-architecture
+archive with a SHA-256 checksum as a binary lane when one is declared.
+If a URL maps to an existing local recipe name, Elda stops instead of silently reusing that recipe;
+install the local name explicitly or pass `--replace` to regenerate metadata from the URL.
 
 ### Metadata without installing (`elda a` / `elda add`)
 
@@ -530,6 +543,9 @@ Caches speed binary installs: Elda tries `cache base/<sha256>` before the origin
 ## Local recipes (`elda rc`)
 
 Maintained packages live under `/etc/elda/recipes/<pkgname>/` (`pkg.lua`, optional `build.lua`).
+For source lanes, `pkg.lua` can declare the expected build output with
+`build = { system = "cargo", bins = { "mytool" } }`. Elda also fills this table for generated ad
+hoc git metadata when static repo markers make the build system and launcher names clear.
 
 ```sh
 elda rc add mytool ./src/tree
@@ -557,6 +573,13 @@ elda vendor add rg-bin BurntSushi/ripgrep@14.1.0 --binary rg
 elda vendor import vendor.lock.json
 elda vendor export vendor.lock.json
 ```
+
+For `url_archive`, `github_release`, and provider-neutral `release_asset` tar payloads,
+`source.binary` is the explicit file to stage into `/usr/bin`. If it is omitted, Elda scans the
+verified tar payload and proceeds only when there is exactly one executable launcher candidate;
+otherwise it blocks and the recipe needs `binary = "..."`. For plain release assets that are the
+binary itself, generated metadata uses `rename` for the installed command instead of guessing an
+archive-internal `binary` path.
 
 **AppImage** - inspect before authoring `source.kind = "appimage"` recipes:
 

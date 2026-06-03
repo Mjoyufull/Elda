@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::detected::DetectedStrategies;
+use super::metadata_srcinfo::{SrcinfoBinaryArchive, read_srcinfo_binary_archive};
 use super::model::SourceOptionReport;
 use super::release_options::{ReleaseOption, append_release_option, detect_release_option};
 
@@ -12,6 +13,7 @@ pub(super) enum SourceStrategy {
     AurPkgbuild,
     XbpsTemplate { package: String },
     GithubRelease(ReleaseOption),
+    UrlArchive(SrcinfoBinaryArchive),
     Git,
 }
 
@@ -20,6 +22,7 @@ impl SourceStrategy {
         match self {
             Self::EldaNative { .. } | Self::Git => "git",
             Self::GithubRelease(option) => option.source_kind(),
+            Self::UrlArchive(_) => "url_archive",
             Self::NixFlake => "nix_flake",
             Self::GentooEbuild { .. } => "gentoo_overlay",
             Self::AurPkgbuild => "aur_pkgbuild",
@@ -28,7 +31,7 @@ impl SourceStrategy {
     }
 
     pub(super) fn is_binary_lane(&self) -> bool {
-        matches!(self, Self::GithubRelease(_))
+        matches!(self, Self::GithubRelease(_) | Self::UrlArchive(_))
     }
 
     pub(super) fn extra_fields(&self) -> String {
@@ -41,6 +44,7 @@ impl SourceStrategy {
             Self::GentooEbuild { package } => format!("    package = \"{}\",\n", escape(package)),
             Self::XbpsTemplate { package } => format!("    package = \"{}\",\n", escape(package)),
             Self::GithubRelease(option) => option.extra_fields(),
+            Self::UrlArchive(option) => option.extra_fields(),
             _ => String::new(),
         }
     }
@@ -105,6 +109,23 @@ pub(super) fn release_binary_strategy(
     detect_release_option(source_url, release_binary_format_priority)
         .filter(|option| option.sha256.is_some())
         .map(SourceStrategy::GithubRelease)
+}
+
+pub(super) fn srcinfo_binary_strategy(source_dir: Option<&Path>) -> Option<SourceStrategy> {
+    source_dir
+        .and_then(read_srcinfo_binary_archive)
+        .map(SourceStrategy::UrlArchive)
+}
+
+impl SrcinfoBinaryArchive {
+    fn extra_fields(&self) -> String {
+        format!(
+            "    url = \"{}\",\n    sha256 = \"{}\",\n    binary = \"{}\",\n",
+            escape(&self.url),
+            escape(&self.sha256),
+            escape(&self.binary),
+        )
+    }
 }
 
 pub(super) fn source_options_with_priority(

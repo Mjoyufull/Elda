@@ -5,13 +5,16 @@ use serde_json::json;
 
 use crate::error::RecipeError;
 
-use super::detect::{discover_source_url, infer_recipe_name, is_git_like_target};
+use super::detect::{
+    arch_package_source_url, discover_source_url, infer_recipe_name, is_git_like_target,
+};
 use super::legacy::{copy_dir_recursive, parse_pkgdeps, render_imported_build_lua};
 use super::model::{ImportOptions, ImportReport, ImportResult};
 use super::strategy::{
-    detect_source_strategy_for_source, select_source_option_by_index, selected_source_option,
-    source_dir_for_detection, source_options_with_priority,
+    detect_source_strategy_for_source, release_binary_strategy, select_source_option_by_index,
+    selected_source_option, source_dir_for_detection, source_options_with_priority,
 };
+use super::workflow_probe::remote_probe_error;
 
 pub fn add_recipe(
     recipes_dir: &Path,
@@ -57,12 +60,26 @@ pub fn add_recipe_with_options(
         return import_from_local_path(recipes_dir, input_path, recipe_kind, options)
             .map(ImportResult::Single);
     }
-    if is_git_like_target(input) {
+    let normalized_source_url = arch_package_source_url(input);
+    let git_target = normalized_source_url.as_deref().unwrap_or(input);
+    if is_git_like_target(git_target) {
         // Try local path detection first (file:// URLs pointing to dirs)
-        let local_source_dir = source_dir_for_detection(input);
+        let local_source_dir = source_dir_for_detection(git_target);
         // If no local dir, shallow-clone into a temp dir for strategy probing
         let probe_dir = if local_source_dir.is_none() {
-            shallow_clone_for_probe(input).ok()
+            match shallow_clone_for_probe(git_target) {
+                Ok(probe_dir) => Some(probe_dir),
+                Err(_error)
+                    if release_binary_strategy(
+                        Some(git_target),
+                        &options.release_binary_format_priority,
+                    )
+                    .is_some() =>
+                {
+                    None
+                }
+                Err(error) => return Err(remote_probe_error(recipes_dir, git_target, error)),
+            }
         } else {
             None
         };
@@ -74,7 +91,7 @@ pub fn add_recipe_with_options(
         {
             let result = super::workflow_snapshot::import_snapshot(
                 recipes_dir,
-                input,
+                git_target,
                 source_dir,
                 snapshot_kind,
                 options,
@@ -86,8 +103,8 @@ pub fn add_recipe_with_options(
 
         let result = scaffold_from_source(
             recipes_dir,
-            infer_recipe_name(input),
-            Some(input),
+            infer_recipe_name(git_target),
+            Some(git_target),
             recipe_kind,
             effective_source_dir,
             options,
@@ -216,6 +233,7 @@ fn scaffold_from_source(
         imported_build_lua: false,
         imported_patches: false,
         generated_pkg_lua: wrote_pkg_lua,
+        reused_existing_pkg_lua: !wrote_pkg_lua,
         generated_build_lua: false,
         imported_legacy_pkgdeps: false,
         imported_legacy_bldit: false,
@@ -276,6 +294,7 @@ fn empty_report(recipe_name: String, recipe_dir: std::path::PathBuf) -> ImportRe
         imported_build_lua: false,
         imported_patches: false,
         generated_pkg_lua: false,
+        reused_existing_pkg_lua: false,
         generated_build_lua: false,
         imported_legacy_pkgdeps: false,
         imported_legacy_bldit: false,

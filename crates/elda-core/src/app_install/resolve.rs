@@ -12,6 +12,8 @@ use elda_recipe::{
 };
 use elda_repo::{RepoError, list_remotes, load_remote_payload_trust, resolve_package};
 
+use super::url_recipe::reject_stale_url_recipe_reuse;
+
 #[derive(Debug, Clone)]
 pub(crate) enum ResolutionReport {
     Single(Box<ResolvedInstallTarget>),
@@ -122,6 +124,9 @@ impl AppContext {
                 elda_recipe::ImportResult::Single(r) => r,
                 elda_recipe::ImportResult::Bulk(b) => return Ok(ResolutionReport::Bulk(b)),
             };
+            if requested_target == target {
+                reject_stale_url_recipe_reuse(target, &report)?;
+            }
             let recipe = load_recipe(recipes_dir, &report.recipe_name)?;
             let mut resolved =
                 self.select_install_lane(target, recipe, request, Some(target.to_owned()))?;
