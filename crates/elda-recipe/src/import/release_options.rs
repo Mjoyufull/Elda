@@ -96,36 +96,99 @@ fn launcher_name_from_raw_asset(repo: &str, asset: &str) -> String {
         .map(|(_, tail)| tail)
         .unwrap_or(asset)
         .trim_end_matches(".exe");
-    if let Some(stripped) = strip_platform_suffix(basename) {
-        return stripped;
-    }
     if basename.eq_ignore_ascii_case(&repo_launcher) {
         return repo_launcher;
     }
 
-    let lower = basename.to_ascii_lowercase();
+    let candidate = strip_platform_suffix(basename)
+        .and_then(|name| strip_repo_version_suffix(&repo_launcher, &name).or(Some(name)))
+        .unwrap_or_else(|| basename.to_owned());
+    if candidate.eq_ignore_ascii_case(&repo_launcher) {
+        return repo_launcher;
+    }
+
+    let lower = candidate.to_ascii_lowercase();
     let repo_lower = repo_launcher.to_ascii_lowercase();
     if lower
         .strip_prefix(&repo_lower)
-        .is_some_and(|tail| tail.starts_with('-') || tail.starts_with('_'))
+        .is_some_and(version_suffix_tail)
     {
         return repo_launcher;
     }
 
-    basename.to_owned()
+    candidate
 }
 
 fn strip_platform_suffix(name: &str) -> Option<String> {
-    let tokens = name
-        .split(['-', '_'])
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
-    let split_at = tokens.iter().position(|token| platform_token(token))?;
+    let tokens = split_name_tokens(name);
+    let split_at = tokens
+        .iter()
+        .position(|token| platform_token(token.value))?;
     if split_at == 0 {
         return None;
     }
 
-    Some(tokens[..split_at].join("-"))
+    let stripped = tokens[..split_at]
+        .iter()
+        .map(|token| token.raw)
+        .collect::<String>()
+        .trim_end_matches(['-', '_'])
+        .to_owned();
+    (!stripped.is_empty()).then_some(stripped)
+}
+
+fn strip_repo_version_suffix(repo_launcher: &str, name: &str) -> Option<String> {
+    let lower = name.to_ascii_lowercase();
+    let repo_lower = repo_launcher.to_ascii_lowercase();
+    let tail = lower.strip_prefix(&repo_lower)?;
+    if !version_suffix_tail(tail) {
+        return None;
+    }
+
+    Some(repo_launcher.to_owned())
+}
+
+fn version_suffix_tail(tail: &str) -> bool {
+    let tail = tail.strip_prefix(['-', '_']).unwrap_or(tail);
+    tail.strip_prefix('v')
+        .unwrap_or(tail)
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_digit())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NameToken<'a> {
+    raw: &'a str,
+    value: &'a str,
+}
+
+fn split_name_tokens(name: &str) -> Vec<NameToken<'_>> {
+    let mut tokens = Vec::new();
+    let mut token_start = None;
+    for (index, ch) in name.char_indices() {
+        if ch == '-' || ch == '_' {
+            if let Some(start) = token_start.take() {
+                tokens.push(NameToken {
+                    raw: &name[start..index],
+                    value: &name[start..index],
+                });
+            }
+            tokens.push(NameToken {
+                raw: &name[index..index + ch.len_utf8()],
+                value: "",
+            });
+        } else if token_start.is_none() {
+            token_start = Some(index);
+        }
+    }
+    if let Some(start) = token_start {
+        tokens.push(NameToken {
+            raw: &name[start..],
+            value: &name[start..],
+        });
+    }
+    tokens
 }
 
 fn platform_token(token: &str) -> bool {
@@ -411,11 +474,19 @@ fn payload_format_kebab(lower: &str) -> &'static str {
         "apk"
     } else if lower.ends_with(".pkg.tar.zst") || lower.ends_with(".pkg.tar.xz") {
         "pacman-package"
-    } else if has_no_extension(lower) {
+    } else if has_no_extension(lower) || looks_like_raw_platform_binary(lower) {
         "raw-binary"
     } else {
         "unknown"
     }
+}
+
+fn looks_like_raw_platform_binary(lower: &str) -> bool {
+    lower
+        .rsplit('/')
+        .next()
+        .map(split_name_tokens)
+        .is_some_and(|tokens| tokens.iter().any(|token| platform_token(token.value)))
 }
 
 fn has_no_extension(lower: &str) -> bool {

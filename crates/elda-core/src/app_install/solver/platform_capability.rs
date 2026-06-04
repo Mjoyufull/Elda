@@ -7,7 +7,7 @@ pub(super) fn satisfies(constraint: &NamedConstraint) -> bool {
 
     match constraint.name.as_str() {
         "glibc" => cfg!(target_env = "gnu"),
-        "libgcc" | "libstdc++" => cfg!(target_os = "linux"),
+        "libgcc" | "libstdc++" => cfg!(target_env = "gnu"),
         "musl" => cfg!(target_env = "musl"),
         _ => false,
     }
@@ -23,10 +23,10 @@ mod tests {
         assert_eq!(satisfies(&dependency("glibc")), cfg!(target_env = "gnu"));
         assert_eq!(satisfies(&dependency("musl")), cfg!(target_env = "musl"));
         assert!(!satisfies(&dependency("python")));
-        assert_eq!(satisfies(&dependency("libgcc")), cfg!(target_os = "linux"));
+        assert_eq!(satisfies(&dependency("libgcc")), cfg!(target_env = "gnu"));
         assert_eq!(
             satisfies(&dependency("libstdc++")),
-            cfg!(target_os = "linux")
+            cfg!(target_env = "gnu")
         );
         assert!(!satisfies(&dependency("glibc>=2.39")));
     }

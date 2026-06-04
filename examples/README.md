@@ -95,7 +95,9 @@ launcher set. Binary tar lanes can omit `source.binary` only when the verified
 archive contains exactly one executable candidate; maintained recipes should set
 `source.binary` when the archive layout is not that obvious. Raw release assets
 that are the executable file itself use `source.rename` for the installed command
-name.
+name. Generated metadata strips platform suffixes and simple repo-version tails
+from that launcher name while preserving upstream separators, so
+`my_tool_linux_x86_64` installs as `my_tool`.
 
 ## Try One Locally
 

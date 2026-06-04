@@ -279,6 +279,68 @@ fn github_raw_binary_release_strategy_strips_platform_suffix_from_launcher() {
 }
 
 #[test]
+fn github_raw_binary_release_strategy_preserves_underscore_launcher_names() {
+    let option = super::release_options::ReleaseOption {
+        provider: "github".to_owned(),
+        host: None,
+        repo: "owner/my_tool".to_owned(),
+        tag: "v1.0.0".to_owned(),
+        asset: "my_tool_linux_x86_64".to_owned(),
+        compatibility: "native-partial".to_owned(),
+        sha256: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()),
+        signature: None,
+    };
+    let metadata = super::metadata::GeneratedMetadata::default();
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "my_tool",
+        source_url: Some("https://github.com/owner/my_tool"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
+
+    assert!(pkg_lua.contains(r#"rename = "my_tool""#));
+    assert!(!pkg_lua.contains(r#"rename = "my-tool""#));
+}
+
+#[test]
+fn github_raw_binary_release_strategy_removes_version_suffix_after_repo_name() {
+    let option = super::release_options::ReleaseOption {
+        provider: "github".to_owned(),
+        host: None,
+        repo: "owner/mypkg".to_owned(),
+        tag: "v1.2.3".to_owned(),
+        asset: "mypkg-v1.2.3-linux-x86_64".to_owned(),
+        compatibility: "native-partial".to_owned(),
+        sha256: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()),
+        signature: None,
+    };
+    let metadata = super::metadata::GeneratedMetadata::default();
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "mypkg",
+        source_url: Some("https://github.com/owner/mypkg"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
+
+    assert!(pkg_lua.contains(r#"rename = "mypkg""#));
+    assert!(!pkg_lua.contains(r#"rename = "mypkg-v1.2.3""#));
+}
+
+#[test]
 fn generated_release_metadata_uses_source_url_as_upstream_when_metadata_is_blank() {
     let option = super::release_options::ReleaseOption {
         provider: "github".to_owned(),

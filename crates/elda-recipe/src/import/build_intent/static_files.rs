@@ -120,7 +120,12 @@ fn first_call_arg(args: &str) -> Option<String> {
     let end = args
         .find(|ch: char| ch.is_whitespace() || ch == ',' || ch == ')')
         .unwrap_or(args.len());
-    clean_bin_name(Some(&args[..end]))
+    let candidate = &args[..end];
+    if candidate.contains(['$', '{', '}']) {
+        return None;
+    }
+
+    clean_bin_name(Some(candidate))
 }
 
 fn sorted_nimble_paths(source_dir: &Path) -> Result<Vec<std::path::PathBuf>, std::io::Error> {
@@ -261,6 +266,20 @@ mod tests {
         let intent = cmake_intent(tempdir.path()).expect("cmake intent should parse");
 
         assert_eq!(intent.bins, ["quoted-tool", "tool"]);
+    }
+
+    #[test]
+    fn cmake_ignores_variable_executable_targets() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::write(
+            tempdir.path().join("CMakeLists.txt"),
+            "add_executable(${PROJECT_NAME} src/main.c)\nadd_executable(real-tool src/real.c)\n",
+        )
+        .expect("cmake file should exist");
+
+        let intent = cmake_intent(tempdir.path()).expect("cmake intent should parse");
+
+        assert_eq!(intent.bins, ["real-tool"]);
     }
 
     #[test]

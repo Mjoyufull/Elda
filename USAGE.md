@@ -580,7 +580,9 @@ For `url_archive`, `github_release`, and provider-neutral `release_asset` tar pa
 verified tar payload and proceeds only when there is exactly one executable launcher candidate;
 otherwise it blocks and the recipe needs `binary = "..."`. For plain release assets that are the
 binary itself, generated metadata uses `rename` for the installed command instead of guessing an
-archive-internal `binary` path.
+archive-internal `binary` path. That generated rename strips platform suffixes and simple
+repo-version tails while preserving upstream separators, so `my_tool_linux_x86_64` installs as
+`my_tool`.
 
 **AppImage** - inspect before authoring `source.kind = "appimage"` recipes:
 
