@@ -285,6 +285,41 @@ source=('https://example.invalid/aur-srcinfo-fields.tar.gz')
 }
 
 #[test]
+fn add_recipe_falls_back_to_pkgbuild_when_srcinfo_has_no_metadata() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let source = tempdir.path().join("aur-empty-srcinfo");
+    fs::create_dir_all(&source).expect("source dir should exist");
+    fs::write(
+        source.join("PKGBUILD"),
+        r#"pkgname=aur-empty-srcinfo
+pkgver=1.2.3
+pkgrel=4
+pkgdesc="AUR fallback sample"
+url="https://example.invalid/aur-empty-srcinfo"
+license=('MIT')
+"#,
+    )
+    .expect("PKGBUILD should exist");
+    fs::write(source.join(".SRCINFO"), "pkgbase = aur-empty-srcinfo\n")
+        .expect(".SRCINFO should exist");
+
+    let report = expect_single(
+        add_recipe(
+            tempdir.path().join("recipes").as_path(),
+            path_str(&source),
+            None,
+        )
+        .expect("PKGBUILD scaffold should succeed"),
+    );
+    let pkg_lua =
+        fs::read_to_string(report.recipe_dir.join("pkg.lua")).expect("pkg.lua should exist");
+
+    assert!(pkg_lua.contains(r#"description = "AUR fallback sample""#));
+    assert!(pkg_lua.contains(r#"upstream = "https://example.invalid/aur-empty-srcinfo""#));
+    assert!(pkg_lua.contains(r#"licenses = { "MIT" }"#));
+}
+
+#[test]
 fn add_recipe_emits_binary_lane_for_srcinfo_archive() {
     let tempdir = TempDir::new().expect("tempdir should exist");
     let source = tempdir.path().join("aur-fields-bin");

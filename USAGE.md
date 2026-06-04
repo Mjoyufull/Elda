@@ -286,8 +286,9 @@ with a new ref (`elda u pkg --to-tag ...`).
 
 When a checksum-backed forge release archive is detected, generated metadata records the expected
 launcher name and defaults plain `elda i` to the binary lane. Use `ig` to force a source build.
-Generated link metadata uses the source URL as `upstream` when parser-backed metadata does not
-provide a homepage, so raw git and forge-release imports do not start with a blank upstream field.
+Generated link metadata uses an HTTP(S) source URL as `upstream` when parser-backed metadata does
+not provide a homepage, so raw git and forge-release imports do not start with a blank upstream
+field.
 For AUR `-bin` recipes, Elda also reads expanded `.SRCINFO` metadata and uses a native-architecture
 archive with a SHA-256 checksum as a binary lane when one is declared.
 If a URL maps to an existing local recipe name, Elda stops instead of silently reusing that recipe;

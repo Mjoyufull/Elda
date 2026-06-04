@@ -93,8 +93,9 @@ Source-lane output names belong in `build.bins`. Generated ad hoc git metadata
 fills that table when static repo markers expose one clear build system and
 launcher set. Binary tar lanes can omit `source.binary` only when the verified
 archive contains exactly one executable candidate; maintained recipes should set
-`binary` when the archive layout is not that obvious. Raw release assets that are
-the executable file itself use `rename` for the installed command name.
+`source.binary` when the archive layout is not that obvious. Raw release assets
+that are the executable file itself use `source.rename` for the installed command
+name.
 
 ## Try One Locally
 

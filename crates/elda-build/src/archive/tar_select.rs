@@ -30,15 +30,7 @@ pub(super) fn stage_binary_from_tar(
         Some(binary) => binary.to_owned(),
         None => infer_archive_binary(downloaded_path, kind)?,
     };
-    let install_name = string_field_optional(source, "rename")
-        .map(ToOwned::to_owned)
-        .or_else(|| plain_file_name(&requested_binary))
-        .ok_or_else(|| {
-            BuildError::Invalid(format!(
-                "binary source `{}` requires a valid `binary` path",
-                source.kind
-            ))
-        })?;
+    let install_name = install_name(source, &requested_binary)?;
     let destination = bin_dir.join(install_name);
     let requested_path = Path::new(&requested_binary);
     let basename_only = !requested_binary.contains('/');
@@ -111,7 +103,7 @@ pub(super) fn infer_archive_kind(
     }
 
     if let Some(segment) = source_url.rsplit('/').next() {
-        let base = segment.split('?').next().unwrap_or(segment);
+        let base = segment.split(['?', '#']).next().unwrap_or(segment);
         if let Some(kind) = archive_kind_from_name(base) {
             return Some(kind);
         }
@@ -190,14 +182,7 @@ fn is_launcher_candidate(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
-    !name.is_empty()
-        && !name.starts_with('.')
-        && !name.contains('/')
-        && !name.contains('\\')
-        && name != "."
-        && name != ".."
-        && !name.starts_with("lib")
-        && !name.contains(".so")
+    !name.is_empty() && !name.starts_with('.') && !name.starts_with("lib") && !name.contains(".so")
 }
 
 fn extract_tar_binary<R: std::io::Read>(
@@ -252,6 +237,30 @@ fn archive_kind_from_name(name: &str) -> Option<ArchiveKind> {
     } else {
         None
     }
+}
+
+fn install_name(source: &SourceDefinition, requested_binary: &str) -> Result<String, BuildError> {
+    let install_name = string_field_optional(source, "rename")
+        .map(ToOwned::to_owned)
+        .or_else(|| plain_file_name(requested_binary))
+        .ok_or_else(|| {
+            BuildError::Invalid(format!(
+                "binary source `{}` requires a valid `binary` path",
+                source.kind
+            ))
+        })?;
+    if !valid_install_name(&install_name) {
+        return Err(BuildError::Invalid(format!(
+            "binary source `{}` has invalid `rename` value `{install_name}`",
+            source.kind
+        )));
+    }
+
+    Ok(install_name)
+}
+
+fn valid_install_name(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\'])
 }
 
 fn plain_file_name(value: &str) -> Option<String> {

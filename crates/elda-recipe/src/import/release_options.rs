@@ -96,6 +96,9 @@ fn launcher_name_from_raw_asset(repo: &str, asset: &str) -> String {
         .map(|(_, tail)| tail)
         .unwrap_or(asset)
         .trim_end_matches(".exe");
+    if let Some(stripped) = strip_platform_suffix(basename) {
+        return stripped;
+    }
     if basename.eq_ignore_ascii_case(&repo_launcher) {
         return repo_launcher;
     }
@@ -110,6 +113,40 @@ fn launcher_name_from_raw_asset(repo: &str, asset: &str) -> String {
     }
 
     basename.to_owned()
+}
+
+fn strip_platform_suffix(name: &str) -> Option<String> {
+    let tokens = name
+        .split(['-', '_'])
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let split_at = tokens.iter().position(|token| platform_token(token))?;
+    if split_at == 0 {
+        return None;
+    }
+
+    Some(tokens[..split_at].join("-"))
+}
+
+fn platform_token(token: &str) -> bool {
+    matches!(
+        token.to_ascii_lowercase().as_str(),
+        "linux"
+            | "gnu"
+            | "musl"
+            | "macos"
+            | "darwin"
+            | "windows"
+            | "win32"
+            | "win64"
+            | "x86"
+            | "x86_64"
+            | "amd64"
+            | "aarch64"
+            | "arm64"
+            | "armv7"
+            | "i686"
+    )
 }
 
 fn launcher_name_from_appimage_asset(asset: &str) -> String {

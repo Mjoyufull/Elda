@@ -14,8 +14,11 @@ pub(super) struct SrcinfoBinaryArchive {
 pub(super) fn read_srcinfo_metadata(source_dir: &Path) -> Option<GeneratedMetadata> {
     let contents = fs::read_to_string(source_dir.join(".SRCINFO")).ok()?;
     let values = parse_srcinfo(&contents);
+    if values.is_empty() {
+        return None;
+    }
 
-    Some(GeneratedMetadata {
+    let metadata = GeneratedMetadata {
         description: first(&values, "pkgdesc"),
         licenses: all(&values, "license"),
         upstream: first(&values, "url"),
@@ -27,7 +30,9 @@ pub(super) fn read_srcinfo_metadata(source_dir: &Path) -> Option<GeneratedMetada
         provides: all(&values, "provides"),
         conflicts: all(&values, "conflicts"),
         replaces: all(&values, "replaces"),
-    })
+    };
+
+    metadata.has_values().then_some(metadata)
 }
 
 pub(super) fn read_srcinfo_binary_archive(source_dir: &Path) -> Option<SrcinfoBinaryArchive> {
@@ -37,16 +42,16 @@ pub(super) fn read_srcinfo_binary_archive(source_dir: &Path) -> Option<SrcinfoBi
         return None;
     }
     let arch = srcinfo_native_arch();
-    let source = first(&values, &format!("source_{arch}")).or_else(|| first(&values, "source"))?;
-    let sha256 =
-        first(&values, &format!("sha256sums_{arch}")).or_else(|| first(&values, "sha256sums"))?;
+    let (source, sha256) = paired_archive_source(
+        &values,
+        &format!("source_{arch}"),
+        &format!("sha256sums_{arch}"),
+    )
+    .or_else(|| paired_archive_source(&values, "source", "sha256sums"))?;
     let url = source
         .rsplit_once("::")
         .map_or(source.as_str(), |(_, url)| url)
         .to_owned();
-    if sha256 == "SKIP" || !supported_archive_url(&url) {
-        return None;
-    }
 
     Some(SrcinfoBinaryArchive {
         url,
@@ -56,9 +61,30 @@ pub(super) fn read_srcinfo_binary_archive(source_dir: &Path) -> Option<SrcinfoBi
 }
 
 fn is_binary_package(values: &HashMap<String, Vec<String>>) -> bool {
-    first(values, "pkgname")
-        .or_else(|| first(values, "pkgbase"))
-        .is_some_and(|name| name.ends_with("-bin"))
+    all(values, "pkgname")
+        .into_iter()
+        .chain(first(values, "pkgbase"))
+        .any(|name| name.ends_with("-bin"))
+}
+
+fn paired_archive_source(
+    values: &HashMap<String, Vec<String>>,
+    source_key: &str,
+    sha256_key: &str,
+) -> Option<(String, String)> {
+    let sources = values.get(source_key)?;
+    let checksums = values.get(sha256_key)?;
+    sources
+        .iter()
+        .zip(checksums)
+        .filter_map(|(source, sha256)| {
+            let url = source
+                .rsplit_once("::")
+                .map_or(source.as_str(), |(_, url)| url);
+            (sha256 != "SKIP" && supported_archive_url(url))
+                .then(|| (source.clone(), sha256.clone()))
+        })
+        .next()
 }
 
 fn parse_srcinfo(contents: &str) -> HashMap<String, Vec<String>> {
@@ -116,9 +142,29 @@ fn inferred_binary_name(values: &HashMap<String, Vec<String>>) -> Option<String>
                 .to_owned()
         })
         .find(|value| !value.is_empty())
-        .or_else(|| first(values, "pkgname"))
+        .or_else(|| {
+            all(values, "pkgname")
+                .into_iter()
+                .find(|name| name.ends_with("-bin"))
+        })
         .or_else(|| first(values, "pkgbase"))
         .map(|value| value.strip_suffix("-bin").unwrap_or(&value).to_owned())
+}
+
+impl GeneratedMetadata {
+    fn has_values(&self) -> bool {
+        self.description.is_some()
+            || !self.licenses.is_empty()
+            || self.upstream.is_some()
+            || self.version.is_some()
+            || self.rel.is_some()
+            || !self.depends.is_empty()
+            || !self.makedepends.is_empty()
+            || !self.checkdepends.is_empty()
+            || !self.provides.is_empty()
+            || !self.conflicts.is_empty()
+            || !self.replaces.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -127,7 +173,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{parse_srcinfo, read_srcinfo_binary_archive};
+    use super::{parse_srcinfo, read_srcinfo_binary_archive, read_srcinfo_metadata};
 
     #[test]
     fn srcinfo_values_are_collected_without_duplicates() {
@@ -152,6 +198,44 @@ mod tests {
 
         assert_eq!(archive.url, "https://example.invalid/demo-x86_64.tar.xz");
         assert_eq!(archive.sha256, "aaaa");
+        assert_eq!(archive.binary, "demo");
+    }
+
+    #[test]
+    fn empty_srcinfo_does_not_emit_metadata() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::write(tempdir.path().join(".SRCINFO"), "pkgbase = demo\n")
+            .expect(".SRCINFO should exist");
+
+        assert!(read_srcinfo_metadata(tempdir.path()).is_none());
+    }
+
+    #[test]
+    fn srcinfo_binary_archive_uses_matching_source_checksum_pair() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::write(
+            tempdir.path().join(".SRCINFO"),
+            "pkgbase = demo-bin\n\tpkgname = demo-bin\n\tprovides = demo=1.0\n\tsource_x86_64 = demo-src.tar.xz::https://example.invalid/demo-src.tar.xz\n\tsource_x86_64 = demo-bin.tar.xz::https://example.invalid/demo-bin.tar.xz\n\tsha256sums_x86_64 = SKIP\n\tsha256sums_x86_64 = bbbb\n",
+        )
+        .expect(".SRCINFO should exist");
+
+        let archive = read_srcinfo_binary_archive(tempdir.path()).expect("archive should parse");
+
+        assert_eq!(archive.url, "https://example.invalid/demo-bin.tar.xz");
+        assert_eq!(archive.sha256, "bbbb");
+    }
+
+    #[test]
+    fn split_pkgname_bin_package_is_detected() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::write(
+            tempdir.path().join(".SRCINFO"),
+            "pkgbase = demo\n\tpkgname = demo\n\tpkgname = demo-bin\n\tsource_x86_64 = demo.tar.xz::https://example.invalid/demo.tar.xz\n\tsha256sums_x86_64 = cccc\n",
+        )
+        .expect(".SRCINFO should exist");
+
+        let archive = read_srcinfo_binary_archive(tempdir.path()).expect("archive should parse");
+
         assert_eq!(archive.binary, "demo");
     }
 

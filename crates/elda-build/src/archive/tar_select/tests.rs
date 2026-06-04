@@ -32,6 +32,16 @@ fn source_without_binary() -> SourceDefinition {
     }
 }
 
+fn source_with_rename(rename: &str) -> SourceDefinition {
+    SourceDefinition {
+        kind: "url_archive".to_owned(),
+        fields: BTreeMap::from([("rename".to_owned(), ScalarValue::String(rename.to_owned()))]),
+        github_release_assets: BTreeMap::new(),
+        default_lane: None,
+        lanes: BTreeMap::new(),
+    }
+}
+
 #[test]
 fn infer_archive_kind_falls_back_to_url_when_cache_file_is_sha256_named() {
     let url =
@@ -53,6 +63,20 @@ fn infer_archive_kind_uses_asset_when_url_has_no_suffix() {
     assert_eq!(
         infer_archive_kind(path, "https://example.invalid/dl/abc", &source),
         Some(ArchiveKind::TarGz)
+    );
+}
+
+#[test]
+fn infer_archive_kind_handles_url_fragments() {
+    let source = source_with_asset("ignored-if-url-matches.tar.gz");
+    let path = Path::new("/tmp/abc123def456");
+    assert_eq!(
+        infer_archive_kind(
+            path,
+            "https://example.invalid/tool.tar.zst#download",
+            &source
+        ),
+        Some(ArchiveKind::TarZst)
     );
 }
 
@@ -101,6 +125,26 @@ fn tar_archive_without_binary_fails_on_multiple_candidates() {
     .expect_err("ambiguous archive should fail");
 
     assert!(error.to_string().contains("multiple executable candidates"));
+}
+
+#[test]
+fn tar_archive_rejects_rename_path_traversal() {
+    let tempdir = tempdir().expect("tempdir should exist");
+    let archive_path = tempdir.path().join("payload.tar");
+    write_tar(&archive_path, &[TarEntry::executable("tool")]);
+    let bin_dir = tempdir.path().join("stage/usr/bin");
+    fs::create_dir_all(&bin_dir).expect("bin dir should exist");
+
+    let error = stage_binary_from_tar(
+        &source_with_rename("../tool"),
+        &archive_path,
+        &bin_dir,
+        ArchiveKind::Tar,
+    )
+    .expect_err("rename traversal should fail");
+
+    assert!(error.to_string().contains("invalid `rename`"));
+    assert!(!tempdir.path().join("stage/usr/tool").exists());
 }
 
 struct TarEntry<'a> {

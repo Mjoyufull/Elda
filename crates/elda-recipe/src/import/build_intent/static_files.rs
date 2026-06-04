@@ -71,11 +71,7 @@ pub(super) fn python_intent(source_dir: &Path) -> Option<BuildIntent> {
 }
 
 pub(super) fn nimble_intent(source_dir: &Path, recipe_name: &str) -> Option<BuildIntent> {
-    let path = fs::read_dir(source_dir)
-        .ok()?
-        .flatten()
-        .map(|entry| entry.path())
-        .find(|path| path.extension().is_some_and(|ext| ext == "nimble"))?;
+    let path = sorted_nimble_paths(source_dir).ok()?.into_iter().next()?;
     let contents = fs::read_to_string(path).ok()?;
     let bins = nimble_bins(&contents);
     Some(BuildIntent {
@@ -83,7 +79,7 @@ pub(super) fn nimble_intent(source_dir: &Path, recipe_name: &str) -> Option<Buil
         bins: if bins.is_empty() {
             vec![recipe_name.to_owned()]
         } else {
-            bins
+            sorted_unique(bins)
         },
     })
 }
@@ -115,19 +111,67 @@ fn call_names(contents: &str, function: &str) -> Vec<String> {
 }
 
 fn first_call_arg(args: &str) -> Option<String> {
-    let quote = args.chars().next().filter(|ch| *ch == '\'' || *ch == '"')?;
-    let end = args[1..].find(quote)?;
-    clean_bin_name(Some(&args[1..1 + end]))
+    let args = args.trim_start();
+    if let Some(quote) = args.chars().next().filter(|ch| *ch == '\'' || *ch == '"') {
+        let end = args[1..].find(quote)?;
+        return clean_bin_name(Some(&args[1..1 + end]));
+    }
+
+    let end = args
+        .find(|ch: char| ch.is_whitespace() || ch == ',' || ch == ')')
+        .unwrap_or(args.len());
+    clean_bin_name(Some(&args[..end]))
+}
+
+fn sorted_nimble_paths(source_dir: &Path) -> Result<Vec<std::path::PathBuf>, std::io::Error> {
+    let mut paths = fs::read_dir(source_dir)?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "nimble"))
+        .collect::<Vec<_>>();
+    paths.sort();
+    Ok(paths)
 }
 
 fn nimble_bins(contents: &str) -> Vec<String> {
-    contents
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("bin"))
-        .filter_map(|line| line.trim_start().strip_prefix('=').map(str::trim))
-        .flat_map(quoted_values)
+    bin_assignment_values(contents)
+        .into_iter()
+        .flat_map(|value| quoted_values(&value))
         .filter_map(|name| clean_bin_name(Some(&name)))
         .collect()
+}
+
+fn bin_assignment_values(contents: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut collecting = false;
+    let mut current = String::new();
+
+    for line in contents.lines().map(str::trim) {
+        if collecting {
+            current.push(' ');
+            current.push_str(line);
+            if line.contains(']') {
+                values.push(std::mem::take(&mut current));
+                collecting = false;
+            }
+            continue;
+        }
+
+        let Some(rest) = line.strip_prefix("bin") else {
+            continue;
+        };
+        let Some(value) = rest.trim_start().strip_prefix('=').map(str::trim) else {
+            continue;
+        };
+        if value.contains("@[") && !value.contains(']') {
+            current.push_str(value);
+            collecting = true;
+        } else {
+            values.push(value.to_owned());
+        }
+    }
+
+    values
 }
 
 fn zig_executable_names(contents: &str) -> Vec<String> {
@@ -188,7 +232,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::python_intent;
+    use super::{cmake_intent, nimble_intent, python_intent};
 
     #[test]
     fn python_reads_project_scripts() {
@@ -203,5 +247,46 @@ mod tests {
 
         assert_eq!(intent.system, "python");
         assert_eq!(intent.bins, ["demo"]);
+    }
+
+    #[test]
+    fn cmake_reads_unquoted_executable_targets() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::write(
+            tempdir.path().join("CMakeLists.txt"),
+            "add_executable(tool src/main.c)\nadd_executable(\"quoted-tool\" src/quoted.c)\n",
+        )
+        .expect("cmake file should exist");
+
+        let intent = cmake_intent(tempdir.path()).expect("cmake intent should parse");
+
+        assert_eq!(intent.bins, ["quoted-tool", "tool"]);
+    }
+
+    #[test]
+    fn nimble_reads_multiline_bin_arrays() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::write(
+            tempdir.path().join("demo.nimble"),
+            "bin = @[\n  \"tool\",\n  \"helper\"\n]\n",
+        )
+        .expect("nimble file should exist");
+
+        let intent = nimble_intent(tempdir.path(), "demo").expect("nimble intent should parse");
+
+        assert_eq!(intent.bins, ["helper", "tool"]);
+    }
+
+    #[test]
+    fn nimble_file_selection_is_sorted() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::write(tempdir.path().join("z.nimble"), "bin = @[\"z-tool\"]\n")
+            .expect("nimble file should exist");
+        fs::write(tempdir.path().join("a.nimble"), "bin = @[\"a-tool\"]\n")
+            .expect("nimble file should exist");
+
+        let intent = nimble_intent(tempdir.path(), "demo").expect("nimble intent should parse");
+
+        assert_eq!(intent.bins, ["a-tool"]);
     }
 }

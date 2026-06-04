@@ -248,6 +248,37 @@ fn github_raw_binary_release_strategy_renders_asset_based_rename() {
 }
 
 #[test]
+fn github_raw_binary_release_strategy_strips_platform_suffix_from_launcher() {
+    let option = super::release_options::ReleaseOption {
+        provider: "github".to_owned(),
+        host: None,
+        repo: "owner/mypkg".to_owned(),
+        tag: "v1.0.0".to_owned(),
+        asset: "mypkg-agent-linux-x86_64".to_owned(),
+        compatibility: "native-partial".to_owned(),
+        sha256: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()),
+        signature: None,
+    };
+    let metadata = super::metadata::GeneratedMetadata::default();
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "mypkg",
+        source_url: Some("https://github.com/owner/mypkg"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
+
+    assert!(pkg_lua.contains(r#"rename = "mypkg-agent""#));
+    assert!(!pkg_lua.contains(r#"rename = "mypkg-agent-linux-x86_64""#));
+}
+
+#[test]
 fn generated_release_metadata_uses_source_url_as_upstream_when_metadata_is_blank() {
     let option = super::release_options::ReleaseOption {
         provider: "github".to_owned(),

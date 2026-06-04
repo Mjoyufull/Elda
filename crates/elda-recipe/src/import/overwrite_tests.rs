@@ -141,6 +141,7 @@ fn local_import_preserves_existing_metadata_without_replace() {
     );
     assert!(!report.imported_pkg_lua);
     assert!(!report.imported_build_lua);
+    assert!(report.reused_existing_pkg_lua);
 }
 
 #[test]

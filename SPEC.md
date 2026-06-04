@@ -254,8 +254,8 @@ uses an asset-derived `rename` so assets like `curd-linux-x86_64` install as `cu
 prefix confirms the launcher name.
 
 Generated link metadata must preserve parser-derived homepage metadata when available. When a raw
-git or forge-release link has no parser-derived homepage, Elda uses the source URL itself as
-`upstream` instead of emitting a blank upstream field.
+HTTP(S) git or forge-release link has no parser-derived homepage, Elda uses the source URL itself
+as `upstream` instead of emitting a blank upstream field.
 
 Arch-specific `github_release` authoring:
 - the current top-level `asset` plus `sha256` form remains the single-asset shorthand

@@ -313,6 +313,8 @@ fn copy_recipe_inputs(
     if source_pkg_lua.is_file() {
         report.imported_pkg_lua =
             copy_file_if_allowed(source_pkg_lua, &recipe_dir.join("pkg.lua"), replace)?;
+        report.reused_existing_pkg_lua =
+            !report.imported_pkg_lua && recipe_dir.join("pkg.lua").exists();
     }
     if source_build_lua.is_file() {
         report.imported_build_lua =

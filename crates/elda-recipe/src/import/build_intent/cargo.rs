@@ -30,13 +30,14 @@ fn manifest_bins(source_dir: &Path, manifest: &Path) -> Vec<String> {
         .into_iter()
         .filter_map(|bin| clean_bin_name(bin.name.as_deref()))
         .collect::<Vec<_>>();
-    if parsed.package.autobins != Some(false)
-        && source_dir.join("src/main.rs").is_file()
-        && let Some(name) = clean_bin_name(parsed.package.name.as_deref())
-    {
-        bins.push(name);
+    if parsed.package.autobins != Some(false) {
+        if source_dir.join("src/main.rs").is_file()
+            && let Some(name) = clean_bin_name(parsed.package.name.as_deref())
+        {
+            bins.push(name);
+        }
+        bins.extend(src_bin_names(source_dir));
     }
-    bins.extend(src_bin_names(source_dir));
     bins
 }
 
@@ -63,7 +64,7 @@ fn src_bin_names(source_dir: &Path) -> Vec<String> {
         .flatten()
         .filter_map(|entry| {
             let path = entry.path();
-            if path.is_dir() {
+            if path.is_dir() && path.join("main.rs").is_file() {
                 return clean_bin_name(entry.file_name().to_str());
             }
             if path.extension().is_some_and(|ext| ext == "rs") {
@@ -153,5 +154,38 @@ mod tests {
 
         assert_eq!(intent.system, "cargo");
         assert_eq!(intent.bins, ["demo", "side", "tool"]);
+    }
+
+    #[test]
+    fn autobins_false_keeps_only_explicit_targets() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::create_dir_all(tempdir.path().join("src/bin/side")).expect("src/bin should exist");
+        fs::write(
+            tempdir.path().join("Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nautobins = false\n[[bin]]\nname = \"tool\"\n",
+        )
+        .expect("manifest should exist");
+        fs::write(tempdir.path().join("src/main.rs"), "fn main() {}").expect("main should exist");
+        fs::write(tempdir.path().join("src/bin/side/main.rs"), "fn main() {}")
+            .expect("side bin should exist");
+
+        let intent = intent(tempdir.path()).expect("cargo intent should parse");
+
+        assert_eq!(intent.bins, ["tool"]);
+    }
+
+    #[test]
+    fn src_bin_directory_requires_main_rs() {
+        let tempdir = TempDir::new().expect("tempdir should exist");
+        fs::create_dir_all(tempdir.path().join("src/bin/helper")).expect("src/bin should exist");
+        fs::write(
+            tempdir.path().join("Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("manifest should exist");
+
+        let intent = intent(tempdir.path()).expect("cargo intent should parse");
+
+        assert!(intent.bins.is_empty());
     }
 }

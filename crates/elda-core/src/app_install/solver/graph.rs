@@ -305,8 +305,13 @@ impl<'a> SolverGraphBuilder<'a> {
         values: &[String],
     ) -> Result<DependencyEdge, CoreError> {
         let mut exact_packages = Vec::new();
+        let mut host_capability_satisfied = false;
         for value in values {
             let constraint = parse_dependency_constraint(value)?;
+            if host_platform_capability_satisfies(&constraint) {
+                host_capability_satisfied = true;
+                continue;
+            }
             let Some(package_name) = self.try_resolve_exact_package_name(&constraint.name)? else {
                 continue;
             };
@@ -334,6 +339,9 @@ impl<'a> SolverGraphBuilder<'a> {
         let label_source = values.first().cloned().unwrap_or_default();
         if !exact_packages.is_empty() {
             return self.wrap_choice_edge(plan, exact_packages, is_weak, &label_source);
+        }
+        if host_capability_satisfied {
+            return self.wrap_choice_edge(plan, Vec::new(), true, &label_source);
         }
 
         let mut provider_packages = Vec::new();
