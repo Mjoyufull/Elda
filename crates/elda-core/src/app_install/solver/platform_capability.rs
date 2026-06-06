@@ -7,6 +7,8 @@ pub(super) fn satisfies(constraint: &NamedConstraint) -> bool {
 
     match constraint.name.as_str() {
         "glibc" => cfg!(target_env = "gnu"),
+        // Musl hosts may package GCC runtimes separately, so only GNU targets treat these as
+        // intrinsic platform capabilities. Other targets resolve them through normal providers.
         "libgcc" | "libstdc++" => cfg!(target_env = "gnu"),
         "musl" => cfg!(target_env = "musl"),
         _ => false,

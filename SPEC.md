@@ -251,7 +251,9 @@ regular executable launcher candidates. If exactly one candidate exists, it stag
 than one candidate exists, install fails closed until the recipe declares `binary` explicitly. For
 plain raw-binary release assets, generated metadata does not invent an archive `binary` path; it
 uses an asset-derived `rename` so assets like `curd-linux-x86_64` install as `curd` when the asset
-prefix confirms the launcher name.
+prefix confirms the launcher name. Raw auto-detection accepts extensionless platform assets and
+Windows `.exe` assets; text and metadata extensions are not treated as executable payloads merely
+because their names contain platform tokens.
 
 Generated link metadata must preserve parser-derived homepage metadata when available. When a raw
 HTTP(S) git or forge-release link has no parser-derived homepage, Elda uses the source URL itself

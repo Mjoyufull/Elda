@@ -582,7 +582,8 @@ otherwise it blocks and the recipe needs `binary = "..."`. For plain release ass
 binary itself, generated metadata uses `rename` for the installed command instead of guessing an
 archive-internal `binary` path. That generated rename strips platform suffixes and simple
 repo-version tails while preserving upstream separators, so `my_tool_linux_x86_64` installs as
-`my_tool`.
+`my_tool`. Raw auto-detection accepts extensionless platform assets and Windows `.exe` assets; text
+files with platform tokens are not treated as executables.
 
 **AppImage** - inspect before authoring `source.kind = "appimage"` recipes:
 

@@ -159,6 +159,7 @@ fn version_suffix_tail(tail: &str) -> bool {
 
 #[derive(Debug, Clone, Copy)]
 struct NameToken<'a> {
+    start: usize,
     raw: &'a str,
     value: &'a str,
 }
@@ -170,11 +171,13 @@ fn split_name_tokens(name: &str) -> Vec<NameToken<'_>> {
         if ch == '-' || ch == '_' {
             if let Some(start) = token_start.take() {
                 tokens.push(NameToken {
+                    start,
                     raw: &name[start..index],
                     value: &name[start..index],
                 });
             }
             tokens.push(NameToken {
+                start: index,
                 raw: &name[index..index + ch.len_utf8()],
                 value: "",
             });
@@ -184,6 +187,7 @@ fn split_name_tokens(name: &str) -> Vec<NameToken<'_>> {
     }
     if let Some(start) = token_start {
         tokens.push(NameToken {
+            start,
             raw: &name[start..],
             value: &name[start..],
         });
@@ -482,11 +486,18 @@ fn payload_format_kebab(lower: &str) -> &'static str {
 }
 
 fn looks_like_raw_platform_binary(lower: &str) -> bool {
-    lower
-        .rsplit('/')
-        .next()
-        .map(split_name_tokens)
-        .is_some_and(|tokens| tokens.iter().any(|token| platform_token(token.value)))
+    let basename = lower.rsplit('/').next().unwrap_or(lower);
+    let Some(platform_start) = split_name_tokens(basename)
+        .iter()
+        .find(|token| platform_token(token.value))
+        .map(|token| token.start)
+    else {
+        return false;
+    };
+
+    basename[platform_start..]
+        .rsplit_once('.')
+        .is_none_or(|(_, extension)| extension == "exe")
 }
 
 fn has_no_extension(lower: &str) -> bool {

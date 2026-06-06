@@ -52,6 +52,39 @@ fn omitting_appimage_from_priority_disables_appimage_auto_selection() {
 }
 
 #[test]
+fn raw_binary_priority_rejects_platform_marked_text_assets() {
+    let release = serde_json::json!({
+        "tag_name": "v1.0.0",
+        "assets": [
+            { "name": "checksums-linux-x86_64.txt" }
+        ]
+    });
+    let release = super::release_options::classified_release_summary(release);
+    let priority = vec!["raw-binary".to_owned()];
+
+    assert!(super::release_options::recommended_release_asset(&release, &priority).is_none());
+}
+
+#[test]
+fn raw_binary_priority_accepts_versioned_platform_asset_without_extension() {
+    let release = serde_json::json!({
+        "tag_name": "v1.2.3",
+        "assets": [
+            { "name": "tool-v1.2.3-linux-x86_64" }
+        ]
+    });
+    let release = super::release_options::classified_release_summary(release);
+    let priority = vec!["raw-binary".to_owned()];
+    let asset = super::release_options::recommended_release_asset(&release, &priority)
+        .expect("extensionless platform asset should remain a raw binary candidate");
+
+    assert_eq!(
+        asset.get("name").and_then(serde_json::Value::as_str),
+        Some("tool-v1.2.3-linux-x86_64")
+    );
+}
+
+#[test]
 fn release_binary_lane_can_reuse_nix_metadata_without_overwriting_it() {
     let option = super::release_options::ReleaseOption {
         provider: "github".to_owned(),

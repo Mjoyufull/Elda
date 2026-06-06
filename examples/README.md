@@ -97,7 +97,9 @@ archive contains exactly one executable candidate; maintained recipes should set
 that are the executable file itself use `source.rename` for the installed command
 name. Generated metadata strips platform suffixes and simple repo-version tails
 from that launcher name while preserving upstream separators, so
-`my_tool_linux_x86_64` installs as `my_tool`.
+`my_tool_linux_x86_64` installs as `my_tool`. Raw auto-detection accepts
+extensionless platform assets and Windows `.exe` assets, not text files that
+only contain platform tokens.
 
 ## Try One Locally
 

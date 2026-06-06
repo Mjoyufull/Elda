@@ -346,7 +346,9 @@ pkg = {
 declare `source.binary` when the archive has more than one executable; if they omit it, Elda only
 auto-selects a single executable candidate from the verified tar payload. Plain release assets that
 are already executable files use `rename` for the installed command name. Generated rename values
-strip platform suffixes and simple repo-version tails while preserving upstream separators.
+strip platform suffixes and simple repo-version tails while preserving upstream separators. Raw
+auto-detection accepts extensionless platform assets and Windows `.exe` assets, not text files that
+only happen to contain platform tokens.
 Generated recipes keep a discovered homepage when one exists; otherwise HTTP(S) raw link imports use
 the source URL as `upstream`.
 
