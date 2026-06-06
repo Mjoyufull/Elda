@@ -1,29 +1,8 @@
+use super::build_intent::BuildIntent;
 use super::detect::detect_default_branch;
 use super::metadata::GeneratedMetadata;
 use super::model::{GitRefKind, GitRefRequest, LegacyPkgdep};
 use super::strategy::SourceStrategy;
-
-pub(super) fn render_pkg_lua(
-    recipe_name: &str,
-    source_url: Option<&str>,
-    legacy_pkgdeps: &[LegacyPkgdep],
-    recipe_kind: &str,
-    strategy: &SourceStrategy,
-    metadata: &GeneratedMetadata,
-    git_ref: Option<&GitRefRequest>,
-) -> String {
-    render_pkg_lua_with_binary_lane(PkgLuaRender {
-        recipe_name,
-        source_url,
-        legacy_pkgdeps,
-        recipe_kind,
-        source_strategy: strategy,
-        binary_strategy: None,
-        default_lane: "source",
-        metadata,
-        git_ref,
-    })
-}
 
 pub(super) struct PkgLuaRender<'a> {
     pub(super) recipe_name: &'a str,
@@ -34,10 +13,11 @@ pub(super) struct PkgLuaRender<'a> {
     pub(super) binary_strategy: Option<&'a SourceStrategy>,
     pub(super) default_lane: &'a str,
     pub(super) metadata: &'a GeneratedMetadata,
+    pub(super) build_intent: Option<&'a BuildIntent>,
     pub(super) git_ref: Option<&'a GitRefRequest>,
 }
 
-pub(super) fn render_pkg_lua_with_binary_lane(input: PkgLuaRender<'_>) -> String {
+pub(super) fn render_pkg_lua(input: PkgLuaRender<'_>) -> String {
     let source_block = render_source_block(
         input.source_url,
         input.source_strategy,
@@ -52,13 +32,16 @@ pub(super) fn render_pkg_lua_with_binary_lane(input: PkgLuaRender<'_>) -> String
     let provides_block = render_string_array("provides", &metadata.provides);
     let conflicts_block = render_string_array("conflicts", &metadata.conflicts);
     let replaces_block = render_string_array("replaces", &metadata.replaces);
+    let build_block = render_build_block(input.build_intent);
+    let upstream =
+        non_empty(metadata.upstream.as_deref()).or_else(|| generated_upstream(input.source_url));
 
     format!(
-        "pkg = {{\n  name = \"{name}\",\n  description = \"{description}\",\n  licenses = {licenses},\n  upstream = \"{upstream}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = {rel},\n  arch = {{ \"amd64\" }},\n  kind = \"{recipe_kind}\",\n\n{source_block}\n{depends_block}{makedepends_block}{checkdepends_block}  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n{provides_block}{conflicts_block}{replaces_block}\n  conffiles = {{}},\n  sysusers = {{}},\n  tmpfiles = {{}},\n  alternatives = {{}},\n  hooks = {{}},\n  provider_assets = {{}},\n\n  flags_default = {{}},\n  flags_allowed = {{}},\n  flags_implies = {{}},\n  flags_conflicts = {{}},\n\n  subpackages = {{}},\n{profile_block}}}\n",
+        "pkg = {{\n  name = \"{name}\",\n  description = \"{description}\",\n  licenses = {licenses},\n  upstream = \"{upstream}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = {rel},\n  arch = {{ \"amd64\" }},\n  kind = \"{recipe_kind}\",\n\n{source_block}{build_block}\n{depends_block}{makedepends_block}{checkdepends_block}  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n{provides_block}{conflicts_block}{replaces_block}\n  conffiles = {{}},\n  sysusers = {{}},\n  tmpfiles = {{}},\n  alternatives = {{}},\n  hooks = {{}},\n  provider_assets = {{}},\n\n  flags_default = {{}},\n  flags_allowed = {{}},\n  flags_implies = {{}},\n  flags_conflicts = {{}},\n\n  subpackages = {{}},\n{profile_block}}}\n",
         name = escape_lua_string(input.recipe_name),
         description = escape_lua_string(metadata.description.as_deref().unwrap_or_default()),
         licenses = render_array_values(&metadata.licenses),
-        upstream = escape_lua_string(metadata.upstream.as_deref().unwrap_or_default()),
+        upstream = escape_lua_string(upstream.unwrap_or_default()),
         version = escape_lua_string(metadata.version.as_deref().unwrap_or("0.1.0")),
         rel = metadata.rel.unwrap_or(1),
         recipe_kind = escape_lua_string(input.recipe_kind),
@@ -69,7 +52,38 @@ pub(super) fn render_pkg_lua_with_binary_lane(input: PkgLuaRender<'_>) -> String
         provides_block = provides_block,
         conflicts_block = conflicts_block,
         replaces_block = replaces_block,
+        build_block = build_block,
         profile_block = profile_block(input.recipe_kind),
+    )
+}
+
+fn generated_upstream(source_url: Option<&str>) -> Option<&str> {
+    let source_url = source_url?.trim();
+    if source_url.starts_with("https://") || source_url.starts_with("http://") {
+        return Some(source_url.trim_end_matches(".git"));
+    }
+
+    None
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    let value = value?.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    Some(value)
+}
+
+fn render_build_block(build: Option<&BuildIntent>) -> String {
+    let Some(build) = build else {
+        return String::new();
+    };
+
+    format!(
+        "  build = {{\n    system = \"{}\",\n    bins = {},\n  }},\n\n",
+        escape_lua_string(&build.system),
+        render_array_values(&build.bins),
     )
 }
 
@@ -120,7 +134,7 @@ fn indent_lane_body(body: &str) -> String {
 fn source_line(source_url: Option<&str>, strategy: &SourceStrategy) -> String {
     if matches!(
         strategy.kind(),
-        "github_release" | "release_asset" | "appimage"
+        "github_release" | "release_asset" | "url_archive" | "appimage"
     ) {
         return String::new();
     }

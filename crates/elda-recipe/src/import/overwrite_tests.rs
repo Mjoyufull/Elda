@@ -39,6 +39,7 @@ fn add_recipe_preserves_existing_generated_metadata_without_replace() {
 
     assert_eq!(pkg_lua, "pkg = { name = \"stable-tool\" }\n");
     assert!(!report.generated_pkg_lua);
+    assert!(report.reused_existing_pkg_lua);
 }
 
 #[test]
@@ -68,6 +69,38 @@ fn add_recipe_replace_overwrites_existing_generated_metadata() {
     assert!(pkg_lua.contains(r#"name = "replace-tool""#));
     assert!(!pkg_lua.contains(r#"name = "old""#));
     assert!(report.generated_pkg_lua);
+    assert!(!report.reused_existing_pkg_lua);
+}
+
+#[test]
+fn remote_probe_failure_names_existing_local_recipe_without_reusing_it() {
+    let tempdir = TempDir::new().expect("tempdir should exist");
+    let recipes = tempdir.path().join("recipes");
+    let recipe_dir = recipes.join("missing-tool");
+    fs::create_dir_all(&recipe_dir).expect("recipe dir should exist");
+    fs::write(recipe_dir.join("pkg.lua"), "pkg = { name = \"kept\" }\n")
+        .expect("existing pkg.lua should be written");
+    let missing_source = tempdir.path().join("missing-tool.git");
+    let source_url = format!("file://{}", missing_source.display());
+
+    let error = super::add_recipe_with_options(
+        &recipes,
+        &source_url,
+        None,
+        &super::ImportOptions::default(),
+    )
+    .expect_err("missing remote source should fail closed");
+
+    assert!(error.to_string().contains("could not be probed"));
+    assert!(
+        error
+            .to_string()
+            .contains("install `missing-tool` explicitly")
+    );
+    assert_eq!(
+        fs::read_to_string(recipe_dir.join("pkg.lua")).expect("pkg.lua should read"),
+        "pkg = { name = \"kept\" }\n"
+    );
 }
 
 #[test]
@@ -108,6 +141,7 @@ fn local_import_preserves_existing_metadata_without_replace() {
     );
     assert!(!report.imported_pkg_lua);
     assert!(!report.imported_build_lua);
+    assert!(report.reused_existing_pkg_lua);
 }
 
 #[test]

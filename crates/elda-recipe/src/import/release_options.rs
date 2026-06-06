@@ -55,22 +55,165 @@ impl ReleaseOption {
             .as_ref()
             .map(|signature| format!("    signature = \"{}\",\n", escape_lua_string(signature)))
             .unwrap_or_default();
-        let binary_line = if self.source_kind() == "appimage" {
-            format!(
-                "    binary = \"{}\",\n",
-                escape_lua_string(&launcher_name_from_appimage_asset(&self.asset))
-            )
-        } else {
-            String::new()
-        };
+        let install_fields = self.install_fields();
         format!(
-            "{provider_line}{host_line}    repo = \"{}\",\n    tag = \"{}\",\n    asset = \"{}\",\n    sha256 = \"{}\",\n{signature_line}{binary_line}",
+            "{provider_line}{host_line}    repo = \"{}\",\n    tag = \"{}\",\n    asset = \"{}\",\n    sha256 = \"{}\",\n{signature_line}{install_fields}",
             escape_lua_string(&self.repo),
             escape_lua_string(&self.tag),
             escape_lua_string(&self.asset),
             escape_lua_string(self.sha256.as_deref().unwrap_or_default()),
         )
     }
+
+    fn install_fields(&self) -> String {
+        if self.source_kind() == "appimage" {
+            let binary = launcher_name_from_appimage_asset(&self.asset);
+            return format!("    binary = \"{}\",\n", escape_lua_string(&binary));
+        }
+
+        if payload_format_kebab(&self.asset.to_ascii_lowercase()) == "raw-binary" {
+            let rename = launcher_name_from_raw_asset(&self.repo, &self.asset);
+            return format!("    rename = \"{}\",\n", escape_lua_string(&rename));
+        }
+
+        String::new()
+    }
+}
+
+fn launcher_name_from_repo(repo: &str) -> String {
+    repo.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(repo)
+        .trim_end_matches(".git")
+        .to_owned()
+}
+
+fn launcher_name_from_raw_asset(repo: &str, asset: &str) -> String {
+    let repo_launcher = launcher_name_from_repo(repo);
+    let basename = asset
+        .rsplit_once('/')
+        .map(|(_, tail)| tail)
+        .unwrap_or(asset)
+        .trim_end_matches(".exe");
+    if basename.eq_ignore_ascii_case(&repo_launcher) {
+        return repo_launcher;
+    }
+
+    let candidate = strip_platform_suffix(basename)
+        .and_then(|name| strip_repo_version_suffix(&repo_launcher, &name).or(Some(name)))
+        .unwrap_or_else(|| basename.to_owned());
+    if candidate.eq_ignore_ascii_case(&repo_launcher) {
+        return repo_launcher;
+    }
+
+    let lower = candidate.to_ascii_lowercase();
+    let repo_lower = repo_launcher.to_ascii_lowercase();
+    if lower
+        .strip_prefix(&repo_lower)
+        .is_some_and(version_suffix_tail)
+    {
+        return repo_launcher;
+    }
+
+    candidate
+}
+
+fn strip_platform_suffix(name: &str) -> Option<String> {
+    let tokens = split_name_tokens(name);
+    let split_at = tokens
+        .iter()
+        .position(|token| platform_token(token.value))?;
+    if split_at == 0 {
+        return None;
+    }
+
+    let stripped = tokens[..split_at]
+        .iter()
+        .map(|token| token.raw)
+        .collect::<String>()
+        .trim_end_matches(['-', '_'])
+        .to_owned();
+    (!stripped.is_empty()).then_some(stripped)
+}
+
+fn strip_repo_version_suffix(repo_launcher: &str, name: &str) -> Option<String> {
+    let lower = name.to_ascii_lowercase();
+    let repo_lower = repo_launcher.to_ascii_lowercase();
+    let tail = lower.strip_prefix(&repo_lower)?;
+    if !version_suffix_tail(tail) {
+        return None;
+    }
+
+    Some(repo_launcher.to_owned())
+}
+
+fn version_suffix_tail(tail: &str) -> bool {
+    let tail = tail.strip_prefix(['-', '_']).unwrap_or(tail);
+    tail.strip_prefix('v')
+        .unwrap_or(tail)
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_digit())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NameToken<'a> {
+    start: usize,
+    raw: &'a str,
+    value: &'a str,
+}
+
+fn split_name_tokens(name: &str) -> Vec<NameToken<'_>> {
+    let mut tokens = Vec::new();
+    let mut token_start = None;
+    for (index, ch) in name.char_indices() {
+        if ch == '-' || ch == '_' {
+            if let Some(start) = token_start.take() {
+                tokens.push(NameToken {
+                    start,
+                    raw: &name[start..index],
+                    value: &name[start..index],
+                });
+            }
+            tokens.push(NameToken {
+                start: index,
+                raw: &name[index..index + ch.len_utf8()],
+                value: "",
+            });
+        } else if token_start.is_none() {
+            token_start = Some(index);
+        }
+    }
+    if let Some(start) = token_start {
+        tokens.push(NameToken {
+            start,
+            raw: &name[start..],
+            value: &name[start..],
+        });
+    }
+    tokens
+}
+
+fn platform_token(token: &str) -> bool {
+    matches!(
+        token.to_ascii_lowercase().as_str(),
+        "linux"
+            | "gnu"
+            | "musl"
+            | "macos"
+            | "darwin"
+            | "windows"
+            | "win32"
+            | "win64"
+            | "x86"
+            | "x86_64"
+            | "amd64"
+            | "aarch64"
+            | "arm64"
+            | "armv7"
+            | "i686"
+    )
 }
 
 fn launcher_name_from_appimage_asset(asset: &str) -> String {
@@ -335,11 +478,26 @@ fn payload_format_kebab(lower: &str) -> &'static str {
         "apk"
     } else if lower.ends_with(".pkg.tar.zst") || lower.ends_with(".pkg.tar.xz") {
         "pacman-package"
-    } else if has_no_extension(lower) {
+    } else if has_no_extension(lower) || looks_like_raw_platform_binary(lower) {
         "raw-binary"
     } else {
         "unknown"
     }
+}
+
+fn looks_like_raw_platform_binary(lower: &str) -> bool {
+    let basename = lower.rsplit('/').next().unwrap_or(lower);
+    let Some(platform_start) = split_name_tokens(basename)
+        .iter()
+        .find(|token| platform_token(token.value))
+        .map(|token| token.start)
+    else {
+        return false;
+    };
+
+    basename[platform_start..]
+        .rsplit_once('.')
+        .is_none_or(|(_, extension)| extension == "exe")
 }
 
 fn has_no_extension(lower: &str) -> bool {

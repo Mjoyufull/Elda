@@ -229,8 +229,8 @@ Lane rules:
 Supported source-kind contracts:
 | Kind | Required fields | Contract |
 | --- | --- | --- |
-| `url_archive` | `url`, `sha256` | Direct vendor or upstream archive fetch. Optional fields may describe archive stripping, binary selection, file renames, or subdirectory selection. |
-| `github_release` | `repo`, `tag` or `release = "latest"`, `asset`, `sha256` | GitHub release-backed binary/vendor source selected by repo/tag/asset. It accepts the same extraction-selection fields as `url_archive`. |
+| `url_archive` | `url`, `sha256` | Direct vendor or upstream archive fetch. Optional fields may describe archive stripping, binary selection, file renames, or subdirectory selection. If `binary` is omitted for a tar archive, Elda may infer it only when the verified archive contains exactly one executable launcher candidate. |
+| `github_release` | `repo`, `tag` or `release = "latest"`, `asset`, `sha256` | GitHub release-backed binary/vendor source selected by repo/tag/asset. It accepts the same extraction-selection fields as `url_archive`, including the same bounded binary inference for tar archives. Plain raw-binary assets use `rename` for the installed launcher name. |
 | `release_asset` | `provider`, `repo`, `tag` or `release = "latest"`, `asset`, `sha256`; optional `host` | Provider-neutral forge release binary (GitLab, Gitea, Forgejo, SourceHut, `direct`, etc.) using the same asset/checksum and multi-arch `assets = { ... }` authoring rules as `github_release` where applicable. |
 | `appimage` | `binary`, `sha256`, and either direct `url` **or** release-style fields (`repo`, `tag` or `release`, `asset`, optional `provider`, optional `host`; multi-arch `assets = { ... }` like `github_release`) | **Type 2** AppImage passthrough: checksum-verified payload stored under `usr/lib/elda/appimages/<pkgname>/<epoch:pkgver-pkgrel>/payload/`, stable launcher as `usr/bin/<binary>` -> symlink to that payload. Desktop integration (`.desktop`, icons, `usr/share/metainfo`) is staged by **reading the embedded SquashFS only** (no execution of the AppImage runtime). Optional `integration = "none"` skips that integration; omitting `integration` or `integration = "desktop"` enables it. Does not use archive strip/subdir/rename fields. |
 | `git` | `url`, one of `rev` / `tag` / `branch` | Normal git-source recipe. Declarative metadata plus optional `build.lua` define how the checkout is staged. Optional fields may restrict `subdir`, shallow fetch depth, or submodule behavior. |
@@ -242,8 +242,22 @@ Supported source-kind contracts:
 Shared optional extraction fields for `url_archive` and `github_release`:
 - `strip_components`
 - `subdir`
-- `binary` (Required for binary selection inside archives; CLI metadata generation detects when this is missing and surfaces it in the review gate)
+- `binary` (explicit binary path or filename inside archives; recommended for maintained recipes and required when the archive has zero or multiple executable candidates)
 - `rename`
+
+Binary archive inference is intentionally narrow. Elda scans checksum-verified tar payloads for
+regular executable launcher candidates. If exactly one candidate exists, it stages that file into
+`/usr/bin` and uses `rename` when present for the installed launcher name. If no candidate or more
+than one candidate exists, install fails closed until the recipe declares `binary` explicitly. For
+plain raw-binary release assets, generated metadata does not invent an archive `binary` path; it
+uses an asset-derived `rename` so assets like `curd-linux-x86_64` install as `curd` when the asset
+prefix confirms the launcher name. Raw auto-detection accepts extensionless platform assets and
+Windows `.exe` assets; text and metadata extensions are not treated as executable payloads merely
+because their names contain platform tokens.
+
+Generated link metadata must preserve parser-derived homepage metadata when available. When a raw
+HTTP(S) git or forge-release link has no parser-derived homepage, Elda uses the source URL itself
+as `upstream` instead of emitting a blank upstream field.
 
 Arch-specific `github_release` authoring:
 - the current top-level `asset` plus `sha256` form remains the single-asset shorthand
@@ -290,7 +304,8 @@ Lane-selection rules:
 - `defaults.install_preference` defaults to `binary`
 - if the preferred lane is unavailable, Elda falls back to the available declared lane
 - `elda ig` fails for package targets that do not expose a source lane
-- `elda ib` fails for package targets that do not expose a binary lane and is not valid for raw git-URL installs
+- `elda ib` fails for targets that do not expose a binary lane; a direct upstream link is valid only when metadata discovery emits a checksum-backed binary lane for that link
+- AUR `-bin` metadata may expose a binary lane from expanded `.SRCINFO` only when the native-architecture archive has a SHA-256 checksum and an unambiguous launcher name
 - `vendor add` remains the local convenience/import lane for unsupported or one-off binaries; maintained recipes should encode first-class binary lanes directly in `pkg.lua`
 
 #### Declarative Metadata Families
@@ -373,6 +388,12 @@ build = {
   tests = true,
 }
 ```
+
+`build.bins` names the intended final launchers for source builds. Maintainers should set it when
+the output name is not obvious or when more than one binary can be built. Generated ad hoc git
+metadata may fill `build.system` and `build.bins` from bounded static repo markers for Cargo, Go,
+Meson, CMake, Python, Nimble, Zig, and Make so the review gate shows the intended output before any
+build starts.
 
 `build.lua` is for package logic that cannot be expressed by the declarative build table. It is not required just because a package uses Cargo, Meson, CMake, Go, or Zig.
 
@@ -1382,7 +1403,7 @@ Human-mode install output contract:
 - before privilege re-exec, human mode prints a framed **Privilege Escalation** summary (requested/selected provider, policy, environment handling)
 - when `elda a` or `elda add` detects many native recipe dirs in a git repository, it must stage the candidate set first; `Y` imports the staged set, `n` cancels, and `e` opens the staged root so the operator can delete unwanted recipe dirs before validation and re-prompt
 - `elda ig <target...>` forces the source lane for maintained packages and remains valid for direct git-URL installs after the same metadata generation/review path
-- `elda ib <pkg...>` forces the binary lane for maintained packages and fails if the selected target has no binary lane
+- `elda ib <target...>` forces the binary lane for maintained packages and checksum-backed generated release metadata, and fails if the selected target has no binary lane
 - `--prefer-source` and `--prefer-binary` are mutually exclusive `elda i` overrides; they are the flag form of the `ig` / `ib` choice
 - `--exclude` on `elda a` / `elda add` / `elda i` and on `rmt add` names packages omitted from bulk metadata import or from interemote sync policy. A bare `--exclude` must be placed at the **END of the operand list** because it consumes **all following operands** as exclude names. Each operand may include comma-separated names (e.g., `--exclude pkg1 pkg2` or `--exclude pkg1, pkg2`). Inline `--exclude=pkg1,pkg2` may appear with other flags. Any operand that begins with `--` after a bare `--exclude` is rejected (place other flags before `--exclude`). Operands after `--exclude` are not install targets or remote flags.
 - `elda rm <pkg...>` removes packages; `--cascade` removes reverse dependencies that become invalid, and `--purge-conffiles` drops preserved `*.eldasave` state

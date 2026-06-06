@@ -52,6 +52,39 @@ fn omitting_appimage_from_priority_disables_appimage_auto_selection() {
 }
 
 #[test]
+fn raw_binary_priority_rejects_platform_marked_text_assets() {
+    let release = serde_json::json!({
+        "tag_name": "v1.0.0",
+        "assets": [
+            { "name": "checksums-linux-x86_64.txt" }
+        ]
+    });
+    let release = super::release_options::classified_release_summary(release);
+    let priority = vec!["raw-binary".to_owned()];
+
+    assert!(super::release_options::recommended_release_asset(&release, &priority).is_none());
+}
+
+#[test]
+fn raw_binary_priority_accepts_versioned_platform_asset_without_extension() {
+    let release = serde_json::json!({
+        "tag_name": "v1.2.3",
+        "assets": [
+            { "name": "tool-v1.2.3-linux-x86_64" }
+        ]
+    });
+    let release = super::release_options::classified_release_summary(release);
+    let priority = vec!["raw-binary".to_owned()];
+    let asset = super::release_options::recommended_release_asset(&release, &priority)
+        .expect("extensionless platform asset should remain a raw binary candidate");
+
+    assert_eq!(
+        asset.get("name").and_then(serde_json::Value::as_str),
+        Some("tool-v1.2.3-linux-x86_64")
+    );
+}
+
+#[test]
 fn release_binary_lane_can_reuse_nix_metadata_without_overwriting_it() {
     let option = super::release_options::ReleaseOption {
         provider: "github".to_owned(),
@@ -72,7 +105,7 @@ fn release_binary_lane_can_reuse_nix_metadata_without_overwriting_it() {
     };
 
     let binary_strategy = super::strategy::SourceStrategy::GithubRelease(option);
-    let pkg_lua = super::render::render_pkg_lua_with_binary_lane(super::render::PkgLuaRender {
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
         recipe_name: "tool",
         source_url: Some("https://github.com/owner/tool"),
         legacy_pkgdeps: &[],
@@ -81,6 +114,7 @@ fn release_binary_lane_can_reuse_nix_metadata_without_overwriting_it() {
         binary_strategy: Some(&binary_strategy),
         default_lane: "binary",
         metadata: &metadata,
+        build_intent: None,
         git_ref: None,
     });
 
@@ -120,7 +154,7 @@ fn release_binary_lane_can_be_added_beside_aur_metadata() {
     };
 
     let binary_strategy = super::strategy::SourceStrategy::GithubRelease(option);
-    let pkg_lua = super::render::render_pkg_lua_with_binary_lane(super::render::PkgLuaRender {
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
         recipe_name: "tool",
         source_url: Some("https://gitlab.com/owner/tool"),
         legacy_pkgdeps: &[],
@@ -129,6 +163,7 @@ fn release_binary_lane_can_be_added_beside_aur_metadata() {
         binary_strategy: Some(&binary_strategy),
         default_lane: "source",
         metadata: &metadata,
+        build_intent: None,
         git_ref: None,
     });
 

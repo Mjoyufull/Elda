@@ -59,6 +59,7 @@ pub struct ImportReport {
     pub imported_build_lua: bool,
     pub imported_patches: bool,
     pub generated_pkg_lua: bool,
+    pub reused_existing_pkg_lua: bool,
     pub generated_build_lua: bool,
     pub imported_legacy_pkgdeps: bool,
     pub imported_legacy_bldit: bool,

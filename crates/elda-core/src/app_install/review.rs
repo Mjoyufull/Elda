@@ -414,7 +414,7 @@ fn render_install_proceed_frame(install_plan: &[PlannedInstallAction]) -> String
     }
     frame.footer(FrameFooter {
         glyph: None,
-        text: "Proceed? [Y/n/e]".to_owned(),
+        text: "Proceed? [Y/n]".to_owned(),
     });
     highlight_operator_frame(&frame.render(TreeStyle::detect()))
 }
@@ -484,7 +484,7 @@ mod tests {
 
         let rendered = render_install_proceed_frame(&[action]);
 
-        assert!(rendered.contains("Proceed? [Y/n/e]"));
+        assert!(rendered.contains("Proceed? [Y/n]"));
         assert!(rendered.contains("replaces alpha-tool"));
     }
 
@@ -615,6 +615,7 @@ mod tests {
             provider_group: None,
             dependencies: Vec::new(),
             already_installed: None,
+            force_reinstall: false,
         }
     }
 }

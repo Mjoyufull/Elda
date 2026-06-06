@@ -129,7 +129,7 @@ pub(crate) fn version_change_rgb(action: &Value) -> Option<(u8, u8, u8)> {
         "downgrade-explicit" | "downgrade-dependency" | "source-ref-downgrade" => {
             Some(palette::WARNING) // yellow-orange for downgrade per contract
         }
-        "keep-installed" | "keep" => Some(palette::VERSION),
+        "keep-installed" | "keep" | "reinstall-explicit" => Some(palette::VERSION),
         "upgrade-explicit" | "upgrade-dependency" | "install-replacing" => Some(palette::SUCCESS),
         "install-explicit" | "install-dependency" | "install-recommended" => Some(palette::SUCCESS),
         _ if action

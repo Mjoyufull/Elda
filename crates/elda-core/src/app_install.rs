@@ -17,6 +17,7 @@ mod review_recheck;
 pub(crate) mod solver;
 mod source_options;
 mod transaction_gate;
+mod url_recipe;
 
 pub(crate) use dependency::constraint::{
     package_satisfies_constraint, parse_dependency_constraint, provides_satisfy_constraint,

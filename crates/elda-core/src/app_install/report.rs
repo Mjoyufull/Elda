@@ -54,6 +54,7 @@ pub(crate) fn planned_install_action_json(
         "provider_group": action.provider_group,
         "replaced_packages": action.replaced_packages,
         "already_installed": action.already_installed.is_some(),
+        "force_reinstall": action.force_reinstall,
         "needs_change": decision.needs_change,
         "activation_backend": activation_backend,
         "effective_flags": action.resolved.flag_state.effective_flags,
@@ -108,6 +109,7 @@ pub(crate) fn already_installed_json(
         "is_weak": action.is_weak,
         "provider_group": action.provider_group,
         "replaced_packages": action.replaced_packages,
+        "force_reinstall": action.force_reinstall,
         "flag_state": {
             "variant_id": action.resolved.flag_state.variant_id,
             "effective_flags": action.resolved.flag_state.effective_flags,
@@ -140,13 +142,16 @@ pub(crate) fn install_execution_decision(
         action.resolved.recipe.package.version,
         action.resolved.recipe.package.rel,
     );
-    let needs_change = installed_version(installed) != candidate_version
+    let needs_change = action.force_reinstall
+        || installed_version(installed) != candidate_version
         || installed.variant_id != Some(action.resolved.flag_state.variant_id.clone())
         || installed.source_kind != action.resolved.persisted_source_kind;
 
     InstallExecutionDecision {
         needs_change,
-        change_kind: if needs_change && action.install_reason == "explicit" {
+        change_kind: if action.force_reinstall {
+            "reinstall-explicit"
+        } else if needs_change && action.install_reason == "explicit" {
             "upgrade-explicit"
         } else if needs_change {
             "upgrade-dependency"

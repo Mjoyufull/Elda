@@ -10,6 +10,9 @@
 --
 -- Note: when `build.system` covers the case (`cargo`, `cmake`, `meson`, `make`,
 -- `go`, `python`, `zig`, `nimble`), `build.lua` should *not* exist.
+-- `build.bins` is the source-lane launcher contract. Generated ad hoc git
+-- metadata fills it when Elda can statically detect the intended output, but
+-- maintained recipes should still declare it directly.
 pkg = {
   name = "ripgrep",
   description = "Recursively searches directories for a regex pattern.",

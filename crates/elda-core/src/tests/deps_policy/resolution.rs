@@ -202,6 +202,38 @@ fn install_backtracks_any_of_exact_alternatives_to_avoid_conflicts() {
 }
 
 #[test]
+fn any_of_dependency_accepts_host_platform_capability() {
+    let tempdir = TempDir::new().expect("tempdir should be created");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let app_binary = create_script_binary(tempdir.path(), "app-tool", "app tool");
+    write_local_binary_recipe_with_lua_fields(
+        tempdir.path(),
+        "app-tool",
+        &app_binary,
+        "0.1.0",
+        "{ { any = { \"libgcc\", \"missing-runtime\" } } }",
+        "{}",
+        "{}",
+    );
+
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(
+            vec!["i".to_owned()],
+            vec!["app-tool".to_owned()],
+            OutputMode::Json,
+            false,
+        ),
+    )
+    .expect("solver should accept host platform capability inside any()");
+
+    assert_eq!(
+        run_installed_binary(tempdir.path(), "/opt/elda/bin/app-tool"),
+        "app tool"
+    );
+}
+
+#[test]
 fn install_selects_unique_virtual_provider_and_records_reverse_dependency() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     write_prefix_config(tempdir.path(), "/opt/elda");

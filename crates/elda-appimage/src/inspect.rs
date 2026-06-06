@@ -180,13 +180,15 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    fn demo_fixture() -> Option<PathBuf> {
+        std::env::var_os("ELDA_APPIMAGE_TEST_FIXTURE").map(PathBuf::from)
+    }
+
     #[test]
     fn inspect_gearlever_demo_fixture() {
-        let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        p.push("../../ref/gearlever/src/assets/demo.AppImage");
-        if !p.exists() {
+        let Some(p) = demo_fixture().filter(|path| path.is_file()) else {
             return;
-        }
+        };
 
         let report = inspect_appimage(&p).expect("inspect demo AppImage");
         assert_eq!(report.generation, 2);

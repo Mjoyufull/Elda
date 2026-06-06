@@ -153,6 +153,7 @@ pub(crate) struct PlannedInstallAction {
     pub(crate) provider_group: Option<String>,
     pub(crate) dependencies: Vec<ResolvedDependencyPlan>,
     pub(crate) already_installed: Option<InstalledPackageDetails>,
+    pub(crate) force_reinstall: bool,
 }
 
 #[derive(Debug, Clone)]

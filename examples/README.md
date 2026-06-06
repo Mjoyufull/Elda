@@ -79,6 +79,8 @@ package-definition repo.
 | `14-interbuild-gentoo-overlay/eselect` | bounded Gentoo overlay interbuild |
 | `15-build-systems-*` | CMake, Go, and Meson declarative builds |
 | `16-appimage-managed/demo-tool` | managed AppImage binary lane |
+| `17-binary-auto-detected-archive/demo-tool` | tar archive with one inferred executable |
+| `18-binary-raw-release-asset/demo-tool` | raw release executable installed with `rename` |
 
 Interbuild lanes for AUR PKGBUILD and XBPS templates are supported at runtime; use
 `elda a <url>` on those trees or author recipes after `elda git releases` /
@@ -87,12 +89,24 @@ metadata import. Numbered recipe folders for those parsers may be added later.
 Metadata safety: generated/imported recipe files preserve existing local
 metadata unless the command includes `--replace`.
 
+Source-lane output names belong in `build.bins`. Generated ad hoc git metadata
+fills that table when static repo markers expose one clear build system and
+launcher set. Binary tar lanes can omit `source.binary` only when the verified
+archive contains exactly one executable candidate; maintained recipes should set
+`source.binary` when the archive layout is not that obvious. Raw release assets
+that are the executable file itself use `source.rename` for the installed command
+name. Generated metadata strips platform suffixes and simple repo-version tails
+from that launcher name while preserving upstream separators, so
+`my_tool_linux_x86_64` installs as `my_tool`. Raw auto-detection accepts
+extensionless platform assets and Windows `.exe` assets, not text files that
+only contain platform tokens.
+
 ## Try One Locally
 
 ```sh
-elda rc check ./examples/recipes/01-binary-github-release/fd
 sudo install -d /etc/elda/recipes/fd
 sudo cp -r examples/recipes/01-binary-github-release/fd/. /etc/elda/recipes/fd/
+elda rc check fd
 elda i fd --dry-run
 elda rc rm fd
 ```

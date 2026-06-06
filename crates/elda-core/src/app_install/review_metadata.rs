@@ -88,24 +88,31 @@ pub(super) fn missing_review_fields(action: &PlannedInstallAction) -> Vec<&'stat
     }
 
     let kind = action.resolved.selected_source_kind.as_str();
-    if matches!(
-        kind,
-        "github_release" | "release_asset" | "url_archive" | "appimage"
-    ) {
-        let has_binary = if pkg.source.is_multi_lane() {
-            pkg.source
-                .lanes
-                .get(&action.resolved.selected_lane)
-                .is_some_and(|l| l.fields.contains_key("binary"))
-        } else {
-            pkg.source.fields.contains_key("binary")
-        };
-        if !has_binary {
+    if matches!(kind, "appimage") {
+        if !selected_source_field_present(action, "binary") {
+            missing.push("binary");
+        }
+    } else if matches!(kind, "github_release" | "release_asset" | "url_archive") {
+        let has_launcher_name = selected_source_field_present(action, "binary")
+            || selected_source_field_present(action, "rename");
+        if !has_launcher_name {
             missing.push("binary");
         }
     }
 
     missing
+}
+
+fn selected_source_field_present(action: &PlannedInstallAction, field: &str) -> bool {
+    let source = &action.resolved.recipe.package.source;
+    if source.is_multi_lane() {
+        return source
+            .lanes
+            .get(&action.resolved.selected_lane)
+            .is_some_and(|lane| lane.fields.contains_key(field));
+    }
+
+    source.fields.contains_key(field)
 }
 
 pub(super) fn render_metadata_review_frame(plan: &GeneratedRecipeReview) -> String {
@@ -174,6 +181,39 @@ mod tests {
         let action = planned_action("tool", &recipe_dir);
         let missing = missing_review_fields(&action);
         assert_eq!(missing, vec!["description", "licenses", "upstream"]);
+    }
+
+    #[test]
+    fn missing_review_fields_accepts_binary_rename_for_release_assets() {
+        let recipe_dir = PathBuf::from("/tmp/example");
+        let mut action = planned_action("tool", &recipe_dir);
+        action.resolved.selected_lane = "binary".to_owned();
+        action.resolved.selected_source_kind = "github_release".to_owned();
+        action.resolved.recipe.package.description = Some("Tool".to_owned());
+        action.resolved.recipe.package.licenses = vec!["MIT".to_owned()];
+        action.resolved.recipe.package.upstream = Some("https://example.invalid/tool".to_owned());
+
+        let mut lane_fields = BTreeMap::new();
+        lane_fields.insert(
+            "rename".to_owned(),
+            elda_recipe::ScalarValue::String("tool".to_owned()),
+        );
+        action.resolved.recipe.package.source = SourceDefinition {
+            kind: String::new(),
+            fields: BTreeMap::new(),
+            github_release_assets: BTreeMap::new(),
+            default_lane: Some("binary".to_owned()),
+            lanes: BTreeMap::from([(
+                "binary".to_owned(),
+                elda_recipe::SourceLaneDefinition {
+                    kind: "github_release".to_owned(),
+                    fields: lane_fields,
+                    github_release_assets: BTreeMap::new(),
+                },
+            )]),
+        };
+
+        assert!(missing_review_fields(&action).is_empty());
     }
 
     #[test]
@@ -276,6 +316,7 @@ mod tests {
             provider_group: None,
             dependencies: Vec::new(),
             already_installed: None,
+            force_reinstall: false,
         }
     }
 }
