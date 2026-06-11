@@ -48,6 +48,8 @@ fn requires_dispatch_confirmation(path: &[String]) -> bool {
             "a" | "add"
                 | "rm"
                 | "u"
+                | "su"
+                | "dsu"
                 | "sync"
                 | "pin"
                 | "unpin"

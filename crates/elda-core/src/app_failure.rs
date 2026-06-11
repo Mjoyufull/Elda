@@ -95,6 +95,7 @@ fn failure_area(request: &CommandRequest) -> &'static str {
     match request.command_path.first().map(String::as_str) {
         Some("i" | "ig" | "ib") => "install",
         Some("u") => "upgrade",
+        Some("su" | "dsu") => "self-update",
         Some("sync" | "rmt") => "repo",
         Some("rc") => "recipe",
         Some("ci") => "ci",

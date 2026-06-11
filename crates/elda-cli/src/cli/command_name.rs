@@ -9,6 +9,8 @@ pub(super) fn command_name(command: &Command) -> String {
         Command::Ib(_) => "ib",
         Command::Rm(_) => "rm",
         Command::U(_) => "u",
+        Command::Su => "su",
+        Command::Dsu => "dsu",
         Command::Sync(_) => "sync",
         Command::Ls(_) => "ls",
         Command::List(_) => "list",

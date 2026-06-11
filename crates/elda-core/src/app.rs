@@ -313,6 +313,7 @@ impl AppContext {
             [command] if command == "list" => self.handle_list(request),
             [command] if command == "rm" => self.handle_remove(request),
             [command] if command == "u" => self.handle_upgrade(request),
+            [command] if command == "su" || command == "dsu" => self.handle_self_update(request),
             [command] if command == "sync" => self.handle_sync(request),
             [command] if command == "check" => self.handle_check(request),
             [command] if command == "doctor" => self.handle_doctor(request),
@@ -541,6 +542,9 @@ impl AppContext {
         let capabilities = &self.config.capabilities;
         let needs = match request.command_path.as_slice() {
             [command] if command == "sync" || command == "search" || command == "info" => {
+                Some(("network.fetch", capabilities.network_fetch))
+            }
+            [command] if command == "su" || command == "dsu" => {
                 Some(("network.fetch", capabilities.network_fetch))
             }
             [namespace, ..] if namespace == "git" => {
