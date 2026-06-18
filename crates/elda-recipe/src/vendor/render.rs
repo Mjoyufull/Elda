@@ -1,4 +1,5 @@
 use super::model::{ResolvedVendorSource, VendorLockEntry};
+use crate::version::pkgver_from_tag;
 
 pub(super) fn render_vendor_manifest_line(entry: &VendorLockEntry) -> String {
     let base = match entry.source_kind.as_str() {
@@ -30,6 +31,7 @@ pub(super) fn render_vendor_manifest_line(entry: &VendorLockEntry) -> String {
 }
 
 pub(super) fn render_vendor_pkg_lua(package_name: &str, resolved: &ResolvedVendorSource) -> String {
+    let version = vendor_pkgver(resolved);
     let source_body = match resolved {
         ResolvedVendorSource::UrlArchive {
             url,
@@ -66,10 +68,20 @@ pub(super) fn render_vendor_pkg_lua(package_name: &str, resolved: &ResolvedVendo
     };
 
     format!(
-        "pkg = {{\n  name = \"{name}\",\n  description = \"\",\n  licenses = {{}},\n  upstream = \"\",\n  epoch = 0,\n  version = \"0.1.0\",\n  rel = 1,\n  arch = {{ \"amd64\" }},\n  kind = \"normal\",\n\n  source = {{\n{source_body}  }},\n\n  depends = {{}},\n  makedepends = {{}},\n  checkdepends = {{}},\n  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n  provides = {{}},\n  conflicts = {{}},\n  replaces = {{}},\n\n  conffiles = {{}},\n  sysusers = {{}},\n  tmpfiles = {{}},\n  alternatives = {{}},\n  hooks = {{}},\n  provider_assets = {{}},\n\n  flags_default = {{}},\n  flags_allowed = {{}},\n  flags_implies = {{}},\n  flags_conflicts = {{}},\n\n  subpackages = {{}},\n}}\n",
+        "pkg = {{\n  name = \"{name}\",\n  description = \"\",\n  licenses = {{}},\n  upstream = \"\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = 1,\n  arch = {{ \"amd64\" }},\n  kind = \"normal\",\n\n  source = {{\n{source_body}  }},\n\n  depends = {{}},\n  makedepends = {{}},\n  checkdepends = {{}},\n  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n  provides = {{}},\n  conflicts = {{}},\n  replaces = {{}},\n\n  conffiles = {{}},\n  sysusers = {{}},\n  tmpfiles = {{}},\n  alternatives = {{}},\n  hooks = {{}},\n  provider_assets = {{}},\n\n  flags_default = {{}},\n  flags_allowed = {{}},\n  flags_implies = {{}},\n  flags_conflicts = {{}},\n\n  subpackages = {{}},\n}}\n",
         name = escape_lua_string(package_name),
+        version = escape_lua_string(&version),
         source_body = source_body,
     )
+}
+
+fn vendor_pkgver(resolved: &ResolvedVendorSource) -> String {
+    match resolved {
+        ResolvedVendorSource::GitHubRelease { tag, .. } => {
+            pkgver_from_tag(tag).unwrap_or_else(|| "0.1.0".to_owned())
+        }
+        ResolvedVendorSource::UrlArchive { .. } => "0.1.0".to_owned(),
+    }
 }
 
 fn render_source_fields(kind: &str, fields: &[(&str, Option<&str>)]) -> String {

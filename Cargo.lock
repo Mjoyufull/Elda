@@ -607,6 +607,7 @@ dependencies = [
 name = "elda-recipe"
 version = "0.1.49-Sumomo"
 dependencies = [
+ "elda-git",
  "elda-types",
  "rnix",
  "rowan",

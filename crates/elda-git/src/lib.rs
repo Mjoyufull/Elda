@@ -12,7 +12,7 @@ pub use releases::{
 };
 pub use tags::{
     GitInspectError, GitTagEntry, GitTagOptions, GitTagReport, VersionConfidence, list_remote_tags,
-    list_remote_tags_with_options,
+    list_remote_tags_with_options, normalize_tag_version,
 };
 
 pub const BOUNDARY: CrateBoundary = CrateBoundary::new(

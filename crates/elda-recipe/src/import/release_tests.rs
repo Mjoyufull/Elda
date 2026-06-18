@@ -203,6 +203,7 @@ fn github_release_strategy_renders_pinned_binary_metadata_when_checksum_exists()
     });
 
     assert!(pkg_lua.contains(r#"kind = "github_release""#));
+    assert!(pkg_lua.contains(r#"version = "3.4.1""#));
     assert!(pkg_lua.contains(r#"repo = "Mjoyufull/fsel""#));
     assert!(pkg_lua.contains(r#"tag = "v3.4.1""#));
     assert!(pkg_lua.contains(r#"asset = "fsel-v3.4.1-x86_64-unknown-linux-gnu.tar.gz""#));
@@ -212,6 +213,40 @@ fn github_release_strategy_renders_pinned_binary_metadata_when_checksum_exists()
     ));
     assert!(!pkg_lua.contains("url = \"https://github.com/Mjoyufull/fsel\""));
     assert!(!pkg_lua.contains("branch = \"main\""));
+}
+
+#[test]
+fn release_tag_version_does_not_override_source_metadata_version() {
+    let option = super::release_options::ReleaseOption {
+        provider: "github".to_owned(),
+        host: None,
+        repo: "owner/tool".to_owned(),
+        tag: "v9.9.9".to_owned(),
+        asset: "tool-linux-x86_64".to_owned(),
+        compatibility: "native-exact".to_owned(),
+        sha256: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned()),
+        signature: None,
+    };
+    let metadata = super::metadata::GeneratedMetadata {
+        version: Some("1.2.3".to_owned()),
+        ..super::metadata::GeneratedMetadata::default()
+    };
+    let strategy = super::strategy::SourceStrategy::GithubRelease(option);
+    let pkg_lua = super::render::render_pkg_lua(super::render::PkgLuaRender {
+        recipe_name: "tool",
+        source_url: Some("https://github.com/owner/tool"),
+        legacy_pkgdeps: &[],
+        recipe_kind: "normal",
+        source_strategy: &strategy,
+        binary_strategy: None,
+        default_lane: "source",
+        metadata: &metadata,
+        build_intent: None,
+        git_ref: None,
+    });
+
+    assert!(pkg_lua.contains(r#"version = "1.2.3""#));
+    assert!(!pkg_lua.contains(r#"version = "9.9.9""#));
 }
 
 #[test]
