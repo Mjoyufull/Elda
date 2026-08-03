@@ -173,7 +173,8 @@ pub(super) fn snapshot_cases() -> Vec<(&'static str, CommandReport)> {
                     "appimage_inspect": {
                         "path": "/tmp/Foo.AppImage",
                         "generation": 2,
-                        "squashfs_offset": 4096,
+                        "payload_format": "squashfs",
+                        "payload_offset": 4096,
                         "primary_desktop_path": "foo.desktop",
                         "desktop_name": "Foo",
                         "desktop_exec_original": "Foo %U",

@@ -171,6 +171,8 @@ fn compact_lines(
     push_policy_rows(&mut rows, action);
     push_review_row(&mut rows, details);
     push_change_row(&mut rows, actions);
+    push_trust_key_row(&mut rows, details);
+    push_build_dep_row(&mut rows, details);
     push_space_row(&mut rows, details);
     push_safety_row(&mut rows, details, actions);
 
@@ -284,6 +286,76 @@ fn is_keep_action(action: &Value) -> bool {
     matches!(
         json_string(action, &["action"]).unwrap_or("install"),
         "keep" | "keep-installed"
+    )
+}
+
+/// Release keys this plan will import into `[trust].release_keys`.
+///
+/// This used to be a second prompt after the operator had already accepted the
+/// plan. It belongs here instead: accepting the transaction accepts the import,
+/// and the gate the operator reads says so explicitly.
+fn push_trust_key_row(rows: &mut Vec<(String, String)>, details: &Value) {
+    let keys = string_list(details, &["preflight", "source_keys", "missing_for_plan"]);
+    if keys.is_empty() {
+        return;
+    }
+    rows.push((
+        "trust keys".to_owned(),
+        format!(
+            "import {} on accept: {}",
+            keys.len(),
+            summarize_names(&keys, 3)
+        ),
+    ));
+}
+
+/// Build-only dependencies that get removed once the source build succeeds.
+fn push_build_dep_row(rows: &mut Vec<(String, String)>, details: &Value) {
+    let deps = string_list(
+        details,
+        &["preflight", "temporary_build_dependencies", "packages"],
+    );
+    if deps.is_empty() {
+        return;
+    }
+    rows.push((
+        "build deps".to_owned(),
+        format!(
+            "{} temporary, removed after a successful build: {}",
+            deps.len(),
+            summarize_names(&deps, 4)
+        ),
+    ));
+}
+
+fn string_list(root: &Value, path: &[&str]) -> Vec<String> {
+    let mut cursor = root;
+    for key in path {
+        let Some(next) = cursor.get(key) else {
+            return Vec::new();
+        };
+        cursor = next;
+    }
+    cursor
+        .as_array()
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn summarize_names(names: &[String], max: usize) -> String {
+    if names.len() <= max {
+        return names.join(", ");
+    }
+    format!(
+        "{}, +{} more",
+        names[..max].join(", "),
+        names.len().saturating_sub(max)
     )
 }
 

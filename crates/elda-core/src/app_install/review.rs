@@ -520,11 +520,27 @@ mod tests {
         let rendered =
             interbuild_review_lines(&action, Path::new("/tmp/elda-review-test")).join("\n");
 
+        // Key/value rows are column-aligned, so assert on content, not padding.
+        // The key must fill the whole key column so `parser` cannot match an
+        // `interbuild parser::` row.
+        let row = |key: &str| {
+            let needle = format!("{key}::");
+            rendered.lines().find_map(|line| {
+                let body = line.trim_start_matches(['\u{2502}', '|', ' ']);
+                Some(body.strip_prefix(&needle)?.trim_start().to_owned())
+            })
+        };
+
         assert!(rendered.contains("Interbuild source review"));
-        assert!(rendered.contains("provenance:: [I] parsed"));
-        assert!(rendered.contains("parser:: static flake output parser"));
-        assert!(rendered.contains("installable:: default"));
-        assert!(rendered.contains("activate::"));
+        assert!(
+            row("provenance")
+                .is_some_and(|value| value.starts_with("[I] parsed"))
+        );
+        assert!(
+            row("parser").is_some_and(|value| value.starts_with("static flake output parser"))
+        );
+        assert!(row("installable").is_some_and(|value| value.starts_with("default")));
+        assert!(row("activate").is_some());
         assert!(rendered.contains("Review Memory:"));
         assert!(rendered.contains("Proceed? [Y/n/e]"));
     }

@@ -14,12 +14,19 @@ pub(crate) fn render_appimage_report(report: &CommandReport) -> Option<String> {
         ),
         format!(
             "generation: {}",
-            json_u64(inspect, &["generation"])
-                .map_or_else(|| "<unknown>".to_owned(), |g| g.to_string(),),
+            match json_u64(inspect, &["generation"]) {
+                None => "<unknown>".to_owned(),
+                Some(0) => "unmarked".to_owned(),
+                Some(other) => other.to_string(),
+            },
         ),
         format!(
-            "squashfs_offset_bytes: {}",
-            json_u64(inspect, &["squashfs_offset"]).unwrap_or(0),
+            "payload_format: {}",
+            json_string(inspect, &["payload_format"]).unwrap_or("<unknown>"),
+        ),
+        format!(
+            "payload_offset_bytes: {}",
+            json_u64(inspect, &["payload_offset"]).unwrap_or(0),
         ),
     ];
 
@@ -54,9 +61,9 @@ pub(crate) fn render_appimage_report(report: &CommandReport) -> Option<String> {
         render_header(report.area, report.status),
         report.summary,
         render_section("Overview", &overview),
-        render_section("Desktop files inside SquashFS", &desktop_lines),
-        render_section("Icon paths inside SquashFS", &icon_lines),
-        render_section("AppStream metainfo inside SquashFS", &metainfo_lines),
+        render_section("Desktop files inside payload", &desktop_lines),
+        render_section("Icon paths inside payload", &icon_lines),
+        render_section("AppStream metainfo inside payload", &metainfo_lines),
     );
 
     if fuse_section.is_empty() {
