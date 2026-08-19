@@ -63,6 +63,8 @@ elda search fsel
 elda i fsel
 elda ig fsel      # force source lane
 elda ib fsel      # force binary lane
+elda su           # update Elda from main
+elda dsu          # switch Elda to the latest dev build
 
 # Add local metadata without overwriting existing metadata
 elda a https://github.com/Mjoyufull/fsel

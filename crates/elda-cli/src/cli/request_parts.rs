@@ -19,6 +19,8 @@ pub(super) fn request_parts(command: &Command) -> (Vec<String>, Vec<String>) {
         Command::Check
         | Command::Doctor
         | Command::Version
+        | Command::Su
+        | Command::Dsu
         | Command::Init
         | Command::Recover
         | Command::Autoremove => (vec![command_name(command)], Vec::new()),
