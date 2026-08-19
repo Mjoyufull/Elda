@@ -33,6 +33,8 @@ pub(crate) struct ParsedInstallRequest {
     pub(crate) git_ref_overrides: BTreeMap<String, elda_recipe::GitRefRequest>,
     pub(crate) cli_flag_overrides: BTreeMap<String, bool>,
     pub(crate) replace: bool,
+    /// `--from URL`: where a local artifact was downloaded from.
+    pub(crate) acquisition_url: Option<String>,
     pub(crate) exclude: Vec<String>,
     /// Explicit virtual-name → provider package overrides from `--provider`.
     pub(crate) provider_choices: BTreeMap<String, String>,

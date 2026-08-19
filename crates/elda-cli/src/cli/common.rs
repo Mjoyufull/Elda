@@ -33,6 +33,12 @@ pub(super) struct InstallArgs {
     )]
     pub(super) strategy: Option<String>,
     #[arg(
+        long = "from",
+        value_name = "URL",
+        help = "Record where a local artifact was downloaded from so it can be re-fetched"
+    )]
+    pub(super) from: Option<String>,
+    #[arg(
         long = "to-branch",
         value_name = "BRANCH",
         help = "Use one git branch for ad hoc git metadata"

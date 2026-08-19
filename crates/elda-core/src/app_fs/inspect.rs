@@ -177,6 +177,7 @@ impl AppContext {
             git_ref_overrides: Default::default(),
             cli_flag_overrides: Default::default(),
             replace: false,
+            acquisition_url: None,
             exclude: Vec::new(),
             provider_choices: Default::default(),
         });
