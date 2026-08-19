@@ -219,11 +219,15 @@ fn highlight_progress_footer(rest: &str) -> String {
 
 fn paint_value(value: &str) -> String {
     let mut styled = value.to_owned();
-    styled = colorize_token(&styled, "[I]", palette::PROVENANCE);
-    styled = colorize_token(&styled, "[E]", palette::SUCCESS);
-    styled = colorize_token(&styled, "[F]", palette::VERSION);
-    styled = colorize_token(&styled, "[V]", palette::VERSION);
-    styled = colorize_token(&styled, "[A]", CORAL_RED);
+    // Provenance badges carry distinct colours because they carry distinct
+    // meanings. `[F]` and `[V]` previously shared one, which made "translated
+    // from a foreign repo" and "you pointed Elda at a URL" look identical.
+    styled = colorize_token(&styled, "[E]", palette::SUCCESS); // native / Elda-maintained
+    styled = colorize_token(&styled, "[I]", palette::PROVENANCE); // interbuild: parsed foreign build def
+    styled = colorize_token(&styled, "[F]", palette::VERSION); // foreign repo, translated
+    styled = colorize_token(&styled, "[V]", palette::METRIC); // vendor / ad-hoc link
+    styled = colorize_token(&styled, "[A]", CORAL_RED); // adopted from another PM
+    styled = colorize_token(&styled, "[?]", palette::MUTED); // provenance unknown
     styled
 }
 
