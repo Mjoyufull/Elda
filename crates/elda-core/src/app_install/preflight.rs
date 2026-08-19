@@ -34,7 +34,17 @@ pub(super) fn install_preflight_report(
     let net_managed_delta = existing_bytes.saturating_sub(replaced_bytes);
     let (estimated_new_bytes, estimate_method) = estimate_post_build_bytes(app, actions);
     let estimated_post_build_managed = net_managed_delta.saturating_add(estimated_new_bytes);
-    let temporary_build_deps = temporary_build_dependency_names(actions);
+    let remove_build_deps = app.config.install.remove_build_deps;
+    let temporary_build_deps = if remove_build_deps {
+        temporary_build_dependency_names(actions)
+    } else {
+        Vec::new()
+    };
+    let retained_build_deps = if remove_build_deps {
+        Vec::new()
+    } else {
+        temporary_build_dependency_names(actions)
+    };
     let missing_release_keys = missing_release_trust_keys(app, actions);
 
     Ok(json!({
@@ -51,9 +61,15 @@ pub(super) fn install_preflight_report(
         "weak_dependencies": weak_dependencies,
         "source_lane_actions": build_lane_actions,
         "temporary_build_dependencies": {
-            "policy": "build-only dependencies are removed after successful source builds when the solver marks them as non-world packages",
+            "policy": if remove_build_deps {
+                "build-only dependencies are removed after successful source builds when the solver marks them as non-world packages; packages that pre-existed in world are never removed"
+            } else {
+                "cleanup disabled by [install].remove_build_deps; build-only dependencies stay installed"
+            },
+            "remove_after_build": remove_build_deps,
             "planned_build_lane_actions": build_lane_actions,
             "packages": temporary_build_deps,
+            "retained": retained_build_deps,
         },
         "candidate_size_status": if estimated_new_bytes > 0 {
             "estimated-from-cached-payloads"
@@ -118,14 +134,29 @@ fn source_key_preflight(app: &AppContext, missing_release_keys: &[String]) -> Va
     })
 }
 
+/// Build-only dependencies that *this transaction* would newly install.
+///
+/// `SPEC.md` §16.2: packages already on the system before the transaction are
+/// never auto-removed. A build dependency that is already installed, or that is
+/// not part of this plan at all, is therefore not temporary — reporting it as
+/// such overstates what cleanup would touch.
 pub(super) fn temporary_build_dependency_names(actions: &[PlannedInstallAction]) -> Vec<String> {
+    let newly_installed = actions
+        .iter()
+        .filter(|action| action.already_installed.is_none())
+        .filter(|action| install_execution_decision(action).needs_change)
+        .map(|action| action.package_name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+
     let mut names = Vec::new();
     for action in actions {
         if !install_execution_decision(action).needs_change {
             continue;
         }
         for dependency in &action.dependencies {
-            if dependency.dependency_kind == "build" {
+            if dependency.dependency_kind == "build"
+                && newly_installed.contains(dependency.dependency_name.as_str())
+            {
                 names.push(dependency.dependency_name.clone());
             }
         }

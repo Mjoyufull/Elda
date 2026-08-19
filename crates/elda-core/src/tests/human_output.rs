@@ -30,8 +30,16 @@ fn human_install_dry_run_renders_structured_sections() {
     assert!(has_row(&rendered, "target", "render-plan-tool"));
     assert!(has_row(&rendered, "version", "0:0.1.0-1"));
     assert!(has_row(&rendered, "source", "[E] binary/url_archive"));
-    assert!(has_row(&rendered, "activate", "/opt/elda (prefix) via prefix-copy"));
-    assert!(has_row(&rendered, "change", "install 1, keep 0, replace 0, weak 0"));
+    assert!(has_row(
+        &rendered,
+        "activate",
+        "/opt/elda (prefix) via prefix-copy"
+    ));
+    assert!(has_row(
+        &rendered,
+        "change",
+        "install 1, keep 0, replace 0, weak 0"
+    ));
     assert!(rendered.contains("│  safety review::"));
     assert!(rendered.contains("└─ dry run"));
     assert!(!rendered.contains("├─ Target"));
@@ -200,7 +208,11 @@ fn human_interbuild_plan_surfaces_parser_provenance_and_risk() {
     let rendered = render_human(&report);
 
     assert!(has_row(&rendered, "source", "[I]"));
-    assert!(has_row(&rendered, "interbuild parser", "nix_flake, no external CLI"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "nix_flake, no external CLI"
+    ));
     assert!(!rendered.contains("├─ Provenance"));
     assert!(!rendered.contains("non-native provenance actions"));
 }
@@ -265,7 +277,11 @@ fn human_interbuild_plan_surfaces_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(has_row(&rendered, "interbuild parser", "gentoo_overlay, no external CLI"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "gentoo_overlay, no external CLI"
+    ));
     assert!(!rendered.contains("bounded-ebuild-metadata-parser"));
 }
 
@@ -303,7 +319,11 @@ fn human_interbuild_plan_surfaces_aur_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(has_row(&rendered, "interbuild parser", "aur_pkgbuild, no external CLI"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "aur_pkgbuild, no external CLI"
+    ));
     assert!(!rendered.contains("bounded-pkgbuild-metadata-parser"));
 }
 
@@ -379,7 +399,11 @@ fn human_interbuild_plan_surfaces_xbps_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(has_row(&rendered, "interbuild parser", "xbps_template, no external CLI"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "xbps_template, no external CLI"
+    ));
     assert!(!rendered.contains("bounded-xbps-template-parser"));
 }
 
@@ -467,7 +491,10 @@ fn human_state_ls_renders_scan_table_without_detail_blocks() {
 
     let rendered = render_human(&report);
 
-    assert!(!rendered.contains("state ok"), "no banner above a scan table");
+    assert!(
+        !rendered.contains("state ok"),
+        "no banner above a scan table"
+    );
     assert!(!rendered.contains("listed 2 installed package(s)."));
     assert!(rendered.contains("2 installed packages"));
     assert!(rendered.contains("NAME"));
@@ -580,7 +607,10 @@ fn human_state_ls_renders_empty_state_without_blocks() {
     let rendered = render_human(&report);
 
     assert!(rendered.contains("No installed packages."));
-    assert!(!rendered.contains("state ok"), "no banner above a scan result");
+    assert!(
+        !rendered.contains("state ok"),
+        "no banner above a scan result"
+    );
     assert!(!rendered.contains("listed 0 installed package(s)."));
     assert!(!rendered.contains("Name:"));
     assert!(!rendered.contains("\"packages\""));

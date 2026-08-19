@@ -188,7 +188,13 @@ fn compact_lines(
 
 fn apply_compact_rows(frame: &mut Frame, rows: &[(String, String)]) {
     for (key, value) in rows {
-        frame.kv(key, value);
+        if key.is_empty() {
+            // Continuation line: indented, no key column. Used where a value
+            // must be shown in full (trust key fingerprints) rather than elided.
+            frame.line(format!("  {value}"));
+        } else {
+            frame.kv(key, value);
+        }
     }
 }
 
@@ -294,6 +300,9 @@ fn is_keep_action(action: &Value) -> bool {
 /// This used to be a second prompt after the operator had already accepted the
 /// plan. It belongs here instead: accepting the transaction accepts the import,
 /// and the gate the operator reads says so explicitly.
+///
+/// Keys are shown in full, never truncated: the trust decision is made against
+/// the fingerprint, so eliding it would defeat the point of showing it.
 fn push_trust_key_row(rows: &mut Vec<(String, String)>, details: &Value) {
     let keys = string_list(details, &["preflight", "source_keys", "missing_for_plan"]);
     if keys.is_empty() {
@@ -301,31 +310,49 @@ fn push_trust_key_row(rows: &mut Vec<(String, String)>, details: &Value) {
     }
     rows.push((
         "trust keys".to_owned(),
-        format!(
-            "import {} on accept: {}",
-            keys.len(),
-            summarize_names(&keys, 3)
-        ),
+        format!("import {} on accept", keys.len()),
     ));
+    for key in &keys {
+        rows.push((String::new(), key.clone()));
+    }
 }
 
-/// Build-only dependencies that get removed once the source build succeeds.
+/// Build-only dependencies, and whether cleanup is armed.
+///
+/// Cleanup only ever covers dependencies this transaction installed; packages
+/// that pre-existed in world are never removed. `[install].remove_build_deps`
+/// disarms it.
 fn push_build_dep_row(rows: &mut Vec<(String, String)>, details: &Value) {
-    let deps = string_list(
+    let removed = string_list(
         details,
         &["preflight", "temporary_build_dependencies", "packages"],
     );
-    if deps.is_empty() {
+    if !removed.is_empty() {
+        rows.push((
+            "build deps".to_owned(),
+            format!(
+                "{} temporary, removed after a successful build: {}",
+                removed.len(),
+                summarize_names(&removed, 4)
+            ),
+        ));
         return;
     }
-    rows.push((
-        "build deps".to_owned(),
-        format!(
-            "{} temporary, removed after a successful build: {}",
-            deps.len(),
-            summarize_names(&deps, 4)
-        ),
-    ));
+
+    let retained = string_list(
+        details,
+        &["preflight", "temporary_build_dependencies", "retained"],
+    );
+    if !retained.is_empty() {
+        rows.push((
+            "build deps".to_owned(),
+            format!(
+                "{} temporary, kept ([install].remove_build_deps = false): {}",
+                retained.len(),
+                summarize_names(&retained, 4)
+            ),
+        ));
+    }
 }
 
 fn string_list(root: &Value, path: &[&str]) -> Vec<String> {

@@ -532,13 +532,8 @@ mod tests {
         };
 
         assert!(rendered.contains("Interbuild source review"));
-        assert!(
-            row("provenance")
-                .is_some_and(|value| value.starts_with("[I] parsed"))
-        );
-        assert!(
-            row("parser").is_some_and(|value| value.starts_with("static flake output parser"))
-        );
+        assert!(row("provenance").is_some_and(|value| value.starts_with("[I] parsed")));
+        assert!(row("parser").is_some_and(|value| value.starts_with("static flake output parser")));
         assert!(row("installable").is_some_and(|value| value.starts_with("default")));
         assert!(row("activate").is_some());
         assert!(rendered.contains("Review Memory:"));
