@@ -1387,13 +1387,19 @@ Rules:
 - exit codes are stable enough for scripting: `0` success, `1` operator/runtime failure, `2` resolution or validation failure, `3` trust/auth failure
 
 Human-mode install output contract:
-- the main install dry-run and success path should render sections in this order: `Target`, `Resolution`, `Plan`, `Progress`, and then `Result` for non-dry-run installs
-- the rendered `Target` section should surface the selected activation backend for the current root, and the `Progress` / `Result` sections should report backend-aware activation plus any recorded snapshot summary when present
-- the rendered install view should also surface the attached session-log path when a session log is emitted for that invocation
-- the same structured `progress` data should remain available in JSON output for install plan and install result reports
+- the main install dry-run and gate path renders **one compact frame** whose rows carry the facts needed to answer proceed/decline: target, version, lane, source and provenance, activation target and backend, change counts, space, and safety posture; the prompt is the frame footer
+- the post-install path renders only the **delta** from that gate: state id, managed path count, object summary, and any recorded snapshot summary; it does not restate source, activation, or the live progression
+- the rendered install view surfaces the attached session-log path when a session log is emitted for that invocation
+- the same structured `progress` data remains available in JSON output for install plan and install result reports
+- frame shape, row alignment, glyph set, semantic colour, gate placement, and ASCII/`NO_COLOR` degradation are specified by the CLI visual contract ledger and enforced by the human-surface snapshot harness in `elda-core`
+
+The earlier `Target` / `Resolution` / `Plan` / `Progress` / `Result` section order is retired. It described a report-shaped document; the runtime renders an operator-gate-shaped frame, and duplicated blocks between plan and result were the specific defect that change removed.
 
 ### 16.2 Core Command Contracts
 - `elda a <link>` and `elda add <link>` inspect a direct upstream link, git repository, or local source path, choose the configured metadata/source strategy, generate, import, or update local package metadata, run the metadata review gate, and stop before installation
+- when the target is a **local artifact file** rather than a source tree, `elda a` identifies it by content magic (not by file extension), surveys it read-only without extracting or executing it, and generates a digest-pinned binary-lane recipe; the survey classifies archive members (executable, library, man page, completion, desktop entry, icon, AppStream, license, doc) and records members that cannot be installed on this platform as dropped rather than staging them
+- local-artifact identity is inferred from the archive root, falling back to the file name; a launcher is recorded only when the archive contains exactly one executable candidate, and ambiguity requires an explicit `source.binary` instead of a guess
+- `--from <url>` records where a local artifact was downloaded from so the package can be re-fetched and upgraded; on an interactive terminal Elda asks once when `--from` is absent, and a non-interactive run records the package as local-only and states that it cannot upgrade
 - `elda i <target...>` installs package names, explicit interepo targets, or git URLs; for raw links it first runs the same metadata/source strategy path as `elda a <link>`, then continues into normal install/build/stage/activation after review acceptance; for maintained packages with both acquisition lanes it follows the lane-selection rules from §5.2, and it installs hard deps plus default `recommends` unless disabled
 - when `elda a`, `elda add`, `elda i`, or `elda ig` causes Elda to generate or scaffold package metadata during the current session, human interactive mode must stop before build or metadata write for a review gate with `Y`/empty = continue, `n` = abort without deleting generated metadata, and `e` = open the generated recipe tree in the selected editor and then re-prompt
 - content-addressed **review stamps** (`elda review ls|info|diff|forget`) record accepted generated-metadata and interbuild definitions; unchanged recipe hashes skip repeat review prompts
