@@ -123,6 +123,14 @@ impl AppContext {
     }
 }
 
+fn paint_identity(name: &str) -> String {
+    crate::render_style::paint(name, crate::render_style::palette::IDENTITY, true)
+}
+
+fn paint_version(version: &str) -> String {
+    crate::render_style::paint(version, crate::render_style::palette::VERSION, false)
+}
+
 fn interactive_select_packages(
     query: &str,
     results: &[elda_repo::SyncedPackageRecord],
@@ -130,45 +138,62 @@ fn interactive_select_packages(
     if results.is_empty() {
         return Ok(None);
     }
-    eprintln!("search: ok");
-    eprintln!("found {} synced package match(es).", results.len());
+    eprintln!("{} match(es) for `{query}`", results.len());
     eprintln!();
-    eprintln!("Matches for `{query}`:");
+    // Right-align the index column so the identity column squares up, the way
+    // paru and pkgit present a selectable list.
+    let index_width = results.len().to_string().len();
     for (idx, result) in results.iter().enumerate() {
         let version = format!("{}:{}-{}", result.epoch, result.pkgver, result.pkgrel);
         eprintln!(
-            "{} {}/{} {}",
+            "{:>index_width$} {}/{} {}",
             idx + 1,
             result.remote_name,
-            result.pkgname,
-            version
+            paint_identity(&result.pkgname),
+            paint_version(&version),
         );
         let description = result
             .description
             .as_deref()
             .or(result.summary.as_deref())
             .unwrap_or("No description available.");
-        eprintln!("    {description}");
+        eprintln!("{:>index_width$}   {description}", "");
     }
     eprintln!();
-    eprintln!(":: Packages to install (eg: 1 2 3, 1-3):");
-    eprint!(":: ");
-    io::stderr().flush().map_err(CoreError::Io)?;
+    eprintln!(":: Packages to install (eg: 1 2 3, 1-3), or blank to cancel:");
 
-    let mut selection = String::new();
-    io::stdin()
-        .read_line(&mut selection)
-        .map_err(CoreError::Io)?;
-    let selection = selection.trim();
-    if selection.is_empty() {
-        return Ok(Some(Vec::new()));
+    // A typo must not throw away the search. Reprompt inline without
+    // reprinting the table, the way paru does.
+    loop {
+        eprint!(":: ");
+        io::stderr().flush().map_err(CoreError::Io)?;
+
+        let mut selection = String::new();
+        let read = io::stdin()
+            .read_line(&mut selection)
+            .map_err(CoreError::Io)?;
+        if read == 0 {
+            // stdin closed mid-prompt; treat as cancel rather than looping forever.
+            eprintln!();
+            return Ok(Some(Vec::new()));
+        }
+        let selection = selection.trim();
+        if selection.is_empty() {
+            return Ok(Some(Vec::new()));
+        }
+
+        match parse_selection_indexes(selection, results.len()) {
+            Ok(indexes) => {
+                let mut selected = BTreeSet::new();
+                for index in indexes {
+                    selected.insert(results[index].pkgname.clone());
+                }
+                return Ok(Some(selected.into_iter().collect()));
+            }
+            Err(CoreError::Operator(message)) => eprintln!(":: {message}"),
+            Err(error) => return Err(error),
+        }
     }
-    let indexes = parse_selection_indexes(selection, results.len())?;
-    let mut selected = BTreeSet::new();
-    for index in indexes {
-        selected.insert(results[index].pkgname.clone());
-    }
-    Ok(Some(selected.into_iter().collect()))
 }
 
 fn parse_selection_indexes(input: &str, max: usize) -> Result<Vec<usize>, CoreError> {

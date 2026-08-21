@@ -117,35 +117,54 @@ pub(crate) fn highlight_progress_line(line: &str) -> String {
     }
 }
 
+/// Dim the structural connector so content reads first. Per the redesign
+/// contract, frame borders are neutral/dim and never carry semantic colour.
+fn border(chars: &str) -> String {
+    paint(chars, palette::MUTED, false)
+}
+
 fn highlight_operator_line(line: &str) -> String {
     if line.contains('\x1b') {
         return line.to_owned();
     }
     if let Some(body) = line.strip_prefix("\u{2502}  ") {
-        if let Some((key, value)) = body.split_once("::") {
+        if let Some((key, rest)) = body.split_once("::") {
+            // Preserve the column padding the frame renderer computed; only the
+            // value is repainted, and the key column stays neutral.
+            let value = rest.trim_start();
+            let padding = &rest[..rest.len() - value.len()];
             return format!(
-                "\u{2502}  {}:: {}",
-                key.trim(),
-                paint_kv_value(key.trim(), value.trim())
+                "{}  {key}::{padding}{}",
+                border("\u{2502}"),
+                paint_kv_value(key.trim(), value.trim_end())
             );
         }
         if let Some(rest) = body.strip_prefix('\u{2714}') {
             return format!(
-                "\u{2502}  {}{}",
+                "{}  {}{}",
+                border("\u{2502}"),
                 paint("\u{2714}", palette::SUCCESS, true),
                 rest
             );
         }
+        return format!("{}  {body}", border("\u{2502}"));
+    }
+    if line == "\u{2502}" {
+        return border("\u{2502}");
     }
     if let Some(title) = line.strip_prefix("\u{251c}\u{2500} ") {
         let trimmed = title.trim_end_matches(':').trim();
-        return format!("\u{251c}\u{2500} {trimmed}:");
+        return format!("{} {trimmed}:", border("\u{251c}\u{2500}"));
     }
     if let Some(title) = line.strip_prefix("\u{250c}\u{2500} ") {
-        return format!("\u{250c}\u{2500} {title}");
+        return format!("{} {title}", border("\u{250c}\u{2500}"));
     }
     if let Some(rest) = line.strip_prefix("\u{2514}\u{2500} ") {
-        return format!("\u{2514}\u{2500} {}", highlight_operator_footer(rest));
+        return format!(
+            "{} {}",
+            border("\u{2514}\u{2500}"),
+            highlight_operator_footer(rest)
+        );
     }
     if let Some(rest) = line.strip_prefix("advisory:") {
         return format!("{}{}", paint("advisory:", palette::WARNING, true), rest);
@@ -200,11 +219,15 @@ fn highlight_progress_footer(rest: &str) -> String {
 
 fn paint_value(value: &str) -> String {
     let mut styled = value.to_owned();
-    styled = colorize_token(&styled, "[I]", palette::PROVENANCE);
-    styled = colorize_token(&styled, "[E]", palette::SUCCESS);
-    styled = colorize_token(&styled, "[F]", palette::VERSION);
-    styled = colorize_token(&styled, "[V]", palette::VERSION);
-    styled = colorize_token(&styled, "[A]", CORAL_RED);
+    // Provenance badges carry distinct colours because they carry distinct
+    // meanings. `[F]` and `[V]` previously shared one, which made "translated
+    // from a foreign repo" and "you pointed Elda at a URL" look identical.
+    styled = colorize_token(&styled, "[E]", palette::SUCCESS); // native / Elda-maintained
+    styled = colorize_token(&styled, "[I]", palette::PROVENANCE); // interbuild: parsed foreign build def
+    styled = colorize_token(&styled, "[F]", palette::VERSION); // foreign repo, translated
+    styled = colorize_token(&styled, "[V]", palette::METRIC); // vendor / ad-hoc link
+    styled = colorize_token(&styled, "[A]", CORAL_RED); // adopted from another PM
+    styled = colorize_token(&styled, "[?]", palette::MUTED); // provenance unknown
     styled
 }
 
@@ -270,14 +293,24 @@ fn colorize_token(line: &str, token: &str, rgb: (u8, u8, u8)) -> String {
 mod tests {
     use super::*;
 
+    /// The key *text* between the dimmed connector and `::`. The connector
+    /// itself is allowed to carry the muted border colour.
+    fn key_text(styled: &str) -> String {
+        let key_side = styled.split("::").next().expect("key part");
+        let after_connector = key_side
+            .rsplit_once("\x1b[0m")
+            .map_or(key_side, |(_, rest)| rest);
+        after_connector.trim().to_owned()
+    }
+
     #[test]
     fn kv_keys_stay_plain_and_target_value_is_bold_only() {
         scoped_force_color_for_tests(true, || {
             let line = "\u{2502}  target:: foot";
             let styled = highlight_operator_line(line);
-            let key_part = styled.split("::").next().expect("key part");
+            assert_eq!(key_text(&styled), "target", "key text must be plain");
             assert!(
-                !key_part.contains('\x1b'),
+                !key_text(&styled).contains('\x1b'),
                 "key side should stay plain: {styled}"
             );
             assert!(
@@ -292,22 +325,46 @@ mod tests {
         scoped_force_color_for_tests(true, || {
             let line = "\u{2502}  objects:: 11 shlib require(s), 0 shlib provide(s)";
             let styled = highlight_operator_line(line);
-            let key_part = styled.split("::").next().expect("key part");
-            assert!(
-                !key_part.contains('\x1b'),
-                "key side should stay plain: {styled}"
-            );
+            assert_eq!(key_text(&styled), "objects", "key text must be plain");
             assert!(styled.contains("11 shlib"));
             assert!(styled.contains("\x1b["), "expected value color: {styled}");
         });
     }
 
     #[test]
-    fn frame_title_stays_plain_without_blue() {
+    fn frame_title_stays_plain_while_the_border_dims() {
         scoped_force_color_for_tests(true, || {
             let line = "\u{250c}\u{2500} install foot";
             let styled = highlight_operator_line(line);
-            assert_eq!(styled, line, "title should stay unstyled: {styled}");
+            let title = styled.split(' ').skip(1).collect::<Vec<_>>().join(" ");
+            assert_eq!(
+                title, "install foot",
+                "title text must carry no styling: {styled}"
+            );
+            assert!(
+                styled.starts_with("\x1b["),
+                "border should be dimmed: {styled}"
+            );
+        });
+    }
+
+    #[test]
+    fn kv_padding_survives_colorization() {
+        scoped_force_color_for_tests(true, || {
+            let line = "\u{2502}  mode::      system";
+            let styled = highlight_operator_line(line);
+            assert!(
+                styled.contains("mode::      "),
+                "column padding must be preserved: {styled:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn plain_lines_keep_their_text_and_only_dim_the_connector() {
+        scoped_force_color_for_tests(true, || {
+            let styled = highlight_operator_line("\u{2502}  some free-form detail");
+            assert!(styled.ends_with("  some free-form detail"), "{styled:?}");
         });
     }
 

@@ -1,3 +1,4 @@
+mod artifact_target;
 mod binary_source;
 mod dependency;
 pub(crate) mod git_picker;

@@ -13,12 +13,20 @@ pub enum AppImageError {
     NotElf,
     #[error("unsupported AppImage generation (expected Type 2 magic AI\\x02 at bytes 8–10)")]
     UnsupportedGeneration,
+    #[error(
+        "this is a Type 1 AppImage (magic AI\\x01); its ISO 9660 payload is not readable by Elda, repackage it as Type 2 or extract it with the upstream runtime"
+    )]
+    TypeOneUnsupported,
     #[error("ELF layout parse error: {0}")]
     ElfParse(String),
     #[error(
-        "embedded filesystem is not SquashFS at computed offsets (DwarFS or exotic layouts are unsupported)"
+        "no embedded filesystem found at the computed offsets (expected SquashFS `hsqs` or DwarFS `DWARFS`)"
     )]
-    SquashfsNotFound,
+    PayloadNotFound,
+    #[error(
+        "embedded filesystem at offset {offset} is DwarFS, which this reader cannot decode; inspect it with the upstream runtime's `--appimage-dwarfsextract`"
+    )]
+    DwarfsPayload { offset: u64 },
     #[error("SquashFS reader error: {0}")]
     Squashfs(String),
     #[error("desktop entry parse error: {0}")]

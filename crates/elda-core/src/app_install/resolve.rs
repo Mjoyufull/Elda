@@ -93,6 +93,11 @@ impl AppContext {
         }
 
         let path = Path::new(target);
+        if path.is_file()
+            && let Some(report) = self.resolve_local_artifact_target(path, target, request)?
+        {
+            return Ok(report);
+        }
         if path.exists() {
             let report = match add_recipe_with_options(
                 recipes_dir,
@@ -268,6 +273,7 @@ impl AppContext {
         let git_source_refs = BTreeMap::new();
         let mut cli_flag_overrides = BTreeMap::new();
         let mut replace = false;
+        let mut acquisition_url: Option<String> = None;
         let mut exclude = Vec::new();
         let mut provider_choices = BTreeMap::new();
         let mut targets = Vec::new();
@@ -312,6 +318,14 @@ impl AppContext {
                         CoreError::Operator("`--strategy` requires one strategy name".to_owned())
                     })?;
                     source_strategy = Some(parse_source_strategy(value)?);
+                }
+                "--from" => {
+                    let value = operands.next().ok_or_else(|| {
+                        CoreError::Operator(
+                            "`--from` requires the URL the artifact was downloaded from".to_owned(),
+                        )
+                    })?;
+                    acquisition_url = Some(parse_acquisition_url(value)?);
                 }
                 "--to-branch" => {
                     let value = operands.next().ok_or_else(|| {
@@ -431,12 +445,13 @@ impl AppContext {
             git_ref_overrides: BTreeMap::new(),
             cli_flag_overrides,
             replace,
+            acquisition_url,
             exclude,
             provider_choices,
         })
     }
 
-    fn metadata_import_options(&self, request: &ParsedInstallRequest) -> ImportOptions {
+    pub(crate) fn metadata_import_options(&self, request: &ParsedInstallRequest) -> ImportOptions {
         ImportOptions {
             strategy_priority: self.metadata_strategy_priority(request),
             release_binary_format_priority: self
@@ -448,6 +463,7 @@ impl AppContext {
             git_ref: self.metadata_git_ref_for_target(request),
             replace: request.replace,
             exclude: request.exclude.clone(),
+            acquisition_url: request.acquisition_url.clone(),
         }
     }
 
@@ -482,6 +498,7 @@ impl AppContext {
             git_ref_overrides: BTreeMap::new(),
             cli_flag_overrides: request.cli_flag_overrides.clone(),
             replace: false,
+            acquisition_url: None,
             exclude: Vec::new(),
             provider_choices: request.provider_choices.clone(),
         }
@@ -571,6 +588,7 @@ impl AppContext {
             generated_recipe_dir: None,
             source_options: Vec::new(),
             selected_source_option: None,
+            artifact_survey: None,
         })
     }
 
@@ -777,4 +795,22 @@ fn apply_ad_hoc_git_ref_override(
         key.to_owned(),
         elda_recipe::ScalarValue::String(git_ref.value.clone()),
     );
+}
+
+/// Accept only an http(s) acquisition URL.
+///
+/// The value is recorded in a generated recipe as the re-fetch source, so a
+/// local path or a scheme Elda cannot fetch would produce a recipe that only
+/// works on this machine.
+fn parse_acquisition_url(value: &str) -> Result<String, CoreError> {
+    let trimmed = value.trim();
+    let valid_scheme = trimmed.starts_with("https://") || trimmed.starts_with("http://");
+    let safe_text =
+        !trimmed.chars().any(char::is_whitespace) && !trimmed.chars().any(char::is_control);
+    if valid_scheme && safe_text {
+        return Ok(trimmed.to_owned());
+    }
+    Err(CoreError::Operator(format!(
+        "`--from` expects the http(s) URL the artifact was downloaded from, got `{trimmed}`"
+    )))
 }

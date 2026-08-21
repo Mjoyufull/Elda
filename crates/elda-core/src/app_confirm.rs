@@ -64,31 +64,6 @@ pub(crate) fn read_yne_after_frame() -> Result<ConfirmResponse, CoreError> {
     Ok(response)
 }
 
-pub(crate) fn prompt_yn(prompt: &str, default_yes: bool) -> Result<bool, CoreError> {
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    let stdin = io::stdin();
-    let hint = if default_yes { "[Y/n]" } else { "[y/N]" };
-
-    loop {
-        write!(stdout, "{prompt} {hint} ")?;
-        stdout.flush()?;
-        let mut answer = String::new();
-        stdin.read_line(&mut answer)?;
-        let normalized = answer.trim().to_ascii_lowercase();
-        let decision = match normalized.as_str() {
-            "" => default_yes,
-            "y" | "yes" => true,
-            "n" | "no" => false,
-            _ => {
-                writeln!(stdout, "Enter `Y` or `n`.")?;
-                continue;
-            }
-        };
-        return Ok(decision);
-    }
-}
-
 /// Require an interactive terminal for destructive mutations when not in dry-run mode.
 pub(crate) fn require_interactive_confirmation(
     request: &CommandRequest,

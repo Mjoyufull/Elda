@@ -81,6 +81,7 @@ fn install_parts(command: &Command, args: &InstallArgs) -> (Vec<String>, Vec<Str
         args.source_option.map(|value| value.to_string()).as_deref(),
     );
     push_optional(&mut operands, "--strategy", args.strategy.as_deref());
+    push_optional(&mut operands, "--from", args.from.as_deref());
     push_optional(&mut operands, "--to-branch", args.to_branch.as_deref());
     push_optional(&mut operands, "--to-tag", args.to_tag.as_deref());
     push_optional(&mut operands, "--to-rev", args.to_rev.as_deref());

@@ -18,10 +18,15 @@ impl AppContext {
             .map_err(|err| CoreError::Operator(err.to_string()))?;
 
         let desktop_count = inspect.desktop_candidates.len();
+        let generation = match inspect.generation {
+            0 => "unmarked".to_owned(),
+            other => format!("Type {other}"),
+        };
         let summary = format!(
-            "Type {} AppImage — SquashFS payload at byte {} (`{}`, {} `.desktop` entr{})",
-            inspect.generation,
-            inspect.squashfs_offset,
+            "{} AppImage — {} payload at byte {} (`{}`, {} `.desktop` entr{})",
+            generation,
+            inspect.payload_format,
+            inspect.payload_offset,
             path.display(),
             desktop_count,
             if desktop_count == 1 { "y" } else { "ies" },

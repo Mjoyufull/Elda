@@ -33,6 +33,8 @@ pub(crate) struct ParsedInstallRequest {
     pub(crate) git_ref_overrides: BTreeMap<String, elda_recipe::GitRefRequest>,
     pub(crate) cli_flag_overrides: BTreeMap<String, bool>,
     pub(crate) replace: bool,
+    /// `--from URL`: where a local artifact was downloaded from.
+    pub(crate) acquisition_url: Option<String>,
     pub(crate) exclude: Vec<String>,
     /// Explicit virtual-name → provider package overrides from `--provider`.
     pub(crate) provider_choices: BTreeMap<String, String>,
@@ -112,6 +114,7 @@ pub(crate) struct ResolvedInstallTarget {
     pub(crate) generated_recipe_dir: Option<PathBuf>,
     pub(crate) source_options: Vec<elda_recipe::SourceOptionReport>,
     pub(crate) selected_source_option: Option<elda_recipe::SourceOptionReport>,
+    pub(crate) artifact_survey: Option<elda_types::ArtifactSurvey>,
 }
 
 #[derive(Debug, Clone)]
@@ -209,35 +212,45 @@ impl std::fmt::Debug for AppContext {
 }
 
 impl AppContext {
-    pub fn from_root(
+    /// Build a context for one command.
+    ///
+    /// `read_only` suppresses privilege escalation. A query like `elda ls` must
+    /// never prompt for a password just to read the installed set: it reads what
+    /// it can see, falling back to default config when the bootstrap write is
+    /// not permitted, and otherwise fails with a real permission error.
+    pub fn from_root_for_command(
         root_dir: impl AsRef<Path>,
         force_system_mode: bool,
+        read_only: bool,
     ) -> Result<Self, CoreError> {
         let root_dir = root_dir.as_ref();
         let live_host_root = root_dir == Path::new("/");
         let default_privilege = PrivilegeConfig::default();
         let default_request = PrivilegeRequest::from_config(&default_privilege);
         let default_status = PrivilegeStatus::detect(&default_privilege);
+        let unprivileged_live_host = live_host_root && !default_status.is_superuser;
         let config_path = root_dir.join("etc/elda/config.toml");
         if !config_path.exists()
             && let Err(error) = Config::write_default(root_dir)
         {
-            if matches!(
+            let denied = matches!(
                 &error,
                 CoreError::Io(io_error) if io_error.kind() == std::io::ErrorKind::PermissionDenied
-            ) && live_host_root
-                && !default_status.is_superuser
-            {
-                return Err(CoreError::PrivilegeRequired(default_request.clone()));
+            );
+            match (denied && unprivileged_live_host, read_only) {
+                // A query cannot bootstrap the root, and it does not need to.
+                // Continue with in-memory defaults instead of asking for a password.
+                (true, true) => {}
+                (true, false) => return Err(CoreError::PrivilegeRequired(default_request.clone())),
+                _ => return Err(error),
             }
-            return Err(error);
         }
         let mut config = match Config::load(root_dir) {
             Ok(config) => config,
             Err(CoreError::Io(error))
                 if error.kind() == std::io::ErrorKind::PermissionDenied
-                    && live_host_root
-                    && !default_status.is_superuser =>
+                    && unprivileged_live_host
+                    && !read_only =>
             {
                 return Err(CoreError::PrivilegeRequired(default_request.clone()));
             }
@@ -256,13 +269,14 @@ impl AppContext {
         if live_host_root
             && effective_prefix == Path::new("/usr")
             && !force_system_mode
+            && !read_only
             && !config.defaults.allow_system_mode
         {
             return Err(CoreError::Operator(
                 "live host system mode is disabled; pass `-S` for this invocation or set `defaults.allow_system_mode = true` in `/etc/elda/config.toml`".to_owned(),
             ));
         }
-        if live_host_root && !privilege.is_superuser {
+        if live_host_root && !privilege.is_superuser && !read_only {
             return Err(CoreError::PrivilegeRequired(PrivilegeRequest::from_config(
                 &config.privilege,
             )));
@@ -270,7 +284,11 @@ impl AppContext {
 
         config.defaults.prefix = effective_prefix.clone();
         let layout = StateLayout::new(root_dir, effective_prefix);
-        let database = Database::new(layout);
+        let database = if read_only {
+            Database::read_only(layout)
+        } else {
+            Database::new(layout)
+        };
 
         Ok(Self {
             config,
@@ -604,7 +622,8 @@ pub fn run_from_root(
 ) -> Result<CommandReport, CoreError> {
     let root_dir = root_dir.as_ref();
     crate::interrupt::install_handler_if_needed(&request)?;
-    let context = AppContext::from_root(root_dir, request.system_mode)?;
+    let read_only = crate::command_class::is_read_only_command(&request.command_path);
+    let context = AppContext::from_root_for_command(root_dir, request.system_mode, read_only)?;
     set_configured_tree_style(display_tree_style(&context.config.display.tree_chars));
     if request.output_mode == crate::OutputMode::Human
         && context.config.display.default_mode == "json"

@@ -229,9 +229,21 @@ fn delete_cache_entry(entry: &PrunableEntry) -> Result<u64, CoreError> {
 }
 
 fn filesystem_trigger_bytes(path: &Path, policy: CachePolicy) -> Result<u64, CoreError> {
-    let stats = statvfs(path).map_err(std::io::Error::from)?;
+    // The cache directory may not exist yet — a query is not allowed to create
+    // it. Any existing ancestor sits on the same filesystem and reports the
+    // same total size, so walk up until statvfs has something to answer about.
+    let stats = nearest_existing_ancestor(path)
+        .map(|existing| statvfs(existing).map_err(std::io::Error::from))
+        .transpose()?;
+    let Some(stats) = stats else {
+        return Ok(0);
+    };
     let total_bytes = stats.f_blocks.saturating_mul(stats.f_frsize.max(1));
     Ok(total_bytes.saturating_mul(policy.filesystem_trigger_percent) / 100)
+}
+
+fn nearest_existing_ancestor(path: &Path) -> Option<&Path> {
+    path.ancestors().find(|candidate| candidate.exists())
 }
 
 fn directory_usage_bytes(directory: &Path) -> Result<u64, CoreError> {

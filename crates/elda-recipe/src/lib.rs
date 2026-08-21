@@ -22,6 +22,7 @@ pub use import::{
     SourceOptionReport, add_recipe, add_recipe_with_options, add_recipe_with_priority,
     arch_package_source_url, default_release_binary_format_priority,
     effective_release_binary_format_priority, infer_recipe_name, is_git_like_target,
+    survey_summary, write_local_artifact_recipe,
 };
 pub use model::{
     BuildDefinition, DependencyBody, DependencyEntry, FlagPredicate, FlagPredicateAtom,

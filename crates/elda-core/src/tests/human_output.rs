@@ -27,11 +27,19 @@ fn human_install_dry_run_renders_structured_sections() {
     let rendered = render_human(&report);
 
     assert!(rendered.contains("┌─ install render-plan-tool"));
-    assert!(rendered.contains("│  target:: render-plan-tool"));
-    assert!(rendered.contains("│  version:: 0:0.1.0-1"));
-    assert!(rendered.contains("│  source:: [E] binary/url_archive"));
-    assert!(rendered.contains("│  activate:: /opt/elda (prefix) via prefix-copy"));
-    assert!(rendered.contains("│  change:: install 1, keep 0, replace 0, weak 0"));
+    assert!(has_row(&rendered, "target", "render-plan-tool"));
+    assert!(has_row(&rendered, "version", "0:0.1.0-1"));
+    assert!(has_row(&rendered, "source", "[E] binary/url_archive"));
+    assert!(has_row(
+        &rendered,
+        "activate",
+        "/opt/elda (prefix) via prefix-copy"
+    ));
+    assert!(has_row(
+        &rendered,
+        "change",
+        "install 1, keep 0, replace 0, weak 0"
+    ));
     assert!(rendered.contains("│  safety review::"));
     assert!(rendered.contains("└─ dry run"));
     assert!(!rendered.contains("├─ Target"));
@@ -62,9 +70,9 @@ fn human_install_success_renders_result_block() {
     let rendered = render_human(&report);
 
     assert!(rendered.contains("┌─ installed render-result-tool"));
-    assert!(rendered.contains("│  target:: render-result-tool"));
-    assert!(rendered.contains("│  state:: "));
-    assert!(rendered.contains("│  paths:: "));
+    assert!(has_row(&rendered, "target", "render-result-tool"));
+    assert!(find_row(&rendered, "state").is_some());
+    assert!(find_row(&rendered, "paths").is_some());
     assert!(
         !rendered.contains("│  source "),
         "post-action render must not repeat source facts: {rendered}"
@@ -108,7 +116,7 @@ fn human_direct_git_dry_run_surfaces_generated_metadata_path() {
 
     assert!(rendered.contains("metadata::"));
     assert!(rendered.contains("/etc/elda/recipes/render-git-tool"));
-    assert!(rendered.contains("source:: [V]"));
+    assert!(has_row(&rendered, "source", "[V]"));
 }
 
 #[test]
@@ -159,14 +167,14 @@ fn human_install_render_includes_snapshot_summary_when_present() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("│  target:: system-tool"));
-    assert!(rendered.contains("│  state:: system-1"));
-    assert!(rendered.contains("│  paths:: 42"));
+    assert!(has_row(&rendered, "target", "system-tool"));
+    assert!(has_row(&rendered, "state", "system-1"));
+    assert!(has_row(&rendered, "paths", "42"));
     assert!(
         !rendered.contains("│  system-tool:\n│    done snapshot-hooks:"),
         "post-action human render duplicated the live progression: {rendered}"
     );
-    assert!(rendered.contains("│  snapshots:: 2 via snapper, 2 captured"));
+    assert!(has_row(&rendered, "snapshots", "2 via snapper, 2 captured"));
 }
 
 #[test]
@@ -199,8 +207,12 @@ fn human_interbuild_plan_surfaces_parser_provenance_and_risk() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("│  source:: [I]"));
-    assert!(rendered.contains("interbuild parser:: nix_flake, no external CLI"));
+    assert!(has_row(&rendered, "source", "[I]"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "nix_flake, no external CLI"
+    ));
     assert!(!rendered.contains("├─ Provenance"));
     assert!(!rendered.contains("non-native provenance actions"));
 }
@@ -265,7 +277,11 @@ fn human_interbuild_plan_surfaces_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("interbuild parser:: gentoo_overlay, no external CLI"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "gentoo_overlay, no external CLI"
+    ));
     assert!(!rendered.contains("bounded-ebuild-metadata-parser"));
 }
 
@@ -303,7 +319,11 @@ fn human_interbuild_plan_surfaces_aur_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("interbuild parser:: aur_pkgbuild, no external CLI"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "aur_pkgbuild, no external CLI"
+    ));
     assert!(!rendered.contains("bounded-pkgbuild-metadata-parser"));
 }
 
@@ -342,7 +362,7 @@ fn human_interbuild_plan_surfaces_aur_vcs_context() {
 
     let rendered = render_human(&report);
     assert!(rendered.contains("┌─ installed render-aur-vcs-tool"));
-    assert!(rendered.contains("│  paths:: "));
+    assert!(find_row(&rendered, "paths").is_some());
 }
 
 #[test]
@@ -379,7 +399,11 @@ fn human_interbuild_plan_surfaces_xbps_parser_detail_block() {
     assert_eq!(interbuild["external_cli_required"], false);
 
     let rendered = render_human(&report);
-    assert!(rendered.contains("interbuild parser:: xbps_template, no external CLI"));
+    assert!(has_row(
+        &rendered,
+        "interbuild parser",
+        "xbps_template, no external CLI"
+    ));
     assert!(!rendered.contains("bounded-xbps-template-parser"));
 }
 
@@ -467,8 +491,12 @@ fn human_state_ls_renders_scan_table_without_detail_blocks() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("state ok"));
-    assert!(rendered.contains("listed 2 installed package(s)."));
+    assert!(
+        !rendered.contains("state ok"),
+        "no banner above a scan table"
+    );
+    assert!(!rendered.contains("listed 2 installed package(s)."));
+    assert!(rendered.contains("2 installed packages"));
     assert!(rendered.contains("NAME"));
     assert!(rendered.contains("bfetch"));
     assert!(rendered.contains("fsel"));
@@ -578,9 +606,12 @@ fn human_state_ls_renders_empty_state_without_blocks() {
 
     let rendered = render_human(&report);
 
-    assert!(rendered.contains("state ok"));
-    assert!(rendered.contains("listed 0 installed package(s)."));
     assert!(rendered.contains("No installed packages."));
+    assert!(
+        !rendered.contains("state ok"),
+        "no banner above a scan result"
+    );
+    assert!(!rendered.contains("listed 0 installed package(s)."));
     assert!(!rendered.contains("Name:"));
     assert!(!rendered.contains("\"packages\""));
 }

@@ -7,15 +7,19 @@ use serde::Serialize;
 
 use crate::desktop::{desktop_entry_section, parse_desktop};
 use crate::error::AppImageError;
-use crate::offset::{appimage_type_magic, squashfs_payload_offset};
+use crate::offset::{PayloadFormat, payload_location};
 
-const FUSE_HINT: &str = "Type 2 AppImages normally mount their SquashFS payload via FUSE; hosts without FUSE may need `--appimage-extract-and-run` upstream support (not enabled by Elda by default).";
+const FUSE_HINT_SQUASHFS: &str = "Type 2 AppImages normally mount their SquashFS payload via FUSE; hosts without FUSE may need `--appimage-extract-and-run` upstream support (not enabled by Elda by default).";
+const FUSE_HINT_DWARFS: &str = "This image carries a DwarFS payload (uruntime family). Its runtime mounts via FUSE, then falls back to user namespaces, then to extract-and-run, so it works without FUSE — but Elda cannot read DwarFS metadata directly.";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InspectReport {
     pub path: String,
+    /// AppImage generation marker, or `0` for runtimes that omit it.
     pub generation: u8,
-    pub squashfs_offset: u64,
+    /// Container format of the appended filesystem (`squashfs` or `dwarfs`).
+    pub payload_format: &'static str,
+    pub payload_offset: u64,
     pub desktop_candidates: Vec<String>,
     pub primary_desktop_path: Option<String>,
     pub desktop_name: Option<String>,
@@ -30,8 +34,12 @@ pub struct InspectReport {
 pub fn inspect_appimage(path: &Path) -> Result<InspectReport, AppImageError> {
     let bytes = std::fs::read(path).map_err(|e| AppImageError::io(path, e))?;
 
-    let generation = appimage_type_magic(&bytes).ok_or(AppImageError::UnsupportedGeneration)?;
-    let offset = squashfs_payload_offset(&bytes)?;
+    let location = payload_location(&bytes)?;
+    let offset = location.offset;
+    let generation = location.generation.unwrap_or(0);
+    if location.format == PayloadFormat::DwarFs {
+        return Err(AppImageError::DwarfsPayload { offset });
+    }
 
     let squash_reader = BufReader::new(File::open(path).map_err(|e| AppImageError::io(path, e))?);
     let fs = FilesystemReader::from_reader_with_offset(squash_reader, offset)
@@ -95,7 +103,8 @@ pub fn inspect_appimage(path: &Path) -> Result<InspectReport, AppImageError> {
     Ok(InspectReport {
         path: path.display().to_string(),
         generation,
-        squashfs_offset: offset,
+        payload_format: location.format.label(),
+        payload_offset: offset,
         desktop_candidates,
         primary_desktop_path: primary,
         desktop_name,
@@ -104,7 +113,10 @@ pub fn inspect_appimage(path: &Path) -> Result<InspectReport, AppImageError> {
         apprun_path,
         icon_candidates,
         metainfo_candidates,
-        fuse_note: FUSE_HINT,
+        fuse_note: match location.format {
+            PayloadFormat::SquashFs => FUSE_HINT_SQUASHFS,
+            PayloadFormat::DwarFs => FUSE_HINT_DWARFS,
+        },
     })
 }
 
@@ -192,7 +204,8 @@ mod tests {
 
         let report = inspect_appimage(&p).expect("inspect demo AppImage");
         assert_eq!(report.generation, 2);
-        assert_eq!(report.squashfs_offset, 189632);
+        assert_eq!(report.payload_format, "squashfs");
+        assert_eq!(report.payload_offset, 189632);
         assert!(
             report
                 .desktop_candidates

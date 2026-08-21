@@ -10,6 +10,7 @@ mod error;
 mod git;
 mod go_build;
 mod interbuild;
+pub mod local_artifact;
 mod make_build;
 mod manifest;
 mod meson_build;
