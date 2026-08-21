@@ -114,6 +114,7 @@ pub(crate) struct ResolvedInstallTarget {
     pub(crate) generated_recipe_dir: Option<PathBuf>,
     pub(crate) source_options: Vec<elda_recipe::SourceOptionReport>,
     pub(crate) selected_source_option: Option<elda_recipe::SourceOptionReport>,
+    pub(crate) artifact_survey: Option<elda_types::ArtifactSurvey>,
 }
 
 #[derive(Debug, Clone)]

@@ -588,6 +588,7 @@ impl AppContext {
             generated_recipe_dir: None,
             source_options: Vec::new(),
             selected_source_option: None,
+            artifact_survey: None,
         })
     }
 
@@ -803,7 +804,10 @@ fn apply_ad_hoc_git_ref_override(
 /// works on this machine.
 fn parse_acquisition_url(value: &str) -> Result<String, CoreError> {
     let trimmed = value.trim();
-    if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+    let valid_scheme = trimmed.starts_with("https://") || trimmed.starts_with("http://");
+    let safe_text =
+        !trimmed.chars().any(char::is_whitespace) && !trimmed.chars().any(char::is_control);
+    if valid_scheme && safe_text {
         return Ok(trimmed.to_owned());
     }
     Err(CoreError::Operator(format!(

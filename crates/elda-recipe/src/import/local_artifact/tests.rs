@@ -20,6 +20,7 @@ fn options() -> ImportOptions {
 
 fn survey() -> ArtifactSurvey {
     ArtifactSurvey {
+        source_path: "/tmp/delta-linux-x86_64.tar.gz".to_owned(),
         file_name: "delta-linux-x86_64.tar.gz".to_owned(),
         format: ArtifactFormat::TarGz,
         sha256: "a".repeat(64),
@@ -27,6 +28,8 @@ fn survey() -> ArtifactSurvey {
         strip_components: 1,
         name: Some("delta".to_owned()),
         version: Some("0.18.2".to_owned()),
+        architecture: "amd64".to_owned(),
+        appimage_payload: None,
         entries: vec![
             ArtifactEntry {
                 path: "delta-0.18.2-linux/delta".to_owned(),
@@ -73,6 +76,25 @@ fn url_acquisition_pins_source_digest_and_strips_the_root() {
 fn local_only_acquisition_says_it_cannot_upgrade() {
     let rendered = render_pkg_lua("delta", &survey(), &ArtifactAcquisition::LocalOnly);
     assert!(rendered.contains("cannot be re-fetched or upgraded"));
+    assert!(rendered.contains(r#"url = "file:///tmp/delta-linux-x86_64.tar.gz""#));
+}
+
+#[test]
+fn raw_elf_and_dwarfs_appimage_use_safe_launcher_metadata() {
+    let mut raw = survey();
+    raw.format = ArtifactFormat::Elf;
+    let rendered = render_pkg_lua("delta", &raw, &ArtifactAcquisition::LocalOnly);
+    assert!(rendered.contains("rename = \"delta\""));
+    assert!(!rendered.contains("binary = \"delta-linux-x86_64.tar.gz\""));
+
+    let mut appimage = survey();
+    appimage.format = ArtifactFormat::AppImage;
+    appimage.strip_components = 0;
+    appimage.appimage_payload = Some("dwarfs".to_owned());
+    let rendered = render_pkg_lua("delta", &appimage, &ArtifactAcquisition::LocalOnly);
+    assert!(rendered.contains("binary = \"delta\""));
+    assert!(rendered.contains("integration = \"none\""));
+    assert!(!rendered.contains("strip_components"));
 }
 
 #[test]
@@ -85,6 +107,7 @@ fn writing_twice_requires_replace() {
     assert_eq!(report.recipe_name, "delta");
     assert!(report.generated_pkg_lua);
     assert!(report.recipe_dir.join("pkg.lua").is_file());
+    assert!(report.recipe_dir.join("artifact-survey.json").is_file());
 
     let again = write_local_artifact_recipe(dir.path(), &survey(), &acquisition, &options());
     assert!(again.is_err(), "second write must not clobber silently");

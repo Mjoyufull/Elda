@@ -7,7 +7,7 @@ use elda_recipe::{ScalarValue, SourceDefinition};
 use tar::{Builder, Header};
 use tempfile::tempdir;
 
-use super::{ArchiveKind, infer_archive_kind, stage_binary_from_tar};
+use super::{ArchiveKind, infer_archive_kind, stage_binary_from_archive};
 
 fn source_with_asset(asset: &str) -> SourceDefinition {
     SourceDefinition {
@@ -36,6 +36,19 @@ fn source_with_rename(rename: &str) -> SourceDefinition {
     SourceDefinition {
         kind: "url_archive".to_owned(),
         fields: BTreeMap::from([("rename".to_owned(), ScalarValue::String(rename.to_owned()))]),
+        github_release_assets: BTreeMap::new(),
+        default_lane: None,
+        lanes: BTreeMap::new(),
+    }
+}
+
+fn source_with_stripped_binary(binary: &str) -> SourceDefinition {
+    SourceDefinition {
+        kind: "url_archive".to_owned(),
+        fields: BTreeMap::from([
+            ("binary".to_owned(), ScalarValue::String(binary.to_owned())),
+            ("strip_components".to_owned(), ScalarValue::Integer(1)),
+        ]),
         github_release_assets: BTreeMap::new(),
         default_lane: None,
         lanes: BTreeMap::new(),
@@ -81,6 +94,32 @@ fn infer_archive_kind_handles_url_fragments() {
 }
 
 #[test]
+fn infer_archive_kind_supports_bzip2_tar_and_zip() {
+    let source = source_with_asset("ignored.tar.gz");
+    let path = Path::new("/tmp/sha256");
+    assert_eq!(
+        infer_archive_kind(path, "https://example.invalid/tool.tar.bz2", &source),
+        Some(ArchiveKind::TarBz2)
+    );
+    assert_eq!(
+        infer_archive_kind(path, "https://example.invalid/tool.zip", &source),
+        Some(ArchiveKind::Zip)
+    );
+}
+
+#[test]
+fn infer_archive_kind_prefers_content_magic_over_a_lying_suffix() {
+    let tempdir = tempdir().expect("tempdir should exist");
+    let path = tempdir.path().join("payload.zip");
+    fs::write(&path, [0x1f, 0x8b, 0x08, 0x00]).expect("magic fixture");
+    let source = source_with_asset("payload.zip");
+    assert_eq!(
+        infer_archive_kind(&path, "https://example.invalid/payload.zip", &source),
+        Some(ArchiveKind::TarGz)
+    );
+}
+
+#[test]
 fn tar_archive_without_binary_uses_single_executable_candidate() {
     let tempdir = tempdir().expect("tempdir should exist");
     let archive_path = tempdir.path().join("payload.tar");
@@ -88,7 +127,7 @@ fn tar_archive_without_binary_uses_single_executable_candidate() {
     let bin_dir = tempdir.path().join("stage/usr/bin");
     fs::create_dir_all(&bin_dir).expect("bin dir should exist");
 
-    stage_binary_from_tar(
+    stage_binary_from_archive(
         &source_without_binary(),
         &archive_path,
         &bin_dir,
@@ -116,7 +155,7 @@ fn tar_archive_without_binary_fails_on_multiple_candidates() {
     let bin_dir = tempdir.path().join("stage/usr/bin");
     fs::create_dir_all(&bin_dir).expect("bin dir should exist");
 
-    let error = stage_binary_from_tar(
+    let error = stage_binary_from_archive(
         &source_without_binary(),
         &archive_path,
         &bin_dir,
@@ -135,7 +174,7 @@ fn tar_archive_rejects_rename_path_traversal() {
     let bin_dir = tempdir.path().join("stage/usr/bin");
     fs::create_dir_all(&bin_dir).expect("bin dir should exist");
 
-    let error = stage_binary_from_tar(
+    let error = stage_binary_from_archive(
         &source_with_rename("../tool"),
         &archive_path,
         &bin_dir,
@@ -145,6 +184,54 @@ fn tar_archive_rejects_rename_path_traversal() {
 
     assert!(error.to_string().contains("invalid `rename`"));
     assert!(!tempdir.path().join("stage/usr/tool").exists());
+}
+
+#[test]
+fn tar_archive_matches_binary_after_stripping_shared_root() {
+    let tempdir = tempdir().expect("tempdir should exist");
+    let archive_path = tempdir.path().join("payload.tar");
+    write_tar(&archive_path, &[TarEntry::executable("tool-1.0/bin/tool")]);
+    let bin_dir = tempdir.path().join("stage/usr/bin");
+    fs::create_dir_all(&bin_dir).expect("bin dir should exist");
+
+    stage_binary_from_archive(
+        &source_with_stripped_binary("bin/tool"),
+        &archive_path,
+        &bin_dir,
+        ArchiveKind::Tar,
+    )
+    .expect("stripped archive path should match");
+
+    assert!(bin_dir.join("tool").is_file());
+}
+
+#[test]
+fn zip_archive_stages_binary_after_stripping_shared_root() {
+    let tempdir = tempdir().expect("tempdir should exist");
+    let archive_path = tempdir.path().join("payload.zip");
+    let file = fs::File::create(&archive_path).expect("zip should create");
+    let mut archive = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
+    archive
+        .start_file("tool-1.0/bin/tool", options)
+        .expect("zip entry should start");
+    archive.write_all(b"#!/bin/sh\n").expect("zip body");
+    archive.finish().expect("zip should finish");
+    let bin_dir = tempdir.path().join("stage/usr/bin");
+    fs::create_dir_all(&bin_dir).expect("bin dir should exist");
+
+    stage_binary_from_archive(
+        &source_with_stripped_binary("bin/tool"),
+        &archive_path,
+        &bin_dir,
+        ArchiveKind::Zip,
+    )
+    .expect("zip archive should stage");
+
+    assert_eq!(
+        fs::read_to_string(bin_dir.join("tool")).expect("staged binary should read"),
+        "#!/bin/sh\n"
+    );
 }
 
 struct TarEntry<'a> {

@@ -108,6 +108,8 @@ pub struct ArtifactEntry {
 /// The result of inspecting a local artifact without executing it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArtifactSurvey {
+    /// Canonical local path to the exact bytes that were surveyed.
+    pub source_path: String,
     pub file_name: String,
     pub format: ArtifactFormat,
     pub sha256: String,
@@ -118,6 +120,10 @@ pub struct ArtifactSurvey {
     pub name: Option<String>,
     /// Inferred upstream version, when the archive root or file name carries one.
     pub version: Option<String>,
+    /// Canonical Elda architecture inferred from ELF metadata or artifact naming.
+    pub architecture: String,
+    /// Embedded AppImage filesystem format, when this is a supported AppImage.
+    pub appimage_payload: Option<String>,
     pub entries: Vec<ArtifactEntry>,
 }
 
@@ -155,6 +161,14 @@ impl ArtifactSurvey {
             .iter()
             .filter(|entry| entry.kind.is_droppable())
             .collect()
+    }
+
+    /// Total declared size of regular archive members.
+    #[must_use]
+    pub fn unpacked_size(&self) -> u64 {
+        self.entries
+            .iter()
+            .fold(0, |total, entry| total.saturating_add(entry.size))
     }
 }
 

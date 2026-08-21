@@ -36,6 +36,10 @@ pub fn write_local_artifact_recipe(
     }
     fs::create_dir_all(&recipe_dir)?;
     fs::write(&pkg_lua, render_pkg_lua(&name, survey, acquisition))?;
+    fs::write(
+        recipe_dir.join("artifact-survey.json"),
+        serde_json::to_vec_pretty(survey)?,
+    )?;
 
     Ok(ImportReport {
         recipe_name: name,
@@ -87,18 +91,25 @@ fn render_pkg_lua(
         ArtifactAcquisition::LocalOnly => {
             source.push_str(&format!(
                 "    url = \"file://{}\",\n",
-                escape(&survey.file_name)
+                escape(&survey.source_path)
             ));
         }
     }
     source.push_str(&format!("    sha256 = \"{}\",\n", escape(&survey.sha256)));
-    if survey.strip_components > 0 {
+    if survey.format.is_archive() && survey.strip_components > 0 {
         source.push_str(&format!(
             "    strip_components = {},\n",
             survey.strip_components
         ));
     }
-    if let Some(binary) = survey.sole_executable() {
+    if survey.format == elda_types::ArtifactFormat::AppImage {
+        source.push_str(&format!("    binary = \"{}\",\n", escape(name)));
+        if survey.appimage_payload.as_deref() == Some("dwarfs") {
+            source.push_str("    integration = \"none\",\n");
+        }
+    } else if survey.format == elda_types::ArtifactFormat::Elf {
+        source.push_str(&format!("    rename = \"{}\",\n", escape(name)));
+    } else if let Some(binary) = survey.sole_executable() {
         source.push_str(&format!(
             "    binary = \"{}\",\n",
             escape(strip_leading(&binary.path, survey.strip_components))
@@ -127,7 +138,10 @@ fn render_pkg_lua(
     out.push_str("  epoch = 0,\n");
     out.push_str(&format!("  version = \"{}\",\n", escape(version)));
     out.push_str("  rel = 1,\n");
-    out.push_str("  arch = { \"amd64\" },\n");
+    out.push_str(&format!(
+        "  arch = {{ \"{}\" }},\n",
+        escape(&survey.architecture)
+    ));
     out.push_str("  kind = \"normal\",\n\n");
     out.push_str(&source);
     for empty in [
@@ -173,7 +187,12 @@ fn strip_leading(path: &str, strip_components: u32) -> &str {
 }
 
 fn escape(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 /// Human-readable one-line summary of what a survey found.

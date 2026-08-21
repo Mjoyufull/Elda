@@ -23,6 +23,7 @@ mod human_output;
 mod human_output_ci;
 mod install_fs;
 mod live_progress;
+mod local_artifact;
 mod migration;
 mod provenance;
 mod repo_upgrade;

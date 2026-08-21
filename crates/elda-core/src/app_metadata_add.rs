@@ -26,6 +26,7 @@ impl AppContext {
         for target in &parsed.targets {
             match self.resolve_any_install_target(target, &parsed)? {
                 crate::app_install::ResolutionReport::Single(resolved) => {
+                    self.review_generated_resolution_if_needed(&request, &resolved)?;
                     let recipe_dir = resolved
                         .generated_recipe_dir
                         .clone()

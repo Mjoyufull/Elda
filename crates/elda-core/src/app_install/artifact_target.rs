@@ -48,6 +48,7 @@ impl AppContext {
             self.select_install_lane(target, recipe, request, Some(path.display().to_string()))?;
         resolved.generated_recipe_name = Some(report.recipe_name.clone());
         resolved.generated_recipe_dir = Some(report.recipe_dir.clone());
+        resolved.artifact_survey = Some(survey);
 
         Ok(Some(ResolutionReport::Single(Box::new(resolved))))
     }
@@ -98,7 +99,10 @@ fn prompt_for_acquisition(survey: &ArtifactSurvey) -> Result<ArtifactAcquisition
         if answer.is_empty() {
             return Ok(ArtifactAcquisition::LocalOnly);
         }
-        if answer.starts_with("https://") || answer.starts_with("http://") {
+        let valid_scheme = answer.starts_with("https://") || answer.starts_with("http://");
+        let safe_text =
+            !answer.chars().any(char::is_whitespace) && !answer.chars().any(char::is_control);
+        if valid_scheme && safe_text {
             return Ok(ArtifactAcquisition::Url(answer.to_owned()));
         }
         writeln!(

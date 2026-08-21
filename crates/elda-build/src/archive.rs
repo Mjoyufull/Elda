@@ -10,7 +10,7 @@ use std::path::Path;
 
 use elda_recipe::{RecipeDocument, ScalarValue};
 use release_url::resolve_release_asset_url;
-use tar_select::{infer_archive_kind, stage_binary_from_tar};
+use tar_select::{infer_archive_kind, stage_binary_from_archive};
 
 use crate::binary_fetch::fetch_binary_source;
 use crate::error::BuildError;
@@ -79,7 +79,7 @@ pub fn stage_binary_source(
     fs::create_dir_all(&bin_dir)?;
 
     if let Some(kind) = infer_archive_kind(&download_path, &source_url, &source) {
-        stage_binary_from_tar(&source, &download_path, &bin_dir, kind)?;
+        stage_binary_from_archive(&source, &download_path, &bin_dir, kind)?;
     } else {
         stage_plain_binary(&source, &download_path, &bin_dir)?;
     }

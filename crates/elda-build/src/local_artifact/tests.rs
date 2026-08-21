@@ -5,7 +5,11 @@ use std::os::unix::fs::PermissionsExt;
 use elda_types::{ArtifactEntryKind, ArtifactFormat};
 use tempfile::TempDir;
 
-use super::{classify, identify, infer_identity, looks_like_version, split_name_version, survey};
+use super::{
+    MAX_ARCHIVE_MEMBER_BYTES, MAX_ARCHIVE_UNPACKED_BYTES, checked_archive_path, classify,
+    elf_architecture, identify, infer_identity, looks_like_version, push_entry, split_name_version,
+    survey,
+};
 
 fn release_tarball(dir: &std::path::Path, root: &str) -> std::path::PathBuf {
     let staging = dir.join("stage").join(root);
@@ -72,9 +76,18 @@ fn survey_classifies_members_and_strips_the_shared_root() {
     let report = survey(&archive).expect("survey should succeed");
 
     assert_eq!(report.format, ArtifactFormat::TarGz);
+    assert_eq!(
+        report.source_path,
+        archive
+            .canonicalize()
+            .expect("canonical")
+            .display()
+            .to_string()
+    );
     assert_eq!(report.strip_components, 1);
     assert_eq!(report.name.as_deref(), Some("delta"));
     assert_eq!(report.version.as_deref(), Some("0.18.2"));
+    assert_eq!(report.architecture, "amd64");
     assert_eq!(report.sha256.len(), 64);
 
     let sole = report.sole_executable().expect("one launcher candidate");
@@ -110,6 +123,44 @@ fn flat_archive_has_nothing_to_strip() {
     let report = survey(&archive_path).expect("survey");
     assert_eq!(report.strip_components, 0);
     assert_eq!(report.sole_executable().expect("launcher").path, "tool");
+}
+
+#[test]
+fn foreign_members_do_not_choose_the_archive_root() {
+    let dir = TempDir::new().expect("tempdir");
+    let archive_path = dir.path().join("mixed.tar");
+    let file = fs::File::create(&archive_path).expect("archive");
+    let mut builder = tar::Builder::new(file);
+    append_executable(&mut builder, "aaa-windows/tool.exe");
+    append_executable(&mut builder, "zeta-1.0.0/bin/zeta");
+    builder.into_inner().expect("tar").sync_all().expect("sync");
+
+    let report = survey(&archive_path).expect("survey");
+    assert_eq!(report.strip_components, 1);
+    assert_eq!(report.name.as_deref(), Some("zeta"));
+    assert_eq!(report.version.as_deref(), Some("1.0.0"));
+}
+
+#[test]
+fn survey_limits_and_unsafe_paths_fail_closed() {
+    assert!(checked_archive_path(std::path::Path::new("../escape")).is_err());
+    assert!(checked_archive_path(std::path::Path::new("/absolute")).is_err());
+
+    let mut entries = Vec::new();
+    let mut unpacked = 0;
+    assert!(
+        push_entry(
+            &mut entries,
+            &mut unpacked,
+            "huge".to_owned(),
+            MAX_ARCHIVE_MEMBER_BYTES + 1,
+            false,
+        )
+        .is_err()
+    );
+
+    unpacked = MAX_ARCHIVE_UNPACKED_BYTES;
+    assert!(push_entry(&mut entries, &mut unpacked, "overflow".to_owned(), 1, false,).is_err());
 }
 
 #[test]
@@ -158,4 +209,64 @@ fn library_and_foreign_members_are_not_launcher_candidates() {
         ArtifactEntryKind::ManPage
     );
     assert_eq!(classify("_tool", false), ArtifactEntryKind::Completion);
+}
+
+#[test]
+fn elf_architecture_uses_header_metadata_instead_of_the_filename() {
+    let mut header = [0u8; 20];
+    header[..4].copy_from_slice(b"\x7fELF");
+    header[4] = 2;
+    header[5] = 1;
+    header[18..20].copy_from_slice(&183u16.to_le_bytes());
+    assert_eq!(elf_architecture(&header).expect("arm64 ELF"), "arm64");
+
+    header[18..20].copy_from_slice(&0u16.to_le_bytes());
+    assert!(elf_architecture(&header).is_err());
+}
+
+#[test]
+fn survey_supports_bzip2_tar_and_zip_containers() {
+    let dir = TempDir::new().expect("tempdir");
+
+    let tar_bz2 = dir.path().join("tool-1.0.0.tar.bz2");
+    let file = fs::File::create(&tar_bz2).expect("archive");
+    let encoder = bzip2::write::BzEncoder::new(file, bzip2::Compression::fast());
+    let mut builder = tar::Builder::new(encoder);
+    append_executable(&mut builder, "tool-1.0.0/bin/tool");
+    builder.into_inner().expect("tar").finish().expect("bzip2");
+
+    let bzip_report = survey(&tar_bz2).expect("bzip2 tar survey");
+    assert_eq!(bzip_report.format, ArtifactFormat::TarBz2);
+    assert_eq!(
+        bzip_report.sole_executable().expect("launcher").path,
+        "tool-1.0.0/bin/tool"
+    );
+
+    let zip_path = dir.path().join("tool-1.0.0.zip");
+    let file = fs::File::create(&zip_path).expect("zip");
+    let mut archive = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default().unix_permissions(0o755);
+    archive
+        .start_file("tool-1.0.0/bin/tool", options)
+        .expect("zip entry");
+    archive.write_all(b"#!/bin/sh\n").expect("zip body");
+    archive.finish().expect("zip finish");
+
+    let zip_report = survey(&zip_path).expect("zip survey");
+    assert_eq!(zip_report.format, ArtifactFormat::Zip);
+    assert_eq!(
+        zip_report.sole_executable().expect("launcher").path,
+        "tool-1.0.0/bin/tool"
+    );
+}
+
+fn append_executable<W: Write>(builder: &mut tar::Builder<W>, path: &str) {
+    let body = b"#!/bin/sh\n";
+    let mut header = tar::Header::new_gnu();
+    header.set_size(body.len() as u64);
+    header.set_mode(0o755);
+    header.set_cksum();
+    builder
+        .append_data(&mut header, path, &body[..])
+        .expect("append executable");
 }
