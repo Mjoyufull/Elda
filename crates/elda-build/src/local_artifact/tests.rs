@@ -50,6 +50,15 @@ fn identify_reads_magic_not_extension() {
     handle.write_all(b"\x7fELF\x02\x01\x01\x00").expect("write");
     assert_eq!(identify(&elf), Some(ArtifactFormat::Elf));
 
+    // An AppImage is also an ELF; the type magic at bytes 8..11 is what
+    // separates them, and misfiling one as a plain binary loses its payload.
+    let appimage = dir.path().join("Some-x86_64.AppImage");
+    let mut bytes = vec![0u8; 128];
+    bytes[..4].copy_from_slice(b"\x7fELF");
+    bytes[8..11].copy_from_slice(&[0x41, 0x49, 0x02]);
+    fs::write(&appimage, &bytes).expect("appimage");
+    assert_eq!(identify(&appimage), Some(ArtifactFormat::AppImage));
+
     let text = dir.path().join("notes.txt");
     fs::write(&text, b"hello").expect("text");
     assert_eq!(identify(&text), None);

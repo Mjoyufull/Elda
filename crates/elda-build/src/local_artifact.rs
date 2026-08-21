@@ -44,15 +44,34 @@ pub fn identify(path: &Path) -> Option<ArtifactFormat> {
         return Some(ArtifactFormat::Zip);
     }
     if head.starts_with(b"\x7fELF") {
-        // An AppImage is an ELF with an appended filesystem; the appimage crate
-        // owns that distinction, so only the plain-ELF answer is given here.
-        return Some(ArtifactFormat::Elf);
+        // An AppImage is an ELF with an appended filesystem, so the ELF answer
+        // alone would misfile every AppImage as a plain binary.
+        return Some(appimage_or_elf(path, head));
     }
     // POSIX tar keeps `ustar` at offset 257.
     if read >= 262 && &head[257..262] == b"ustar" {
         return Some(ArtifactFormat::Tar);
     }
     None
+}
+
+/// Distinguish an AppImage from a plain ELF binary.
+///
+/// Marked images carry `AI\x01` / `AI\x02` at bytes 8..11 and cost nothing to
+/// spot. Unmarked runtimes (the `uruntime` / RunImage family) only reveal
+/// themselves by carrying a payload magic at a computed offset, so those pay for
+/// a bounded scan — which is still read-only and never executes the image.
+fn appimage_or_elf(path: &Path, head: &[u8]) -> ArtifactFormat {
+    if elda_appimage::appimage_type_magic(head).is_some() {
+        return ArtifactFormat::AppImage;
+    }
+    let Ok(bytes) = std::fs::read(path) else {
+        return ArtifactFormat::Elf;
+    };
+    if elda_appimage::payload_location(&bytes).is_ok() {
+        return ArtifactFormat::AppImage;
+    }
+    ArtifactFormat::Elf
 }
 
 fn read_up_to(file: &mut File, buffer: &mut [u8]) -> std::io::Result<usize> {
