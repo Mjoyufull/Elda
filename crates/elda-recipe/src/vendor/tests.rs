@@ -4,7 +4,10 @@ use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
 
 use super::github::{current_arch_aliases, current_os_aliases, detect_release_asset};
-use super::model::{GitHubReleaseAsset, GitHubReleaseResponse, VendorLockFile};
+use super::model::{
+    GitHubReleaseAsset, GitHubReleaseResponse, ResolvedVendorSource, VendorLockFile,
+};
+use super::render::render_vendor_pkg_lua;
 use super::{add_vendor_recipe, export_vendor_source, import_vendor_source};
 
 #[test]
@@ -112,6 +115,22 @@ fn github_release_asset_detection_rejects_ambiguous_matches() {
     let error = detect_release_asset(&release).expect_err("match should be ambiguous");
 
     assert!(error.to_string().contains("--asset <name>"));
+}
+
+#[test]
+fn vendor_github_release_recipe_uses_release_tag_version() {
+    let resolved = ResolvedVendorSource::GitHubRelease {
+        repo: "owner/tool".to_owned(),
+        tag: "v1.2.3".to_owned(),
+        asset: "tool-linux-x86_64".to_owned(),
+        sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+        binary: None,
+        rename: Some("tool".to_owned()),
+    };
+    let pkg_lua = render_vendor_pkg_lua("tool", &resolved);
+
+    assert!(pkg_lua.contains(r#"version = "1.2.3""#));
+    assert!(pkg_lua.contains(r#"tag = "v1.2.3""#));
 }
 
 fn asset(name: &str) -> GitHubReleaseAsset {

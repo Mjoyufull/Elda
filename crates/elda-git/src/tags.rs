@@ -127,7 +127,7 @@ pub(crate) fn parse_ls_remote_tag_line_with_options(
     })
 }
 
-pub(crate) fn normalize_tag_version(tag: &str) -> (Option<String>, VersionConfidence) {
+pub fn normalize_tag_version(tag: &str) -> (Option<String>, VersionConfidence) {
     normalize_tag_version_with_options(tag, &GitTagOptions::default())
 }
 

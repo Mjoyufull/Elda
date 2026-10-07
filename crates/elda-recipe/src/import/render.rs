@@ -3,6 +3,7 @@ use super::detect::detect_default_branch;
 use super::metadata::GeneratedMetadata;
 use super::model::{GitRefKind, GitRefRequest, LegacyPkgdep};
 use super::strategy::SourceStrategy;
+use crate::version::pkgver_from_tag;
 
 pub(super) struct PkgLuaRender<'a> {
     pub(super) recipe_name: &'a str,
@@ -35,6 +36,7 @@ pub(super) fn render_pkg_lua(input: PkgLuaRender<'_>) -> String {
     let build_block = render_build_block(input.build_intent);
     let upstream =
         non_empty(metadata.upstream.as_deref()).or_else(|| generated_upstream(input.source_url));
+    let version = package_version(metadata, input.source_strategy, input.binary_strategy);
 
     format!(
         "pkg = {{\n  name = \"{name}\",\n  description = \"{description}\",\n  licenses = {licenses},\n  upstream = \"{upstream}\",\n  epoch = 0,\n  version = \"{version}\",\n  rel = {rel},\n  arch = {{ \"amd64\" }},\n  kind = \"{recipe_kind}\",\n\n{source_block}{build_block}\n{depends_block}{makedepends_block}{checkdepends_block}  recommends = {{}},\n  suggests = {{}},\n  supplements = {{}},\n  enhances = {{}},\n{provides_block}{conflicts_block}{replaces_block}\n  conffiles = {{}},\n  sysusers = {{}},\n  tmpfiles = {{}},\n  alternatives = {{}},\n  hooks = {{}},\n  provider_assets = {{}},\n\n  flags_default = {{}},\n  flags_allowed = {{}},\n  flags_implies = {{}},\n  flags_conflicts = {{}},\n\n  subpackages = {{}},\n{profile_block}}}\n",
@@ -42,7 +44,7 @@ pub(super) fn render_pkg_lua(input: PkgLuaRender<'_>) -> String {
         description = escape_lua_string(metadata.description.as_deref().unwrap_or_default()),
         licenses = render_array_values(&metadata.licenses),
         upstream = escape_lua_string(upstream.unwrap_or_default()),
-        version = escape_lua_string(metadata.version.as_deref().unwrap_or("0.1.0")),
+        version = escape_lua_string(&version),
         rel = metadata.rel.unwrap_or(1),
         recipe_kind = escape_lua_string(input.recipe_kind),
         source_block = source_block,
@@ -55,6 +57,27 @@ pub(super) fn render_pkg_lua(input: PkgLuaRender<'_>) -> String {
         build_block = build_block,
         profile_block = profile_block(input.recipe_kind),
     )
+}
+
+fn package_version(
+    metadata: &GeneratedMetadata,
+    source_strategy: &SourceStrategy,
+    binary_strategy: Option<&SourceStrategy>,
+) -> String {
+    if let Some(version) = non_empty(metadata.version.as_deref()) {
+        return version.to_owned();
+    }
+
+    release_pkgver(source_strategy)
+        .or_else(|| binary_strategy.and_then(release_pkgver))
+        .unwrap_or_else(|| "0.1.0".to_owned())
+}
+
+fn release_pkgver(strategy: &SourceStrategy) -> Option<String> {
+    match strategy {
+        SourceStrategy::GithubRelease(option) => pkgver_from_tag(&option.tag),
+        _ => None,
+    }
 }
 
 fn generated_upstream(source_url: Option<&str>) -> Option<&str> {

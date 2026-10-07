@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+elda-git = { path = "../elda-git" }
 elda-types = { path = "../elda-types" }
 rnix = "0.14.0"
 rowan = "0.16.1"
