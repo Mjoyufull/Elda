@@ -4,6 +4,27 @@ use super::*;
 use elda_db::StateLayout;
 
 #[test]
+fn accepted_release_keys_are_visible_to_the_existing_build_context() {
+    let tempdir = TempDir::new().expect("tempdir");
+    write_prefix_config(tempdir.path(), "/opt/elda");
+    let app = crate::app::AppContext::from_root_for_command(tempdir.path(), false, false)
+        .expect("context");
+    let key = "newly-accepted-key".to_owned();
+    assert!(
+        !app.configured_release_trusted_keys()
+            .expect("keys")
+            .contains(&key)
+    );
+    crate::config::Config::append_release_keys(tempdir.path(), std::slice::from_ref(&key))
+        .expect("persist accepted key");
+    assert!(
+        app.configured_release_trusted_keys()
+            .expect("keys")
+            .contains(&key)
+    );
+}
+
+#[test]
 fn tofu_rotation_requires_explicit_operator_confirmation() {
     let tempdir = TempDir::new().expect("tempdir should be created");
     let index_path = tempdir.path().join("rotation-index.toml");

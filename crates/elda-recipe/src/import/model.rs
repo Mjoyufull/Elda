@@ -14,6 +14,8 @@ pub struct ImportOptions {
     pub git_ref: Option<GitRefRequest>,
     pub replace: bool,
     pub exclude: Vec<String>,
+    /// Where a local artifact came from, when the operator supplied it.
+    pub acquisition_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

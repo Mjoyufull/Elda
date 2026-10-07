@@ -50,6 +50,7 @@ mod app_upgrade;
 mod app_vendor;
 mod app_version;
 mod cache_policy;
+mod command_class;
 mod config;
 mod editor;
 mod error;

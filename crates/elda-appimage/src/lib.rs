@@ -9,7 +9,9 @@ mod offset;
 pub use error::AppImageError;
 pub use inspect::{InspectReport, inspect_appimage};
 pub use integration::{IntegrationOutcome, stage_integration_from_appimage};
-pub use offset::squashfs_payload_offset;
+pub use offset::{
+    PayloadFormat, PayloadLocation, appimage_type_magic, payload_location, squashfs_payload_offset,
+};
 
 use elda_types::CrateBoundary;
 

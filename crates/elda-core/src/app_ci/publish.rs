@@ -157,6 +157,7 @@ pub(crate) fn resolve_publish_target(
         git_ref_overrides: Default::default(),
         cli_flag_overrides: BTreeMap::new(),
         replace: false,
+        acquisition_url: None,
         exclude: Vec::new(),
         provider_choices: BTreeMap::new(),
     };

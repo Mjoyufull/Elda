@@ -55,22 +55,33 @@ impl TreeStyle {
         if env::var_os("ELDA_TREE_ASCII").is_some() || env::var_os("NO_UNICODE").is_some() {
             return Self::Ascii;
         }
-        match env::var("LANG") {
-            Ok(value) if value.to_ascii_lowercase().contains("utf") => Self::Unicode,
-            Ok(_) => match env::var("LC_ALL") {
-                Ok(other) if other.to_ascii_lowercase().contains("utf") => Self::Unicode,
-                _ => Self::Ascii,
-            },
-            Err(_) => match env::var("LC_ALL") {
-                Ok(other) if other.to_ascii_lowercase().contains("utf") => Self::Unicode,
-                _ => Self::Unicode,
-            },
+        // POSIX locale precedence. An empty variable carries no information and
+        // must fall through rather than being read as "not UTF-8" — otherwise a
+        // bare `LANG=` downgrades every frame to ASCII.
+        for name in ["LC_ALL", "LC_CTYPE", "LANG"] {
+            match locale_declares_utf8(name) {
+                Some(true) => return Self::Unicode,
+                Some(false) => return Self::Ascii,
+                None => continue,
+            }
         }
+        Self::Unicode
     }
 }
 
 fn configured_tree_style() -> Option<TreeStyle> {
     CONFIGURED_TREE_STYLE.with(Cell::get)
+}
+
+/// `Some(true)`/`Some(false)` when the locale variable is set and meaningful,
+/// `None` when it is unset or empty.
+fn locale_declares_utf8(name: &str) -> Option<bool> {
+    let value = env::var(name).ok()?;
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    Some(value.to_ascii_lowercase().contains("utf"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -204,6 +215,7 @@ impl Frame {
 
     pub(crate) fn render(&self, style: TreeStyle) -> String {
         let chars = TreeChars::for_style(style);
+        let key_width = self.key_column_width();
         let mut buffer = String::new();
         buffer.push_str(chars.top);
         buffer.push(' ');
@@ -237,7 +249,14 @@ impl Frame {
                     buffer.push_str(chars.vert);
                     buffer.push_str("  ");
                     buffer.push_str(key);
-                    buffer.push_str(":: ");
+                    buffer.push_str("::");
+                    // Pad after the separator so the value column squares up.
+                    // Keys wider than the cap fall back to a single space
+                    // rather than pushing every other value off the screen.
+                    let pad = key_width.saturating_sub(display_width(key)) + 1;
+                    for _ in 0..pad {
+                        buffer.push(' ');
+                    }
                     buffer.push_str(value);
                 }
             }
@@ -255,6 +274,28 @@ impl Frame {
         }
         buffer
     }
+
+    /// Width of the key column, capped so one pathological key cannot push the
+    /// whole value column into the far right of the terminal.
+    fn key_column_width(&self) -> usize {
+        const MAX_KEY_COLUMN: usize = 18;
+
+        self.rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::KeyValue { key, .. } => Some(display_width(key)),
+                _ => None,
+            })
+            .filter(|width| *width <= MAX_KEY_COLUMN)
+            .max()
+            .unwrap_or(0)
+    }
+}
+
+/// Column width of a key. Keys are ASCII identifiers in practice, so counting
+/// chars is correct here and avoids pulling in a full width table.
+fn display_width(text: &str) -> usize {
+    text.chars().count()
 }
 
 /// Convenience: render a one-shot frame with the default style.
@@ -359,8 +400,35 @@ mod tests {
             "missing requested row: {rendered}"
         );
         assert!(
+            rendered.contains("│  mode::      system"),
+            "mode value must square up with the widest key: {rendered}"
+        );
+
+        let value_columns = rendered
+            .lines()
+            .filter_map(|line| line.find("hyprland").or_else(|| line.find("system")))
+            .collect::<Vec<_>>();
+        assert_eq!(value_columns.len(), 2);
+        assert_eq!(
+            value_columns[0], value_columns[1],
+            "values must start in the same column: {rendered}"
+        );
+    }
+
+    #[test]
+    fn overlong_keys_do_not_stretch_the_value_column() {
+        let mut frame = Frame::new("Target");
+        frame.kv("mode", "system");
+        frame.kv("an-absurdly-long-key-nobody-should-write", "value");
+
+        let rendered = frame.render(TreeStyle::Unicode);
+        assert!(
             rendered.contains("│  mode:: system"),
-            "missing mode row: {rendered}"
+            "short keys keep a single space when the long key is ignored: {rendered}"
+        );
+        assert!(
+            rendered.contains("│  an-absurdly-long-key-nobody-should-write:: value"),
+            "long key still renders with one space: {rendered}"
         );
     }
 }

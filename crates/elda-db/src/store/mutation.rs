@@ -12,6 +12,7 @@ impl Database {
         files: &[PackageFileRecord],
         dependencies: &[PackageDependencyRecord],
     ) -> Result<(), DbError> {
+        self.require_writable()?;
         let connection = Connection::open(&self.layout.db_path)?;
         let transaction = connection.unchecked_transaction()?;
         delete_package_rows(&transaction, &package.pkgname)?;
@@ -30,6 +31,7 @@ impl Database {
     }
 
     pub fn remove_package(&self, package_name: &str) -> Result<(), DbError> {
+        self.require_writable()?;
         let connection = Connection::open(&self.layout.db_path)?;
         let transaction = connection.unchecked_transaction()?;
         delete_package_rows(&transaction, package_name)?;
@@ -40,6 +42,7 @@ impl Database {
     }
 
     pub fn set_current_state(&self, state_id: &str) -> Result<(), DbError> {
+        self.require_writable()?;
         fs::write(&self.layout.current_state_path, format!("{state_id}\n"))?;
         Ok(())
     }
@@ -49,6 +52,7 @@ impl Database {
         package_name: &str,
         install_reason: &str,
     ) -> Result<(), DbError> {
+        self.require_writable()?;
         let connection = Connection::open(&self.layout.db_path)?;
         connection.execute(
             "UPDATE installed_packages SET install_reason = ? WHERE pkgname = ?",
@@ -68,6 +72,7 @@ impl Database {
         package_name: &str,
         pinned_version: Option<&str>,
     ) -> Result<(), DbError> {
+        self.require_writable()?;
         let connection = Connection::open(&self.layout.db_path)?;
         connection.execute(
             "UPDATE installed_packages SET pinned_version = ? WHERE pkgname = ?",
@@ -83,6 +88,7 @@ impl Database {
         held: bool,
         hold_source: Option<&str>,
     ) -> Result<(), DbError> {
+        self.require_writable()?;
         let connection = Connection::open(&self.layout.db_path)?;
         connection.execute(
             "UPDATE installed_packages SET held = ?, hold_source = ? WHERE pkgname = ?",

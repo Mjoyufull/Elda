@@ -1,15 +1,21 @@
 use std::io::{self, Write};
 
-use super::preflight::{missing_release_trust_keys, temporary_build_dependency_names};
+use super::preflight::missing_release_trust_keys;
 use super::report::install_execution_decision;
 use crate::app::{AppContext, PlannedInstallAction};
-use crate::app_confirm::{ConfirmResponse, interactive_session, prompt_yn, prompt_yne};
+use crate::app_confirm::interactive_session;
 use crate::config::Config;
 use crate::error::CoreError;
 use crate::{CommandRequest, OutputMode};
 
 const SOURCE_BUILD_RESERVE_BYTES: u64 = 256 * 1024 * 1024;
 
+/// Apply the decisions the operator already made at the transaction gate.
+///
+/// One execution is one decision. The plan frame lists the temporary
+/// build-dependency policy and every release key the plan will import, so
+/// accepting that single gate accepts both. Re-asking here would be the
+/// gate-stacking the CLI is meant to be rid of.
 pub(crate) fn confirm_install_execution(
     app: &AppContext,
     request: &CommandRequest,
@@ -20,9 +26,7 @@ pub(crate) fn confirm_install_execution(
         return Ok(());
     }
 
-    confirm_temporary_build_dependencies(plan)?;
-    confirm_release_trust_keys(app, request, plan)?;
-    Ok(())
+    import_release_trust_keys(app, plan)
 }
 
 fn enforce_noninteractive_install_policy(
@@ -43,39 +47,9 @@ fn enforce_noninteractive_install_policy(
     )))
 }
 
-fn confirm_temporary_build_dependencies(plan: &[PlannedInstallAction]) -> Result<(), CoreError> {
-    let deps = temporary_build_dependency_names(plan);
-    if deps.is_empty() {
-        return Ok(());
-    }
-
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    writeln!(
-        stdout,
-        "Temporary build dependencies planned for cleanup after success:"
-    )?;
-    for name in deps.iter().take(16) {
-        writeln!(stdout, "  {name}")?;
-    }
-    if deps.len() > 16 {
-        writeln!(stdout, "  … {} more", deps.len() - 16)?;
-    }
-    if !prompt_yn(
-        "Remove temporary build dependencies after a successful source build?",
-        true,
-    )? {
-        return Err(CoreError::Operator(
-            "install cancelled: operator declined temporary build-dependency cleanup policy"
-                .to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-fn confirm_release_trust_keys(
+/// Persist the release keys the plan frame listed under `trust keys::`.
+fn import_release_trust_keys(
     app: &AppContext,
-    _request: &CommandRequest,
     plan: &[PlannedInstallAction],
 ) -> Result<(), CoreError> {
     let missing = missing_release_trust_keys(app, plan);
@@ -83,37 +57,17 @@ fn confirm_release_trust_keys(
         return Ok(());
     }
 
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    writeln!(
-        stdout,
-        "Release verification requires trust keys not yet in Elda config:"
-    )?;
-    for key in &missing {
-        writeln!(stdout, "  {key}")?;
-    }
+    let layout = app.database.layout();
+    Config::append_release_keys(&layout.root_dir, &missing)?;
 
-    loop {
-        match prompt_yne("Import listed release keys into Elda config trust.release_keys?")? {
-            ConfirmResponse::Accept => {
-                let layout = app.database.layout();
-                Config::append_release_keys(&layout.root_dir, &missing)?;
-                return Ok(());
-            }
-            ConfirmResponse::Decline => {
-                return Err(CoreError::Operator(
-                    "install cancelled: required release trust keys were not accepted".to_owned(),
-                ));
-            }
-            ConfirmResponse::Edit => {
-                writeln!(
-                    stdout,
-                    "Add keys under [trust].release_keys in config.toml, then retry."
-                )?;
-            }
-            ConfirmResponse::Invalid => {}
-        }
-    }
+    let stderr = io::stderr();
+    let mut stderr = stderr.lock();
+    writeln!(
+        stderr,
+        "imported {} release trust key(s) into [trust].release_keys",
+        missing.len()
+    )?;
+    Ok(())
 }
 
 pub(crate) fn estimate_post_build_bytes(

@@ -2,8 +2,8 @@
 
 > A Manual for Writing Rust That Ages Well Instead of Exploding Into 1,000-Line Files
 
-**Document Version:** 1.4.0  
-**Last Updated:** 2026-03-24  
+**Document Version:** 1.5.0  
+**Last Updated:** 2026-07-31  
 **Audience:** Future me, collaborators, contributors, and any poor bastard touching my code later  
 **Scope:** Cross-project standards for Rust-first codebases, with some general engineering rules that apply anywhere
 
@@ -51,6 +51,7 @@
 8. **The standard library is the baseline.** Reach for external crates when they clearly earn their keep, not because cargo makes it easy.
 9. **No hidden control flow.** Inputs, exits, allocations, and mutations should be visible where they matter.
 10. **Correctness beats ergonomic sugar.** Convenience is good only when it preserves contracts, local reasoning, and honest semantics.
+11. **Reuse over reinvention.** Reach for what is already in your dependency tree before building custom machinery. Minimizing dependencies and minimizing invented solutions are two sides of the same coin.
 
 ### Design Intent
 
@@ -107,7 +108,7 @@ If a project has both `PROJECT_STANDARDS.md` and `CODE_STANDARDS.md`, then:
 
 ### Workflow Integration
 
-This document is meant to be applied through the workflow defined in `PROJECT_STANDARDS.md`, not beside it. External contributors should start with `CONTRIBUTING.md` for setup and PR flow.
+This document is meant to be applied through the workflow defined in `PROJECT_STANDARDS.md`, not beside it.
 
 In repos that use the `main` / `dev` / release-branch model:
 
@@ -115,6 +116,7 @@ In repos that use the `main` / `dev` / release-branch model:
 - documentation-only changes follow the docs flow into `main`
 - release branches are for version bumps, release docs, and final verification, not surprise refactors
 - hotfixes are minimal emergency exceptions, not a shortcut around normal review discipline
+- when you're online and coding on a feature/fix branch, open a **draft PR early** and commit to it so others have visibility; don't work in silence on shared repos if it might overlap someone else's task
 
 If you are the primary maintainer, these standards still apply.
 Solo maintenance is not a reason to skip review thinking, testing, rollback planning, or release hygiene.
@@ -264,6 +266,19 @@ Rules:
 - prefer many safe steps over one dramatic step
 
 If the system is broken for days, that is not refactoring. That is restructuring under risk.
+
+### Minimize Invented Solutions and Maximize Dependency Leverage
+
+Minimizing external dependencies is crucial, but minimizing *invented solutions* to problems your dependencies already solve is equally essential.
+
+Before writing custom workarounds, wrappers, or state-management logic, inspect what your current dependency tree already provides. Reinventing functionality that an underlying crate already handles wastes cognitive thinking budgets, inflates code churn, and breeds subtle runtime bugs by fighting the library's internal execution model.
+
+Rules:
+
+- **Understand crate execution models:** Study the rendering, memory, caching, or concurrency guarantees of your dependencies before layering manual fixes over them.
+- **Do not fight framework mechanisms:** For example, in a terminal UI application (`orbit-tui`), manually invoking explicit screen clears (`terminal.clear()`) inside a frame render loop when using a double-buffered TUI crate (such as `ratatui` or similar render engines) destroys double-buffering benefits, introduces visual flickering, and churns code—the rendering crate already diffs memory buffers and manages redrawing in the background.
+- **Reuse existing tree capabilities:** Before implementing a custom cache, state tracker, or signal handler, check if `std` or existing workspace crates already expose that capability natively or via feature flags.
+- **Protect thinking budgets and minimize churn:** Invented code is code that must be written, reviewed, tested, and maintained. Maximal reuse of established dependency primitives keeps PR diffs small and cognitive overhead low.
 
 ---
 
@@ -1035,7 +1050,7 @@ Every decision record should capture:
 ### Decision Record Rules
 
 - keep records short and readable
-- store them with the repo in a clearly named decision-record location
+- store them with the repo, typically under `docs/adr/` or `decisions/`
 - accepted records are not silently rewritten; create a new one that supersedes the old one
 - link code reviews and follow-up changes back to relevant records
 
@@ -1188,6 +1203,16 @@ Before adding a crate, ask:
 5. Does it lock the project into a design I may regret?
 
 New dependencies should be justified in review, especially foundational ones.
+
+### Maximize Dependency Tree Leverage & Avoid Invented Solutions
+
+Adding new crates blindly adds debt, but ignoring what is *already present* in your dependency tree to write home-grown workarounds adds double the debt.
+
+Before implementing a custom helper, runtime hack, or workaround:
+
+1. **Audit `Cargo.lock` and existing dependencies:** Is there already a crate in the tree (or a feature flag in an existing dependency) that handles this out of the box?
+2. **Respect internal crate semantics:** Avoid adding manual resets, force-clears, or custom mutexes on top of abstractions that already manage those lifecycle phases internally.
+3. **Measure code churn and review budget:** Reinventing wheel logic inflates patch size and wastes maintainer review budget. If 5 lines of idiomatic library calls replace 80 lines of custom orchestration, use the library calls.
 
 ### Dependency Health Policy
 
@@ -1687,6 +1712,12 @@ Before merging, ask:
 - Are benchmarks or measurements present where they should be?
 - Does the dependency or feature choice carry a size or compile-time cost?
 
+### Dependency & Reuse
+
+- Does the change leverage existing capabilities in the dependency tree rather than inventing custom workarounds?
+- Does it respect the internal execution model of underlying crates (e.g., avoiding redundant frame clears on double-buffered UI renderers, avoiding unnecessary custom wrappers)?
+- Does it minimize code churn and cognitive review budget by leveraging existing abstractions?
+
 ### Hygiene
 
 - Any new warnings?
@@ -1718,6 +1749,8 @@ Before merging, ask:
 - cargo-cult patterns copied from old blog posts
 - premature workspace splits
 - clever lifetimes used to avoid designing a cleaner ownership model
+- fighting a dependency's internal execution model (e.g. adding manual terminal clears on top of a double-buffered TUI renderer, manual memory flushes on cached streams)
+- inventing home-grown workarounds for mechanics already provided by crates in the dependency tree
 
 ---
 
@@ -1774,6 +1807,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
 
 ### Before Opening a PR
+
+If you're actively developing while online, you should usually already have a **draft PR** open on your branch (see `PROJECT_STANDARDS.md`). Use the checks below before marking it ready for review; if you skipped the draft step, run them before your first PR push.
 
 ```bash
 cargo fmt --all
@@ -1878,6 +1913,7 @@ This standard boils down to this:
 - isolate unsafe and platform-specific code
 - avoid shadowing and hidden global state
 - add dependencies only when they earn their cost
+- leverage existing dependency tree capabilities to avoid invented solutions, reduce code churn, and preserve cognitive budget
 
 Write code that future you can scan in one pass without cursing your own name.
 

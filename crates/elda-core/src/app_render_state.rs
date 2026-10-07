@@ -50,10 +50,10 @@ fn render_installed_ls_report(report: &CommandReport) -> Option<String> {
     let details = report.details.as_ref()?;
     let packages = json_array(details, &["packages"])?;
 
-    let mut blocks = vec![
-        render_header(report.area, report.status),
-        report.summary.clone(),
-    ];
+    // `ls` is a scan surface. The table is the answer, so a successful scan
+    // prints no `state ok` banner and no restatement of the count above it —
+    // that is the duplicate-block noise the CLI is meant to be rid of.
+    let mut blocks = Vec::new();
 
     if packages.is_empty() {
         blocks.push("No installed packages.".to_owned());
@@ -100,6 +100,15 @@ fn render_installed_ls_report(report: &CommandReport) -> Option<String> {
     }
 
     blocks.push(table.trim_end().to_owned());
+    blocks.push(paint(
+        &format!(
+            "{} installed package{}",
+            packages.len(),
+            if packages.len() == 1 { "" } else { "s" }
+        ),
+        palette::MUTED,
+        false,
+    ));
     Some(blocks.join("\n\n"))
 }
 
@@ -447,8 +456,19 @@ mod tests {
         assert!(rendered.contains("bfetch"));
         assert!(rendered.contains("fsel"));
         assert!(rendered.contains("[pinned]"));
+        assert!(rendered.contains("2 installed packages"));
         assert!(!rendered.contains("Manifest:"));
         assert!(!rendered.contains("Name:"));
+
+        // A scan prints the table, not a banner plus a restated count.
+        assert!(
+            !rendered.contains("state ok"),
+            "ls must not print an area/status banner: {rendered}"
+        );
+        assert!(
+            !rendered.contains("listed 2 installed package(s)."),
+            "ls must not restate the summary above the table: {rendered}"
+        );
     }
 
     #[test]

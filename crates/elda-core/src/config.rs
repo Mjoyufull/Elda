@@ -20,10 +20,29 @@ pub struct TrustConfig {
     pub release_keys: Vec<String>,
 }
 
+/// Temporary build-dependency cleanup policy.
+///
+/// Only dependencies Elda installed for this transaction are ever considered;
+/// packages that pre-existed in world are never auto-removed.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct InstallConfig {
+    pub remove_build_deps: bool,
+}
+
+impl Default for InstallConfig {
+    fn default() -> Self {
+        Self {
+            remove_build_deps: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub defaults: DefaultsConfig,
+    pub install: InstallConfig,
     pub privilege: PrivilegeConfig,
     pub profile: ProfileConfig,
     pub resolver: ResolverConfig,

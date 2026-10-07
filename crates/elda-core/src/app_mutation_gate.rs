@@ -7,10 +7,14 @@ use crate::app_dispatch_confirm::{
 };
 use crate::error::CoreError;
 
+/// Commands that render their own, better-informed gate. The dispatch gate must
+/// stay out of their way: asking `Proceed with \`u\`?` before the upgrade plan
+/// exists makes the operator confirm something they have not been shown yet.
 const SELF_CONFIRMED_PREFIXES: &[&[&str]] = &[
     &["i"],
     &["ig"],
     &["ib"],
+    &["u"],
     &["rm"],
     &["rmt", "add"],
     &["rmt", "rm"],
@@ -26,7 +30,7 @@ pub(crate) fn confirm_dispatch_mutation(
     data_dir: &std::path::Path,
     request: &CommandRequest,
 ) -> Result<(), CoreError> {
-    if request.dry_run || !requires_dispatch_confirmation(&request.command_path) {
+    if request.dry_run || !requires_dispatch_confirmation(request) {
         return Ok(());
     }
     if dispatch_confirmation_matches(data_dir, request)? {
@@ -38,8 +42,12 @@ pub(crate) fn confirm_dispatch_mutation(
     write_dispatch_confirmation(data_dir, request)
 }
 
-fn requires_dispatch_confirmation(path: &[String]) -> bool {
-    if path.is_empty() || is_read_only(path) || has_dedicated_confirm(path) {
+fn requires_dispatch_confirmation(request: &CommandRequest) -> bool {
+    let path = &request.command_path;
+    if path.is_empty()
+        || crate::command_class::is_read_only_request(request)
+        || has_dedicated_confirm(path)
+    {
         return false;
     }
     matches!(
@@ -50,7 +58,9 @@ fn requires_dispatch_confirmation(path: &[String]) -> bool {
                 | "u"
                 | "su"
                 | "dsu"
-                | "sync"
+                // `sync` refreshes the local snapshot of remote indexes. It
+                // destroys nothing and is the one command an operator runs
+                // reflexively; `pacman -Sy` does not prompt either.
                 | "pin"
                 | "unpin"
                 | "hold"
@@ -74,63 +84,6 @@ fn requires_dispatch_confirmation(path: &[String]) -> bool {
                 | "publish"
         )
     )
-}
-
-fn is_read_only(path: &[String]) -> bool {
-    match path {
-        [command] => matches!(
-            command.as_str(),
-            "ls" | "check"
-                | "doctor"
-                | "version"
-                | "init"
-                | "recover"
-                | "autoremove"
-                | "fix-triggers"
-        ),
-        [namespace, command] => matches!(
-            (namespace.as_str(), command.as_str()),
-            (
-                "search"
-                    | "info"
-                    | "verify"
-                    | "reverify"
-                    | "diff"
-                    | "why"
-                    | "rdeps"
-                    | "versions"
-                    | "files",
-                _,
-            ) | ("review", _)
-                | ("git", "tags" | "releases" | "versions")
-                | ("rmt", "ls" | "info" | "preview" | "trust")
-                | (
-                    "host",
-                    "scan-tree"
-                        | "test-tree"
-                        | "diff-tree"
-                        | "client-bundle"
-                        | "status"
-                        | "doctor"
-                        | "init-ci"
-                        | "print-cache-config",
-                )
-                | ("publish", "plan" | "diff" | "finalize" | "sign")
-                | ("rc", "ls" | "show" | "diff" | "check" | "publish-ready")
-                | ("config", "pending" | "diff")
-                | ("trigger", "ls" | "info" | "diff")
-                | ("maint", "check")
-                | ("pf", "show")
-                | ("fl", "check" | "diff")
-                | ("cache", "ls")
-                | ("ext", "ls")
-                | ("daemon", "status")
-                | ("qa", _)
-                | ("forge", "search" | "browse")
-                | ("mg", "report")
-        ),
-        _ => false,
-    }
 }
 
 fn has_dedicated_confirm(path: &[String]) -> bool {
@@ -162,5 +115,23 @@ fn mutation_summary(request: &CommandRequest) -> String {
         format!("Proceed with `{command}` for {} target(s)?", targets.len())
     } else {
         format!("Proceed with `{command}` for `{}`?", targets.join("`, `"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recipe_tree_publish_planning_keeps_its_mutation_gate() {
+        let mut request = CommandRequest::new(
+            vec!["publish".into(), "plan".into()],
+            Vec::new(),
+            crate::OutputMode::Human,
+            false,
+        );
+        assert!(!requires_dispatch_confirmation(&request));
+        request.operands = vec!["--tree".into(), "/tmp/recipes".into()];
+        assert!(requires_dispatch_confirmation(&request));
     }
 }

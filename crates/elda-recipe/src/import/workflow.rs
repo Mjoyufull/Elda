@@ -42,6 +42,7 @@ pub fn add_recipe_with_priority(
             git_ref: None,
             replace: false,
             exclude: Vec::new(),
+            acquisition_url: None,
         },
     )
 }

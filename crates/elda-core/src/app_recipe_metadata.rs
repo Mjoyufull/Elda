@@ -30,6 +30,7 @@ pub(crate) fn metadata_add_json(
         "generated": resolved.generated_recipe_dir.is_some(),
         "source_options": resolved.source_options,
         "selected_source_option": resolved.selected_source_option,
+        "artifact_survey": resolved.artifact_survey,
         "fields": fields,
         "missing_fields": missing,
         "publish_ready": missing.is_empty(),

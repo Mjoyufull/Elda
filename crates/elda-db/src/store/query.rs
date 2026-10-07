@@ -1,7 +1,5 @@
 use std::fs;
 
-use rusqlite::Connection;
-
 use crate::error::DbError;
 use crate::schema;
 use crate::store::{
@@ -11,10 +9,20 @@ use crate::store::{
 
 impl Database {
     pub fn bootstrap(&self) -> Result<BootstrapReport, DbError> {
+        // A read-only handle reports what is already there; it must not create
+        // the layout, the database file, or take the mutation lock.
+        if self.is_read_only() {
+            let connection = self.connect()?;
+            return Ok(BootstrapReport {
+                created_database: false,
+                schema_version: schema::current_version(&connection)?,
+            });
+        }
+
         self.layout.ensure_exists()?;
         let _lock = self.acquire_mutation_lock()?;
         let created_database = !self.layout.db_path.exists();
-        let connection = Connection::open(&self.layout.db_path)?;
+        let connection = self.connect()?;
         schema::initialize(&connection)?;
         let schema_version = schema::current_version(&connection)?;
 
@@ -25,7 +33,7 @@ impl Database {
     }
 
     pub fn list_installed_packages(&self) -> Result<Vec<InstalledPackageRecord>, DbError> {
-        let connection = Connection::open(&self.layout.db_path)?;
+        let connection = self.connect()?;
         let mut statement = connection.prepare(
             "
             SELECT pkgname, arch, epoch, pkgver, pkgrel, install_reason, source_kind, remote_name, state_id
@@ -63,20 +71,26 @@ impl Database {
     }
 
     pub fn state_snapshot(&self) -> Result<StateSnapshot, DbError> {
-        let connection = Connection::open(&self.layout.db_path)?;
+        let connection = self.connect()?;
         let installed_packages: usize =
             connection.query_row("SELECT COUNT(*) FROM installed_packages", [], |row| {
                 row.get(0)
             })?;
 
         let schema_version = schema::current_version(&connection)?;
-        let active_state = fs::read_to_string(&self.layout.current_state_path)?
+        let initialized = self.layout.db_path.try_exists()?;
+        let active_state = read_state_file(&self.layout.current_state_path, initialized)?
             .lines()
             .next()
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned);
-        let world = read_world(&self.layout.world_path)?;
+        let world = read_state_file(&self.layout.world_path, initialized)?
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
 
         Ok(StateSnapshot {
             schema_version,
@@ -88,9 +102,7 @@ impl Database {
 
     pub fn health_report(&self) -> Result<HealthReport, DbError> {
         let snapshot = self.state_snapshot()?;
-        let pending_journals = fs::read_dir(&self.layout.journal_dir)?
-            .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
-            .collect::<Result<Vec<_>, _>>()?;
+        let pending_journals = read_dir_names_if_present(&self.layout.journal_dir)?;
         let mut issues = Vec::new();
 
         if snapshot.active_state.is_some() && !self.layout.states_dir.exists() {
@@ -110,7 +122,7 @@ impl Database {
         &self,
         package_name: &str,
     ) -> Result<Option<InstalledPackageDetails>, DbError> {
-        let connection = Connection::open(&self.layout.db_path)?;
+        let connection = self.connect()?;
         let mut statement = connection.prepare(
             "
             SELECT pkgname, epoch, pkgver, pkgrel, arch, package_kind, variant_id, install_reason,
@@ -192,7 +204,7 @@ impl Database {
         package_name: &str,
         include_weak: bool,
     ) -> Result<Vec<PackageDependencyRecord>, DbError> {
-        let connection = Connection::open(&self.layout.db_path)?;
+        let connection = self.connect()?;
         let sql = if include_weak {
             "
             SELECT pkgname, dependency_name, dependency_kind, raw_expr, is_weak, provider_group
@@ -228,7 +240,7 @@ impl Database {
         package_name: &str,
         include_weak: bool,
     ) -> Result<Vec<ReverseDependencyRecord>, DbError> {
-        let connection = Connection::open(&self.layout.db_path)?;
+        let connection = self.connect()?;
         let sql = if include_weak {
             "
             SELECT d.pkgname, d.dependency_kind, d.raw_expr, d.is_weak, d.provider_group,
@@ -270,7 +282,7 @@ impl Database {
         sql: &str,
         operand: &str,
     ) -> Result<Vec<PackageFileRecord>, DbError> {
-        let connection = Connection::open(&self.layout.db_path)?;
+        let connection = self.connect()?;
         let mut statement = connection.prepare(sql)?;
         let rows = statement.query_map([operand], |row| {
             Ok(PackageFileRecord {
@@ -290,13 +302,25 @@ impl Database {
     }
 }
 
-fn read_world(world_path: &std::path::Path) -> Result<Vec<String>, DbError> {
-    let world = fs::read_to_string(world_path)?
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
+fn read_state_file(path: &std::path::Path, initialized: bool) -> Result<String, DbError> {
+    match fs::read_to_string(path) {
+        Ok(content) => Ok(content),
+        Err(error) if !initialized && error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(String::new())
+        }
+        Err(error) => Err(DbError::from(error)),
+    }
+}
 
-    Ok(world)
+/// Entry names in a directory, or an empty list when the directory is absent.
+fn read_dir_names_if_present(path: &std::path::Path) -> Result<Vec<String>, DbError> {
+    let entries = match fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(DbError::from(error)),
+    };
+    entries
+        .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(DbError::from)
 }

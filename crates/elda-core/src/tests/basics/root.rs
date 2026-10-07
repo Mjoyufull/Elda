@@ -1,6 +1,17 @@
 use super::*;
 
 #[test]
+fn read_only_listing_does_not_initialize_an_empty_root() {
+    let tempdir = TempDir::new().expect("tempdir");
+    run_from_root(
+        tempdir.path(),
+        CommandRequest::new(vec!["ls".to_owned()], Vec::new(), OutputMode::Json, false),
+    )
+    .expect("empty listing");
+    assert_eq!(std::fs::read_dir(tempdir.path()).expect("root").count(), 0);
+}
+
+#[test]
 fn cli_surface_contains_all_spec_namespaces() {
     let namespace_names = cli_surface()
         .iter()

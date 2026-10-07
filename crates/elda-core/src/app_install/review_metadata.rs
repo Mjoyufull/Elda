@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use crate::app::PlannedInstallAction;
+use crate::app::{PlannedInstallAction, ResolvedInstallTarget};
 use crate::app_render_tree::{Frame, FrameFooter, Glyph, TreeStyle};
 use crate::render_style::highlight_operator_frame;
 
@@ -18,6 +18,8 @@ pub(super) struct GeneratedRecipeReview {
     pub(super) recipe_dir: PathBuf,
     pub(super) strategy_label: String,
     pub(super) missing_fields: Vec<&'static str>,
+    pub(super) artifact_summary: Option<String>,
+    pub(super) artifact_dropped: Vec<String>,
 }
 
 pub(super) fn generated_metadata_targets(
@@ -34,24 +36,51 @@ pub(super) fn generated_metadata_targets(
             continue;
         }
 
-        pending.push(GeneratedRecipeReview {
-            recipe_name: action
-                .resolved
-                .generated_recipe_name
-                .clone()
-                .unwrap_or_else(|| action.package_name.clone()),
-            recipe_dir: recipe_dir.clone(),
-            strategy_label: format_strategy_label(action),
-            missing_fields: missing_review_fields(action),
-        });
+        pending.push(generated_metadata_target(
+            &action.package_name,
+            &action.resolved,
+            recipe_dir.clone(),
+        ));
     }
 
     pending
 }
 
-pub(super) fn format_strategy_label(action: &PlannedInstallAction) -> String {
-    let kind = action.resolved.selected_source_kind.as_str();
-    let lane = action.resolved.selected_lane.as_str();
+pub(super) fn generated_metadata_target(
+    package_name: &str,
+    resolved: &ResolvedInstallTarget,
+    recipe_dir: PathBuf,
+) -> GeneratedRecipeReview {
+    GeneratedRecipeReview {
+        recipe_name: resolved
+            .generated_recipe_name
+            .clone()
+            .unwrap_or_else(|| package_name.to_owned()),
+        recipe_dir,
+        strategy_label: format_strategy_label(resolved),
+        missing_fields: missing_review_fields(resolved),
+        artifact_summary: resolved
+            .artifact_survey
+            .as_ref()
+            .map(elda_recipe::survey_summary),
+        artifact_dropped: resolved
+            .artifact_survey
+            .as_ref()
+            .map(|survey| {
+                survey
+                    .dropped()
+                    .into_iter()
+                    .take(8)
+                    .map(|entry| entry.path.clone())
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+pub(super) fn format_strategy_label(resolved: &ResolvedInstallTarget) -> String {
+    let kind = resolved.selected_source_kind.as_str();
+    let lane = resolved.selected_lane.as_str();
     match kind {
         "nix_flake" => "[I] nix_flake (bounded parser)".to_owned(),
         "gentoo_overlay" => "[I] gentoo_overlay (bounded parser)".to_owned(),
@@ -62,9 +91,9 @@ pub(super) fn format_strategy_label(action: &PlannedInstallAction) -> String {
     }
 }
 
-pub(super) fn missing_review_fields(action: &PlannedInstallAction) -> Vec<&'static str> {
+pub(super) fn missing_review_fields(resolved: &ResolvedInstallTarget) -> Vec<&'static str> {
     let mut missing = Vec::new();
-    let pkg = &action.resolved.recipe.package;
+    let pkg = &resolved.recipe.package;
     if pkg
         .description
         .as_deref()
@@ -87,14 +116,14 @@ pub(super) fn missing_review_fields(action: &PlannedInstallAction) -> Vec<&'stat
         missing.push("upstream");
     }
 
-    let kind = action.resolved.selected_source_kind.as_str();
+    let kind = resolved.selected_source_kind.as_str();
     if matches!(kind, "appimage") {
-        if !selected_source_field_present(action, "binary") {
+        if !selected_source_field_present(resolved, "binary") {
             missing.push("binary");
         }
     } else if matches!(kind, "github_release" | "release_asset" | "url_archive") {
-        let has_launcher_name = selected_source_field_present(action, "binary")
-            || selected_source_field_present(action, "rename");
+        let has_launcher_name = selected_source_field_present(resolved, "binary")
+            || selected_source_field_present(resolved, "rename");
         if !has_launcher_name {
             missing.push("binary");
         }
@@ -103,12 +132,12 @@ pub(super) fn missing_review_fields(action: &PlannedInstallAction) -> Vec<&'stat
     missing
 }
 
-fn selected_source_field_present(action: &PlannedInstallAction, field: &str) -> bool {
-    let source = &action.resolved.recipe.package.source;
+fn selected_source_field_present(resolved: &ResolvedInstallTarget, field: &str) -> bool {
+    let source = &resolved.recipe.package.source;
     if source.is_multi_lane() {
         return source
             .lanes
-            .get(&action.resolved.selected_lane)
+            .get(&resolved.selected_lane)
             .is_some_and(|lane| lane.fields.contains_key(field));
     }
 
@@ -120,6 +149,12 @@ pub(super) fn render_metadata_review_frame(plan: &GeneratedRecipeReview) -> Stri
     frame.kv("recipe", &plan.recipe_name);
     frame.kv("strategy", &plan.strategy_label);
     frame.kv("output", plan.recipe_dir.display().to_string());
+    if let Some(summary) = &plan.artifact_summary {
+        frame.kv("artifact", summary);
+    }
+    for path in &plan.artifact_dropped {
+        frame.line(format!("  drop: {path}"));
+    }
     if plan.missing_fields.is_empty() {
         frame.glyph_line(Glyph::Done, "required fields present");
     } else {
@@ -154,6 +189,8 @@ mod tests {
             recipe_dir: PathBuf::from("/etc/elda/recipes/tool"),
             strategy_label: "[I] nix_flake (bounded parser)".to_owned(),
             missing_fields: vec!["description", "licenses"],
+            artifact_summary: None,
+            artifact_dropped: Vec::new(),
         };
         let rendered = render_metadata_review_frame(&plan);
         assert!(rendered.contains("Metadata Add"));
@@ -169,6 +206,8 @@ mod tests {
             recipe_dir: PathBuf::from("/etc/elda/recipes/tool"),
             strategy_label: "[V] git (vendor / ad-hoc)".to_owned(),
             missing_fields: Vec::new(),
+            artifact_summary: None,
+            artifact_dropped: Vec::new(),
         };
         let rendered = render_metadata_review_frame(&plan);
         assert!(rendered.contains("required fields present"));
@@ -179,7 +218,7 @@ mod tests {
     fn missing_review_fields_reports_blank_description_and_licenses() {
         let recipe_dir = PathBuf::from("/tmp/example");
         let action = planned_action("tool", &recipe_dir);
-        let missing = missing_review_fields(&action);
+        let missing = missing_review_fields(&action.resolved);
         assert_eq!(missing, vec!["description", "licenses", "upstream"]);
     }
 
@@ -213,7 +252,7 @@ mod tests {
             )]),
         };
 
-        assert!(missing_review_fields(&action).is_empty());
+        assert!(missing_review_fields(&action.resolved).is_empty());
     }
 
     #[test]
@@ -222,12 +261,15 @@ mod tests {
         let mut action = planned_action("tool", &recipe_dir);
         action.resolved.selected_source_kind = "nix_flake".to_owned();
         assert_eq!(
-            format_strategy_label(&action),
+            format_strategy_label(&action.resolved),
             "[I] nix_flake (bounded parser)"
         );
 
         action.resolved.selected_source_kind = "git".to_owned();
-        assert_eq!(format_strategy_label(&action), "[V] git (vendor / ad-hoc)");
+        assert_eq!(
+            format_strategy_label(&action.resolved),
+            "[V] git (vendor / ad-hoc)"
+        );
     }
 
     fn planned_action(recipe_name: &str, recipe_dir: &Path) -> PlannedInstallAction {
@@ -306,6 +348,7 @@ mod tests {
                 generated_recipe_dir: Some(recipe_dir.to_path_buf()),
                 source_options: Vec::new(),
                 selected_source_option: None,
+                artifact_survey: None,
             },
             replaced_packages: Vec::new(),
             install_reason: "explicit".to_owned(),

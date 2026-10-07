@@ -1,4 +1,5 @@
 mod config;
+mod frames;
 mod interbuild;
 mod interbuild_repos;
 mod profile_recipes;
@@ -9,6 +10,7 @@ mod runtime;
 mod trust;
 
 pub(super) use config::*;
+pub(super) use frames::*;
 pub(super) use interbuild::*;
 pub(super) use interbuild_repos::*;
 pub(super) use profile_recipes::*;

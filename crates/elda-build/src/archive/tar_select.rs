@@ -1,8 +1,10 @@
 use std::fs;
 use std::io::BufReader;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 
+use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use liblzma::read::XzDecoder;
 use tar::Archive;
@@ -12,15 +14,12 @@ use elda_recipe::{ScalarValue, SourceDefinition};
 
 use crate::error::BuildError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ArchiveKind {
-    Tar,
-    TarGz,
-    TarZst,
-    TarXz,
-}
+mod kind;
+mod zip;
+pub(super) use kind::{ArchiveKind, infer_archive_kind};
+use zip::{extract_zip_binary, zip_executable_candidates};
 
-pub(super) fn stage_binary_from_tar(
+pub(super) fn stage_binary_from_archive(
     source: &SourceDefinition,
     downloaded_path: &Path,
     bin_dir: &Path,
@@ -28,7 +27,7 @@ pub(super) fn stage_binary_from_tar(
 ) -> Result<(), BuildError> {
     let requested_binary = match string_field_optional(source, "binary") {
         Some(binary) => binary.to_owned(),
-        None => infer_archive_binary(downloaded_path, kind)?,
+        None => infer_archive_binary(source, downloaded_path, kind)?,
     };
     let install_name = install_name(source, &requested_binary)?;
     let destination = bin_dir.join(install_name);
@@ -41,6 +40,7 @@ pub(super) fn stage_binary_from_tar(
             let file = fs::File::open(downloaded_path)?;
             extract_tar_binary(
                 Archive::new(BufReader::new(file)),
+                source,
                 requested_path,
                 basename_only,
                 &destination,
@@ -51,6 +51,18 @@ pub(super) fn stage_binary_from_tar(
             let file = fs::File::open(downloaded_path)?;
             extract_tar_binary(
                 Archive::new(GzDecoder::new(BufReader::new(file))),
+                source,
+                requested_path,
+                basename_only,
+                &destination,
+                &mut matched,
+            )?;
+        }
+        ArchiveKind::TarBz2 => {
+            let file = fs::File::open(downloaded_path)?;
+            extract_tar_binary(
+                Archive::new(BzDecoder::new(BufReader::new(file))),
+                source,
                 requested_path,
                 basename_only,
                 &destination,
@@ -62,6 +74,7 @@ pub(super) fn stage_binary_from_tar(
             let decoder = ZstdDecoder::new(BufReader::new(file))?;
             extract_tar_binary(
                 Archive::new(decoder),
+                source,
                 requested_path,
                 basename_only,
                 &destination,
@@ -72,12 +85,21 @@ pub(super) fn stage_binary_from_tar(
             let file = fs::File::open(downloaded_path)?;
             extract_tar_binary(
                 Archive::new(XzDecoder::new(BufReader::new(file))),
+                source,
                 requested_path,
                 basename_only,
                 &destination,
                 &mut matched,
             )?;
         }
+        ArchiveKind::Zip => extract_zip_binary(
+            downloaded_path,
+            source,
+            requested_path,
+            basename_only,
+            &destination,
+            &mut matched,
+        )?,
     }
 
     if !matched {
@@ -91,52 +113,34 @@ pub(super) fn stage_binary_from_tar(
     Ok(())
 }
 
-pub(super) fn infer_archive_kind(
-    downloaded_path: &Path,
-    source_url: &str,
+fn infer_archive_binary(
     source: &SourceDefinition,
-) -> Option<ArchiveKind> {
-    if let Some(name) = downloaded_path.file_name().and_then(|n| n.to_str())
-        && let Some(kind) = archive_kind_from_name(name)
-    {
-        return Some(kind);
-    }
-
-    if let Some(segment) = source_url.rsplit('/').next() {
-        let base = segment.split(['?', '#']).next().unwrap_or(segment);
-        if let Some(kind) = archive_kind_from_name(base) {
-            return Some(kind);
-        }
-    }
-
-    if let Some(asset) = string_field_optional(source, "asset")
-        && let Some(kind) = archive_kind_from_name(asset)
-    {
-        return Some(kind);
-    }
-
-    None
-}
-
-fn infer_archive_binary(downloaded_path: &Path, kind: ArchiveKind) -> Result<String, BuildError> {
+    downloaded_path: &Path,
+    kind: ArchiveKind,
+) -> Result<String, BuildError> {
     let candidates = match kind {
         ArchiveKind::Tar => {
             let file = fs::File::open(downloaded_path)?;
-            executable_candidates(Archive::new(BufReader::new(file)))?
+            executable_candidates(source, Archive::new(BufReader::new(file)))?
         }
         ArchiveKind::TarGz => {
             let file = fs::File::open(downloaded_path)?;
-            executable_candidates(Archive::new(GzDecoder::new(BufReader::new(file))))?
+            executable_candidates(source, Archive::new(GzDecoder::new(BufReader::new(file))))?
+        }
+        ArchiveKind::TarBz2 => {
+            let file = fs::File::open(downloaded_path)?;
+            executable_candidates(source, Archive::new(BzDecoder::new(BufReader::new(file))))?
         }
         ArchiveKind::TarZst => {
             let file = fs::File::open(downloaded_path)?;
             let decoder = ZstdDecoder::new(BufReader::new(file))?;
-            executable_candidates(Archive::new(decoder))?
+            executable_candidates(source, Archive::new(decoder))?
         }
         ArchiveKind::TarXz => {
             let file = fs::File::open(downloaded_path)?;
-            executable_candidates(Archive::new(XzDecoder::new(BufReader::new(file))))?
+            executable_candidates(source, Archive::new(XzDecoder::new(BufReader::new(file))))?
         }
+        ArchiveKind::Zip => zip_executable_candidates(source, downloaded_path)?,
     };
 
     match candidates.as_slice() {
@@ -156,6 +160,7 @@ fn infer_archive_binary(downloaded_path: &Path, kind: ArchiveKind) -> Result<Str
 }
 
 fn executable_candidates<R: std::io::Read>(
+    source: &SourceDefinition,
     mut archive: Archive<R>,
 ) -> Result<Vec<PathBuf>, BuildError> {
     let mut candidates = Vec::new();
@@ -168,7 +173,7 @@ fn executable_candidates<R: std::io::Read>(
             continue;
         }
 
-        let path = entry.path()?.into_owned();
+        let path = normalized_archive_path(source, entry.path()?.as_ref())?;
         if is_launcher_candidate(&path) {
             candidates.push(path);
         }
@@ -187,6 +192,7 @@ fn is_launcher_candidate(path: &Path) -> bool {
 
 fn extract_tar_binary<R: std::io::Read>(
     mut archive: Archive<R>,
+    source: &SourceDefinition,
     requested_path: &Path,
     basename_only: bool,
     destination: &Path,
@@ -198,7 +204,7 @@ fn extract_tar_binary<R: std::io::Read>(
             continue;
         }
 
-        let path = entry.path()?.into_owned();
+        let path = normalized_archive_path(source, entry.path()?.as_ref())?;
         let is_match = if basename_only {
             path.file_name() == requested_path.file_name()
         } else {
@@ -225,18 +231,31 @@ fn extract_tar_binary<R: std::io::Read>(
     Ok(())
 }
 
-fn archive_kind_from_name(name: &str) -> Option<ArchiveKind> {
-    if name.ends_with(".tar") {
-        Some(ArchiveKind::Tar)
-    } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
-        Some(ArchiveKind::TarGz)
-    } else if name.ends_with(".tar.zst") || name.ends_with(".tzst") {
-        Some(ArchiveKind::TarZst)
-    } else if name.ends_with(".tar.xz") || name.ends_with(".txz") {
-        Some(ArchiveKind::TarXz)
-    } else {
-        None
+fn normalized_archive_path(source: &SourceDefinition, path: &Path) -> Result<PathBuf, BuildError> {
+    if path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
+    {
+        return Err(BuildError::Invalid(format!(
+            "archive member `{}` has an unsafe path",
+            path.display()
+        )));
     }
+    let strip_components = match source.fields.get("strip_components") {
+        Some(ScalarValue::Integer(value)) if *value >= 0 => *value as usize,
+        _ => 0,
+    };
+    let normalized = path
+        .components()
+        .skip(strip_components)
+        .collect::<PathBuf>();
+    if normalized.as_os_str().is_empty() {
+        return Err(BuildError::Invalid(format!(
+            "archive member `{}` is empty after strip_components={strip_components}",
+            path.display()
+        )));
+    }
+    Ok(normalized)
 }
 
 fn install_name(source: &SourceDefinition, requested_binary: &str) -> Result<String, BuildError> {

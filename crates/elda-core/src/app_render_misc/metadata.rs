@@ -12,7 +12,8 @@ pub(crate) fn render_metadata_add_report(report: &CommandReport) -> Option<Strin
     let targets = add.get("targets")?.as_array()?;
 
     let labels = [
-        "target", "recipe", "path", "pkg.lua", "strategy", "ready", "field", "option",
+        "target", "recipe", "path", "pkg.lua", "strategy", "artifact", "digest", "contents",
+        "dropped", "ready", "field", "option",
     ];
     let width = kv_label_width(&labels);
     let mut blocks = Vec::with_capacity(targets.len());
@@ -41,6 +42,7 @@ pub(crate) fn render_metadata_add_report(report: &CommandReport) -> Option<Strin
             ),
             format_aligned_kv("ready", &publish_ready.to_string(), width),
         ];
+        lines.extend(artifact_survey_lines(target, width));
         lines.extend(source_option_lines_aligned(target, add, width));
         lines.extend(metadata_field_lines_aligned(target, width));
 
@@ -55,6 +57,64 @@ pub(crate) fn render_metadata_add_report(report: &CommandReport) -> Option<Strin
     }
 
     Some(blocks.join("\n\n"))
+}
+
+fn artifact_survey_lines(target: &Value, width: usize) -> Vec<String> {
+    let Some(survey) = target.get("artifact_survey").filter(|value| !value.is_null()) else {
+        return Vec::new();
+    };
+    let format = json_string(survey, &["format"]).unwrap_or("unknown");
+    let architecture = json_string(survey, &["architecture"]).unwrap_or("unknown");
+    let sha256 = json_string(survey, &["sha256"]).unwrap_or("unknown");
+    let entries = survey
+        .get("entries")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let executables = entries
+        .iter()
+        .filter(|entry| entry.get("kind").and_then(Value::as_str) == Some("executable"))
+        .count();
+    let dropped = entries
+        .iter()
+        .filter(|entry| entry.get("kind").and_then(Value::as_str) == Some("foreign-platform"))
+        .collect::<Vec<_>>();
+    let unpacked = entries
+        .iter()
+        .filter_map(|entry| entry.get("size").and_then(Value::as_u64))
+        .fold(0, u64::saturating_add);
+    let mut lines = vec![
+        format_aligned_kv("artifact", &format!("{format}, {architecture}"), width),
+        format_aligned_kv("digest", &format!("sha256:{sha256}"), width),
+        format_aligned_kv(
+            "contents",
+            &format!(
+                "{} regular file(s), {executables} launcher candidate(s), {unpacked} unpacked byte(s)",
+                entries.len()
+            ),
+            width,
+        ),
+    ];
+    if !dropped.is_empty() {
+        let preview = dropped
+            .iter()
+            .take(4)
+            .filter_map(|entry| entry.get("path").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let more = dropped.len().saturating_sub(4);
+        let suffix = if more == 0 {
+            String::new()
+        } else {
+            format!(" (+{more} more)")
+        };
+        lines.push(format_aligned_kv(
+            "dropped",
+            &format!("{} foreign-platform member(s): {preview}{suffix}", dropped.len()),
+            width,
+        ));
+    }
+    lines
 }
 
 fn metadata_field_lines_aligned(target: &Value, width: usize) -> Vec<String> {

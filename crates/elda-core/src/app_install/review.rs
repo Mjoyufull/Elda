@@ -3,7 +3,8 @@ use std::path::Path;
 
 use super::interbuild_review::interbuild_review_lines;
 use super::review_metadata::{
-    GeneratedRecipeReview, generated_metadata_targets, render_metadata_review_frame,
+    GeneratedRecipeReview, generated_metadata_target, generated_metadata_targets,
+    render_metadata_review_frame,
 };
 use super::review_recheck::recheck_after_edit;
 use crate::app::{AppContext, PlannedInstallAction};
@@ -18,6 +19,26 @@ use crate::render_style::highlight_operator_frame;
 use crate::{CommandRequest, OutputMode};
 
 impl AppContext {
+    pub(crate) fn review_generated_resolution_if_needed(
+        &self,
+        request: &CommandRequest,
+        resolved: &crate::app::ResolvedInstallTarget,
+    ) -> Result<(), CoreError> {
+        if request.output_mode != OutputMode::Human || request.dry_run {
+            return Ok(());
+        }
+        if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+            return Ok(());
+        }
+        let Some(recipe_dir) = resolved.generated_recipe_dir.clone() else {
+            return Ok(());
+        };
+        let plan = generated_metadata_target(&resolved.recipe.package.name, resolved, recipe_dir);
+        let layout = self.database.layout();
+        review_one_generated_recipe(&layout.recipes_dir, &layout.data_dir, &plan)?;
+        Ok(())
+    }
+
     pub(crate) fn review_generated_metadata_if_needed(
         &self,
         request: &CommandRequest,
@@ -325,7 +346,7 @@ fn review_one_generated_recipe(
             }
             ReviewResponse::Abort => {
                 return Err(CoreError::Operator(format!(
-                    "install aborted after generated metadata review for `{}`; the metadata remains at {}",
+                    "operation aborted after generated metadata review for `{}`; the metadata remains at {}",
                     plan.recipe_name,
                     plan.recipe_dir.display()
                 )));
@@ -520,11 +541,22 @@ mod tests {
         let rendered =
             interbuild_review_lines(&action, Path::new("/tmp/elda-review-test")).join("\n");
 
+        // Key/value rows are column-aligned, so assert on content, not padding.
+        // The key must fill the whole key column so `parser` cannot match an
+        // `interbuild parser::` row.
+        let row = |key: &str| {
+            let needle = format!("{key}::");
+            rendered.lines().find_map(|line| {
+                let body = line.trim_start_matches(['\u{2502}', '|', ' ']);
+                Some(body.strip_prefix(&needle)?.trim_start().to_owned())
+            })
+        };
+
         assert!(rendered.contains("Interbuild source review"));
-        assert!(rendered.contains("provenance:: [I] parsed"));
-        assert!(rendered.contains("parser:: static flake output parser"));
-        assert!(rendered.contains("installable:: default"));
-        assert!(rendered.contains("activate::"));
+        assert!(row("provenance").is_some_and(|value| value.starts_with("[I] parsed")));
+        assert!(row("parser").is_some_and(|value| value.starts_with("static flake output parser")));
+        assert!(row("installable").is_some_and(|value| value.starts_with("default")));
+        assert!(row("activate").is_some());
         assert!(rendered.contains("Review Memory:"));
         assert!(rendered.contains("Proceed? [Y/n/e]"));
     }
@@ -605,6 +637,7 @@ mod tests {
                 generated_recipe_dir: Some(recipe_dir.to_path_buf()),
                 source_options: Vec::new(),
                 selected_source_option: None,
+                artifact_survey: None,
             },
             replaced_packages: Vec::new(),
             install_reason: "explicit".to_owned(),

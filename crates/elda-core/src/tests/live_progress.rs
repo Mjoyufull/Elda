@@ -18,7 +18,7 @@ fn install_flow_emits_frame_lifecycle_with_canonical_step_ids() {
     write_local_binary_recipe(tempdir.path(), "live-progress-tool", &binary, &[]);
 
     let sink = Arc::new(RecordingSink::new());
-    let context = AppContext::from_root(tempdir.path(), false)
+    let context = AppContext::from_root_for_command(tempdir.path(), false, false)
         .expect("context")
         .with_progress_sink(sink.clone());
 

@@ -64,8 +64,14 @@ impl AppContext {
     /// These are Ed25519 public keys (base64-encoded) that Elda uses
     /// to verify minisig/Ed25519 sidecars declared in release_asset
     /// recipes via the `signature` field.
-    pub(crate) fn configured_release_trusted_keys(&self) -> Vec<String> {
-        self.config.trust.release_keys.clone()
+    pub(crate) fn configured_release_trusted_keys(&self) -> Result<Vec<String>, CoreError> {
+        // The transaction gate may have just persisted additional accepted keys.
+        let current = crate::config::Config::load(&self.database.layout().root_dir)?;
+        let mut keys = self.config.trust.release_keys.clone();
+        keys.extend(current.trust.release_keys);
+        keys.sort();
+        keys.dedup();
+        Ok(keys)
     }
 }
 

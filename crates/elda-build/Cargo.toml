@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 base64.workspace = true
+bzip2.workspace = true
 ed25519-dalek.workspace = true
 elda-appimage = { path = "../elda-appimage" }
 elda-recipe = { path = "../elda-recipe" }
@@ -25,6 +26,7 @@ thiserror.workspace = true
 toml.workspace = true
 ureq = "2.12.1"
 zstd.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true
