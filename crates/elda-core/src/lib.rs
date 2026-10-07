@@ -37,12 +37,14 @@ mod app_render_install;
 mod app_render_migration;
 mod app_render_misc;
 mod app_render_remove;
+mod app_render_self_update;
 mod app_render_state;
 mod app_render_support;
 mod app_render_tree;
 mod app_repo;
 mod app_review;
 mod app_review_memory;
+mod app_self_update;
 mod app_state;
 mod app_upgrade;
 mod app_vendor;
@@ -80,6 +82,8 @@ const ROOT_COMMANDS: &[&str] = &[
     "ib",
     "rm",
     "u",
+    "su",
+    "dsu",
     "sync",
     "ls",
     "search",

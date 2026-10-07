@@ -339,10 +339,17 @@ elda u                           # upgrade world + required closure from current
 elda u ripgrep
 elda u --rebuild-variant-drift   # rebuild when flags changed variant_id
 elda u fsel --to-tag v3.4.0      # move a git package to a new ref
+elda su                          # update Elda itself from main
+elda dsu                         # switch Elda itself to the latest dev build
 ```
 
 `elda u` compares installed versions to the **current synced snapshot** for each remote. It does
 not auto-upgrade held packages or packages blocked by pins unless you change policy.
+
+`elda su` and `elda dsu` update the running Elda executable from
+`https://github.com/Mjoyufull/Elda`. `su` builds `main`; `dsu` builds `dev`. Both use
+`cargo build --release --locked -p elda-cli`, verify the produced `elda` binary, and replace the
+current executable. Use `--dry-run` to see the selected branch and destination without cloning.
 
 ### Pin, hold, downgrade
 
