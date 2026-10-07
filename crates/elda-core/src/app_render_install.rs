@@ -317,11 +317,7 @@ fn push_trust_key_row(rows: &mut Vec<(String, String)>, details: &Value) {
     }
 }
 
-/// Build-only dependencies, and whether cleanup is armed.
-///
-/// Cleanup only ever covers dependencies this transaction installed; packages
-/// that pre-existed in world are never removed. `[install].remove_build_deps`
-/// disarms it.
+/// Build-only dependency information. Automatic cleanup is not implemented.
 fn push_build_dep_row(rows: &mut Vec<(String, String)>, details: &Value) {
     let removed = string_list(
         details,
@@ -331,7 +327,7 @@ fn push_build_dep_row(rows: &mut Vec<(String, String)>, details: &Value) {
         rows.push((
             "build deps".to_owned(),
             format!(
-                "{} temporary, removed after a successful build: {}",
+                "{} build-only, kept (automatic cleanup unavailable): {}",
                 removed.len(),
                 summarize_names(&removed, 4)
             ),

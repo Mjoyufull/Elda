@@ -10,7 +10,6 @@ use crate::error::AppImageError;
 use crate::offset::{PayloadFormat, payload_location};
 
 const FUSE_HINT_SQUASHFS: &str = "Type 2 AppImages normally mount their SquashFS payload via FUSE; hosts without FUSE may need `--appimage-extract-and-run` upstream support (not enabled by Elda by default).";
-const FUSE_HINT_DWARFS: &str = "This image carries a DwarFS payload (uruntime family). Its runtime mounts via FUSE, then falls back to user namespaces, then to extract-and-run, so it works without FUSE — but Elda cannot read DwarFS metadata directly.";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InspectReport {
@@ -113,10 +112,7 @@ pub fn inspect_appimage(path: &Path) -> Result<InspectReport, AppImageError> {
         apprun_path,
         icon_candidates,
         metainfo_candidates,
-        fuse_note: match location.format {
-            PayloadFormat::SquashFs => FUSE_HINT_SQUASHFS,
-            PayloadFormat::DwarFs => FUSE_HINT_DWARFS,
-        },
+        fuse_note: FUSE_HINT_SQUASHFS,
     })
 }
 

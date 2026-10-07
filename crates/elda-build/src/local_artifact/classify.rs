@@ -17,7 +17,7 @@ pub(super) fn classify(path: &str, executable: bool) -> ArtifactEntryKind {
     if lower.contains("/man/") || is_man_page(&file_name) {
         return ArtifactEntryKind::ManPage;
     }
-    if is_completion(&lower, &file_name) {
+    if !executable && is_completion(&lower, &file_name) {
         return ArtifactEntryKind::Completion;
     }
     if file_name.ends_with(".desktop") {

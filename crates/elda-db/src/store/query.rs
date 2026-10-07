@@ -78,14 +78,19 @@ impl Database {
             })?;
 
         let schema_version = schema::current_version(&connection)?;
-        let active_state = read_to_string_if_present(&self.layout.current_state_path)?
-            .unwrap_or_default()
+        let initialized = self.layout.db_path.try_exists()?;
+        let active_state = read_state_file(&self.layout.current_state_path, initialized)?
             .lines()
             .next()
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned);
-        let world = read_world(&self.layout.world_path)?;
+        let world = read_state_file(&self.layout.world_path, initialized)?
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
 
         Ok(StateSnapshot {
             schema_version,
@@ -297,27 +302,12 @@ impl Database {
     }
 }
 
-fn read_world(world_path: &std::path::Path) -> Result<Vec<String>, DbError> {
-    let world = read_to_string_if_present(world_path)?
-        .unwrap_or_default()
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-
-    Ok(world)
-}
-
-/// `Ok(None)` when the file is simply not there.
-///
-/// An absent state file means "nothing recorded yet", not a failure. Queries
-/// must be able to answer against a root that was never bootstrapped, because
-/// they are no longer allowed to bootstrap it themselves.
-fn read_to_string_if_present(path: &std::path::Path) -> Result<Option<String>, DbError> {
+fn read_state_file(path: &std::path::Path, initialized: bool) -> Result<String, DbError> {
     match fs::read_to_string(path) {
-        Ok(content) => Ok(Some(content)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Ok(content) => Ok(content),
+        Err(error) if !initialized && error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(String::new())
+        }
         Err(error) => Err(DbError::from(error)),
     }
 }

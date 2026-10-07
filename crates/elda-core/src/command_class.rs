@@ -11,6 +11,26 @@
 //! direction costs an unnecessary escalation; being wrong the other way means a
 //! mutation runs without the gate.
 
+/// Account for options that turn a query into an import, build, or install.
+pub(crate) fn is_read_only_request(request: &crate::CommandRequest) -> bool {
+    let has_option = |name: &str| {
+        request
+            .operands
+            .iter()
+            .any(|operand| operand == name || operand.starts_with(&format!("{name}=")))
+    };
+    match request.command_path.as_slice() {
+        [command] if command == "search" && has_option("--interactive") => false,
+        [command] if command == "diff" && has_option("--candidate") => false,
+        [namespace, command]
+            if namespace == "publish" && command == "plan" && has_option("--tree") =>
+        {
+            false
+        }
+        _ => is_read_only_command(&request.command_path),
+    }
+}
+
 /// True when the command only reads state and never writes to the managed root.
 #[must_use]
 pub(crate) fn is_read_only_command(path: &[String]) -> bool {
@@ -43,10 +63,10 @@ fn is_read_only_root_command(command: &str) -> bool {
 
 fn is_read_only_namespaced(namespace: &str, command: &str) -> bool {
     match namespace {
-        // `qa` runs lint/build/smoke inside the workspace, never against the root.
-        "qa" => true,
+        // QA may import operands and build in the managed cache, even for plans.
+        "qa" => false,
         "files" => matches!(command, "owner" | "search"),
-        "git" => matches!(command, "tags" | "releases" | "versions"),
+        "git" => matches!(command, "tags" | "releases"),
         "appimage" => command == "inspect",
         "rmt" => matches!(command, "ls" | "info" | "preview" | "trust"),
         "rc" => matches!(command, "ls" | "show" | "diff" | "check" | "publish-ready"),
@@ -55,12 +75,11 @@ fn is_read_only_namespaced(namespace: &str, command: &str) -> bool {
         "trigger" => matches!(command, "ls" | "info" | "diff"),
         "maint" => command == "check",
         "pf" => command == "show",
-        "fl" => matches!(command, "ls" | "check" | "diff"),
+        "fl" => matches!(command, "check" | "diff"),
         "cache" => command == "ls",
         "ext" => command == "ls",
         "daemon" => command == "status",
         "forge" => matches!(command, "search" | "browse"),
-        "mg" => command == "report",
         "state" => matches!(command, "show" | "export"),
         "ci" => matches!(command, "status" | "logs"),
         // `finalize`, `sign`, and `promote` all write; only planning is read-only.
@@ -68,7 +87,6 @@ fn is_read_only_namespaced(namespace: &str, command: &str) -> bool {
         "host" => matches!(
             command,
             "scan-tree"
-                | "test-tree"
                 | "diff-tree"
                 | "client-bundle"
                 | "status"
@@ -86,6 +104,29 @@ mod tests {
 
     fn path(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|part| (*part).to_owned()).collect()
+    }
+
+    #[test]
+    fn query_options_that_write_use_a_mutating_context() {
+        for (command, operands) in [
+            (vec!["search"], vec!["example", "--interactive"]),
+            (vec!["diff"], vec!["example", "--candidate"]),
+            (vec!["publish", "plan"], vec!["--tree=/tmp/recipes"]),
+            (vec!["host", "test-tree"], vec!["/tmp/recipes"]),
+            (vec!["qa", "build"], vec!["example"]),
+            (vec!["qa", "lint"], vec!["/tmp/recipe"]),
+        ] {
+            let request = crate::CommandRequest::new(
+                path(&command),
+                path(&operands),
+                crate::OutputMode::Human,
+                false,
+            );
+            assert!(
+                !super::is_read_only_request(&request),
+                "{command:?} {operands:?}"
+            );
+        }
     }
 
     #[test]

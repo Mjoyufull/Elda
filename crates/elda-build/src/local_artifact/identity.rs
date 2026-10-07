@@ -14,7 +14,9 @@ pub(super) fn infer_identity(
     if let Some(root) = root
         && let (Some(name), version) = split_name_version(root)
     {
-        return (Some(name), version);
+        let inferred_version =
+            version.or_else(|| split_name_version(&strip_archive_suffix(file_name)).1);
+        return (Some(name), inferred_version);
     }
     let stem = strip_archive_suffix(file_name);
     split_name_version(&stem)
@@ -121,11 +123,11 @@ pub(super) fn elf_architecture(header: &[u8; 20]) -> Result<String, BuildError> 
         }
     };
     let architecture = match (machine, header[4], header[5]) {
-        (3, 1, _) => "i386",
-        (62, 2, _) => "amd64",
-        (40, 1, _) => "armhf",
-        (183, 2, _) => "arm64",
-        (243, 2, _) => "riscv64",
+        (3, 1, 1) => "i386",
+        (62, 2, 1) => "amd64",
+        (40, 1, 1) => "armhf",
+        (183, 2, 1) => "arm64",
+        (243, 2, 1) => "riscv64",
         (21, 2, 1) => "ppc64le",
         _ => {
             return Err(BuildError::Unsupported(format!(

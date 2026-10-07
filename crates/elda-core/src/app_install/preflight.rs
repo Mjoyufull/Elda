@@ -62,11 +62,12 @@ pub(super) fn install_preflight_report(
         "source_lane_actions": build_lane_actions,
         "temporary_build_dependencies": {
             "policy": if remove_build_deps {
-                "build-only dependencies are removed after successful source builds when the solver marks them as non-world packages; packages that pre-existed in world are never removed"
+                "automatic build-dependency cleanup is not implemented; these packages remain installed"
             } else {
                 "cleanup disabled by [install].remove_build_deps; build-only dependencies stay installed"
             },
-            "remove_after_build": remove_build_deps,
+            "remove_after_build": false,
+            "cleanup_requested": remove_build_deps,
             "planned_build_lane_actions": build_lane_actions,
             "packages": temporary_build_deps,
             "retained": retained_build_deps,
@@ -149,6 +150,18 @@ pub(super) fn temporary_build_dependency_names(actions: &[PlannedInstallAction])
         .collect::<std::collections::BTreeSet<_>>();
 
     let mut names = Vec::new();
+    let retained = actions
+        .iter()
+        .flat_map(|action| &action.dependencies)
+        .filter(|dependency| dependency.dependency_kind != "build")
+        .map(|dependency| dependency.dependency_name.as_str())
+        .chain(
+            actions
+                .iter()
+                .filter(|action| action.install_reason == "explicit")
+                .map(|action| action.package_name.as_str()),
+        )
+        .collect::<std::collections::BTreeSet<_>>();
     for action in actions {
         if !install_execution_decision(action).needs_change {
             continue;
@@ -156,6 +169,7 @@ pub(super) fn temporary_build_dependency_names(actions: &[PlannedInstallAction])
         for dependency in &action.dependencies {
             if dependency.dependency_kind == "build"
                 && newly_installed.contains(dependency.dependency_name.as_str())
+                && !retained.contains(dependency.dependency_name.as_str())
             {
                 names.push(dependency.dependency_name.clone());
             }

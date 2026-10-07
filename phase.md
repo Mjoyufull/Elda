@@ -7,6 +7,8 @@
 
 ## 1. Overview
 
+Read-only and artifact review (2026-10-07): legacy database queries migrate a private in-memory snapshot, and read-only handles reject mutations. Query-only invocations no longer create default configuration or clear mutation confirmation state. Interactive search, candidate builds, QA, and recipe-tree imports use writable contexts. Missing state files on initialized roots remain errors. Artifact detection now respects ELF endianness, preserves executable candidates in completion-named archives, and uses filename versions when archive roots omit them. Accepted release keys are reloaded before building. Build-dependency output explicitly reports that automatic cleanup is unavailable and excludes dependencies also needed at runtime or explicitly requested.
+
 This file defines the implementation order for Elda. It is not a second spec and it is not a scope-cut document. `SPEC.md` remains the contract. `phase.md` exists to say what lands in what order, what each phase has to prove, and where the hard fork from `pkgit` is handled directly.
 
 Elda is a hard fork of `pkgit` in product direction and operator feel, not in code lineage. We keep the useful parts of `pkgit`'s UX and we replace the internals that stop it from being a real system package manager. That means Rust, SQLite, explicit state, explicit transactions, explicit manifests, explicit verification, and explicit rollback.

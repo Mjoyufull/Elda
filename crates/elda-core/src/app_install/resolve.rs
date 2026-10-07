@@ -49,7 +49,7 @@ impl AppContext {
             binary_caches: self.configured_binary_caches()?,
             remote_name: resolved.remote_name.clone(),
             binary_source_verification: resolved.binary_source_verification.clone(),
-            release_trusted_keys: self.configured_release_trusted_keys(),
+            release_trusted_keys: self.configured_release_trusted_keys()?,
             allowed_git_protocols: self.config.git.allowed_protocols.clone(),
             persisted_source_kind: resolved.persisted_source_kind.clone(),
             persisted_source_ref: resolved.source_ref.clone(),

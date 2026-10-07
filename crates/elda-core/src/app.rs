@@ -230,7 +230,8 @@ impl AppContext {
         let default_status = PrivilegeStatus::detect(&default_privilege);
         let unprivileged_live_host = live_host_root && !default_status.is_superuser;
         let config_path = root_dir.join("etc/elda/config.toml");
-        if !config_path.exists()
+        if !read_only
+            && !config_path.try_exists()?
             && let Err(error) = Config::write_default(root_dir)
         {
             let denied = matches!(
@@ -622,7 +623,7 @@ pub fn run_from_root(
 ) -> Result<CommandReport, CoreError> {
     let root_dir = root_dir.as_ref();
     crate::interrupt::install_handler_if_needed(&request)?;
-    let read_only = crate::command_class::is_read_only_command(&request.command_path);
+    let read_only = crate::command_class::is_read_only_request(&request);
     let context = AppContext::from_root_for_command(root_dir, request.system_mode, read_only)?;
     set_configured_tree_style(display_tree_style(&context.config.display.tree_chars));
     if request.output_mode == crate::OutputMode::Human
@@ -638,7 +639,7 @@ pub fn run_from_root(
     let log_session = CommandLogSession::start(root_dir, &context.config, &request)?;
     let request_for_logging = request.clone();
     let result = context.handle(request);
-    let cleanup_result = if !matches!(result, Err(CoreError::PrivilegeRequired(_))) {
+    let cleanup_result = if !read_only && !matches!(result, Err(CoreError::PrivilegeRequired(_))) {
         crate::app_dispatch_confirm::clear_dispatch_confirmation(
             &context.database.layout().data_dir,
         )

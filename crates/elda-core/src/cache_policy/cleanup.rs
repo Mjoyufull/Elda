@@ -232,7 +232,7 @@ fn filesystem_trigger_bytes(path: &Path, policy: CachePolicy) -> Result<u64, Cor
     // The cache directory may not exist yet — a query is not allowed to create
     // it. Any existing ancestor sits on the same filesystem and reports the
     // same total size, so walk up until statvfs has something to answer about.
-    let stats = nearest_existing_ancestor(path)
+    let stats = nearest_existing_ancestor(path)?
         .map(|existing| statvfs(existing).map_err(std::io::Error::from))
         .transpose()?;
     let Some(stats) = stats else {
@@ -242,8 +242,13 @@ fn filesystem_trigger_bytes(path: &Path, policy: CachePolicy) -> Result<u64, Cor
     Ok(total_bytes.saturating_mul(policy.filesystem_trigger_percent) / 100)
 }
 
-fn nearest_existing_ancestor(path: &Path) -> Option<&Path> {
-    path.ancestors().find(|candidate| candidate.exists())
+fn nearest_existing_ancestor(path: &Path) -> Result<Option<&Path>, std::io::Error> {
+    for candidate in path.ancestors() {
+        if candidate.try_exists()? {
+            return Ok(Some(candidate));
+        }
+    }
+    Ok(None)
 }
 
 fn directory_usage_bytes(directory: &Path) -> Result<u64, CoreError> {

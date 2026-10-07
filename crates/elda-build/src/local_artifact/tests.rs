@@ -11,6 +11,34 @@ use super::{
     survey,
 };
 
+#[test]
+fn identity_uses_filename_version_when_archive_root_has_none() {
+    assert_eq!(
+        infer_identity(Some("delta"), "delta-1.2.3.tar.gz"),
+        (Some("delta".into()), Some("1.2.3".into()))
+    );
+}
+
+#[test]
+fn executable_in_completion_named_package_remains_a_launcher() {
+    assert_eq!(
+        classify("foo-completion-1.0/bin/foo", true),
+        ArtifactEntryKind::Executable
+    );
+}
+
+#[test]
+fn big_endian_elf_is_not_labeled_as_little_endian() {
+    for (machine, class) in [(3_u16, 1), (62, 2), (40, 1), (183, 2), (243, 2), (21, 2)] {
+        let mut header = [0_u8; 20];
+        header[..4].copy_from_slice(b"\x7fELF");
+        header[4] = class;
+        header[5] = 2;
+        header[18..20].copy_from_slice(&machine.to_be_bytes());
+        assert!(elf_architecture(&header).is_err());
+    }
+}
+
 fn release_tarball(dir: &std::path::Path, root: &str) -> std::path::PathBuf {
     let staging = dir.join("stage").join(root);
     fs::create_dir_all(staging.join("completions")).expect("staging dirs");
