@@ -115,11 +115,7 @@ fn all(values: &HashMap<String, Vec<String>>, key: &str) -> Vec<String> {
 }
 
 fn srcinfo_native_arch() -> &'static str {
-    match std::env::consts::ARCH {
-        "aarch64" => "aarch64",
-        "x86_64" => "x86_64",
-        other => other,
-    }
+    std::env::consts::ARCH
 }
 
 fn supported_archive_url(url: &str) -> bool {

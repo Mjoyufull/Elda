@@ -545,7 +545,11 @@ impl AppContext {
                 Some(("network.fetch", capabilities.network_fetch))
             }
             [command] if command == "su" || command == "dsu" => {
-                Some(("network.fetch", capabilities.network_fetch))
+                if !capabilities.network_fetch {
+                    Some(("network.fetch", false))
+                } else {
+                    Some(("local.exec_build", capabilities.local_exec_build))
+                }
             }
             [namespace, ..] if namespace == "git" => {
                 Some(("network.fetch", capabilities.network_fetch))

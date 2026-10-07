@@ -7,6 +7,8 @@
 
 ## 1. Overview
 
+Self-update review (2026-10-07): `su` and `dsu` require both network-fetch and local-build capabilities. Git revision lookup uses the same operator environment as cloning; Cargo output is pinned to the update workspace. Executable replacement uses an exclusively created temporary file beside the destination and restores ownership before permissions. The newly built executable must still pass its version check before replacement.
+
 This file defines the implementation order for Elda. It is not a second spec and it is not a scope-cut document. `SPEC.md` remains the contract. `phase.md` exists to say what lands in what order, what each phase has to prove, and where the hard fork from `pkgit` is handled directly.
 
 Elda is a hard fork of `pkgit` in product direction and operator feel, not in code lineage. We keep the useful parts of `pkgit`'s UX and we replace the internals that stop it from being a real system package manager. That means Rust, SQLite, explicit state, explicit transactions, explicit manifests, explicit verification, and explicit rollback.

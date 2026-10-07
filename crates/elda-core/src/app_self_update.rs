@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -81,7 +81,15 @@ fn build_cli(source_dir: &Path, output_mode: OutputMode) -> Result<(), CoreError
     let mut command = Command::new(operator_cargo());
     command
         .current_dir(source_dir)
-        .args(["build", "--release", "--locked", "-p", "elda-cli"]);
+        .args([
+            "build",
+            "--release",
+            "--locked",
+            "-p",
+            "elda-cli",
+            "--target-dir",
+        ])
+        .arg(source_dir.join("target"));
     configure_operator_environment(&mut command);
     run_command(&mut command, "cargo build", output_mode)
 }
@@ -175,9 +183,10 @@ fn verify_built_binary(path: &Path) -> Result<(), CoreError> {
 }
 
 fn git_commit(source_dir: &Path) -> Result<String, CoreError> {
-    let output = Command::new("git")
-        .current_dir(source_dir)
-        .args(["rev-parse", "HEAD"])
+    let mut command = Command::new("git");
+    command.current_dir(source_dir).args(["rev-parse", "HEAD"]);
+    configure_operator_environment(&mut command);
+    let output = command
         .output()
         .map_err(|error| command_error("git rev-parse", error))?;
     checked_stdout("git rev-parse", output)
@@ -213,14 +222,11 @@ fn replace_executable(source: &Path, destination: &Path) -> Result<(), CoreError
         CoreError::Operator("current Elda executable has no parent directory".to_owned())
     })?;
     let metadata = fs::metadata(&destination)?;
-    let staging = parent.join(format!(".elda-self-update-{}", std::process::id()));
-
-    let result = stage_replacement(source, &staging, &metadata)
-        .and_then(|()| fs::rename(&staging, &destination).map_err(CoreError::from));
-    if result.is_err() {
-        let _ = fs::remove_file(&staging);
-    }
-    result?;
+    let mut staging = tempfile::NamedTempFile::new_in(parent)?;
+    stage_replacement(source, staging.as_file_mut(), &metadata)?;
+    staging
+        .persist(&destination)
+        .map_err(|error| CoreError::from(error.error))?;
 
     File::open(parent)?.sync_all()?;
     Ok(())
@@ -228,29 +234,26 @@ fn replace_executable(source: &Path, destination: &Path) -> Result<(), CoreError
 
 fn stage_replacement(
     source: &Path,
-    staging: &Path,
+    staging_file: &mut File,
     destination_metadata: &fs::Metadata,
 ) -> Result<(), CoreError> {
     let mut source_file = File::open(source)?;
-    let mut staging_file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(staging)?;
-    io::copy(&mut source_file, &mut staging_file)?;
-    staging_file.set_permissions(fs::Permissions::from_mode(
-        destination_metadata.permissions().mode(),
-    ))?;
+    io::copy(&mut source_file, staging_file)?;
 
     let staging_metadata = staging_file.metadata()?;
     if staging_metadata.uid() != destination_metadata.uid()
         || staging_metadata.gid() != destination_metadata.gid()
     {
-        std::os::unix::fs::chown(
-            staging,
-            Some(destination_metadata.uid()),
-            Some(destination_metadata.gid()),
-        )?;
+        rustix::fs::fchown(
+            &*staging_file,
+            Some(rustix::process::Uid::from_raw(destination_metadata.uid())),
+            Some(rustix::process::Gid::from_raw(destination_metadata.gid())),
+        )
+        .map_err(io::Error::from)?;
     }
+    staging_file.set_permissions(fs::Permissions::from_mode(
+        destination_metadata.permissions().mode(),
+    ))?;
     staging_file.sync_all()?;
     Ok(())
 }
