@@ -12,6 +12,7 @@ mod profile_system_changes;
 mod repo;
 mod repo_info;
 mod root;
+mod self_update;
 mod source_remote;
 mod trust;
 mod version;

@@ -58,6 +58,14 @@ Remove packages. Use \fB--cascade\fR only when reverse dependencies should also 
 .B elda u [PACKAGE...]
 Upgrade the world or named packages from synced metadata.
 .TP
+.B elda su
+Update the running Elda executable from the main branch of
+.B https://github.com/Mjoyufull/Elda.
+.TP
+.B elda dsu
+Switch the running Elda executable to the latest dev branch build from
+.B https://github.com/Mjoyufull/Elda.
+.TP
 .B elda sync [REMOTE...]
 Refresh all enabled remotes or only the named remotes.
 .TP
@@ -368,6 +376,8 @@ elda rmt add yoka-main=https://github.com/Mjoyufull/Elda/releases/download/index
 elda sync
 elda i fsel --dry-run
 elda i fsel
+elda su --dry-run
+elda dsu
 elda doctor
 elda a https://github.com/Mjoyufull/fsel
 elda rmt add heather-overlay=https://github.com/heather7283/heather7283-overlay --exclude firefox vlc

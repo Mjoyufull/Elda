@@ -8,6 +8,7 @@ mod model;
 mod parser;
 mod validate;
 mod vendor;
+mod version;
 
 use elda_types::CrateBoundary;
 

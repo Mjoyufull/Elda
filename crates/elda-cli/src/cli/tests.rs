@@ -23,6 +23,19 @@ fn doctor_round_trips_into_command_request() {
 }
 
 #[test]
+fn self_update_commands_round_trip_into_command_requests() {
+    let stable = Cli::parse_from(["elda", "su"])
+        .command_request()
+        .expect("stable self-update request should exist");
+    let dev = Cli::parse_from(["elda", "dsu"])
+        .command_request()
+        .expect("dev self-update request should exist");
+
+    assert_eq!(stable.command_path, vec!["su"]);
+    assert_eq!(dev.command_path, vec!["dsu"]);
+}
+
+#[test]
 fn review_commands_round_trip_into_command_request() {
     let list = Cli::parse_from(["elda", "review", "ls"])
         .command_request()

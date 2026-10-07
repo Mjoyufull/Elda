@@ -48,6 +48,8 @@ pub(super) const CORE_ROWS: &[HelpRow] = &[
 pub(super) const STATE_ROWS: &[HelpRow] = &[
     HelpRow::new("rm", "<pkg...>", "remove installed packages"),
     HelpRow::new("u", "[pkg...]", "upgrade world or the selected closure"),
+    HelpRow::new("su", "", "update Elda from the main branch"),
+    HelpRow::new("dsu", "", "switch Elda to the latest dev branch build"),
     HelpRow::new(
         "diff",
         "<pkg>",

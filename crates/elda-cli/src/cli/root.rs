@@ -112,6 +112,10 @@ pub(super) enum Command {
     Rm(RemoveArgs),
     #[command(about = "Upgrade world or the selected package closure")]
     U(UpgradeArgs),
+    #[command(about = "Update Elda from the main branch")]
+    Su,
+    #[command(about = "Switch Elda to the latest dev branch build")]
+    Dsu,
     #[command(about = "Refresh configured remotes into the local snapshot")]
     Sync(TargetsArgs),
     #[command(about = "List installed packages in the current root (scan table)")]

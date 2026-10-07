@@ -55,6 +55,8 @@ fn requires_dispatch_confirmation(path: &[String]) -> bool {
             "a" | "add"
                 | "rm"
                 | "u"
+                | "su"
+                | "dsu"
                 // `sync` refreshes the local snapshot of remote indexes. It
                 // destroys nothing and is the one command an operator runs
                 // reflexively; `pacman -Sy` does not prompt either.

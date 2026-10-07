@@ -10,6 +10,7 @@ use crate::app_render_misc::{
     render_recipe_removed_report, render_search_report, render_session_log_section,
 };
 use crate::app_render_remove::{render_remove_plan_report, render_remove_success_report};
+use crate::app_render_self_update::render_self_update_report;
 use crate::app_render_state::{render_installed_packages_report, render_state_show_report};
 use crate::app_render_support::render_header;
 use crate::app_version::render_version_report;
@@ -46,6 +47,7 @@ fn render_specialized_report(report: &CommandReport) -> Option<String> {
             .or_else(|| render_remove_plan_report(report))
             .or_else(|| crate::app_render_extended::render_extended_plan_report(report)),
         ("version", "ok") => render_version_report(report),
+        ("self-update", "ok") | ("self-update", "planned") => render_self_update_report(report),
         ("ci", "ok") => render_ci_report(report),
         ("host", "ok") | ("host", "issues") | ("host", "blocked") => render_host_report(report),
         ("publish", "ok") | ("publish", "planned") => None,
