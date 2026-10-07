@@ -30,7 +30,7 @@ pub(crate) fn confirm_dispatch_mutation(
     data_dir: &std::path::Path,
     request: &CommandRequest,
 ) -> Result<(), CoreError> {
-    if request.dry_run || !requires_dispatch_confirmation(&request.command_path) {
+    if request.dry_run || !requires_dispatch_confirmation(request) {
         return Ok(());
     }
     if dispatch_confirmation_matches(data_dir, request)? {
@@ -42,9 +42,10 @@ pub(crate) fn confirm_dispatch_mutation(
     write_dispatch_confirmation(data_dir, request)
 }
 
-fn requires_dispatch_confirmation(path: &[String]) -> bool {
+fn requires_dispatch_confirmation(request: &CommandRequest) -> bool {
+    let path = &request.command_path;
     if path.is_empty()
-        || crate::command_class::is_read_only_command(path)
+        || crate::command_class::is_read_only_request(request)
         || has_dedicated_confirm(path)
     {
         return false;
@@ -114,5 +115,23 @@ fn mutation_summary(request: &CommandRequest) -> String {
         format!("Proceed with `{command}` for {} target(s)?", targets.len())
     } else {
         format!("Proceed with `{command}` for `{}`?", targets.join("`, `"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recipe_tree_publish_planning_keeps_its_mutation_gate() {
+        let mut request = CommandRequest::new(
+            vec!["publish".into(), "plan".into()],
+            Vec::new(),
+            crate::OutputMode::Human,
+            false,
+        );
+        assert!(!requires_dispatch_confirmation(&request));
+        request.operands = vec!["--tree".into(), "/tmp/recipes".into()];
+        assert!(requires_dispatch_confirmation(&request));
     }
 }
