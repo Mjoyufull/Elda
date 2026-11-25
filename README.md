@@ -1,3 +1,5 @@
+## ACHIVED IN FAVOR OF NIX/GUIX/portage/ZeroBrew/ JUST HAVING YOUR OWN SOFTWARE REPOSITORY lol. (and also ts was lowkey too much work for something already legit solved lol feel free to work )
+
 <div align="center">
 
 <img align="center" src="https://raw.githubusercontent.com/Mjoyufull/Elda/refs/heads/dev/assets/eldaasciidark.png#gh-dark-mode-only">
